@@ -7,6 +7,7 @@ object GP {
 
   object Tree {
     import repository._
+    import scalagp.implicits.BasicClasses._
 
     val const = registerConstLeaf[Int]("const",
       generateValue = () => random.nextInt(100),
