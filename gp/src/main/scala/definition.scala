@@ -4,7 +4,6 @@ import scala.util.Random
 import Ext._
 
 abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: Class[_ <: A], repository: Repository[C]) {
-  type InstanceType = T
   def arity: Int = childClasses.size
   def childClasses: Seq[Class[_]]
   def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T
@@ -21,7 +20,7 @@ abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass
 abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   override val childClasses = Seq.empty
   def create(): T
-  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): InstanceType =
+  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
   override def toString() =
     s"Definition(${name}, ${klass.getName})"

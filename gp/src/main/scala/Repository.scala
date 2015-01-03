@@ -50,7 +50,7 @@ class Repository[Ctx] {
             f
           )
         }
-        override def randomTree(repository: Repository[Ctx], depth: Int)(implicit random: Random): InstanceType = {
+        override def randomTree(repository: Repository[Ctx], depth: Int)(implicit random: Random): Branch2[A, Ctx, B1, B2] = {
           create(Seq(
             repository.randomTree[B1](depth - 1),
             repository.randomTree[B2](depth - 1)
