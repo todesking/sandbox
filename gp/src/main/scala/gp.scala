@@ -34,7 +34,7 @@ object Main {
 
     val sampleRange = (-10 to 10)
     def score(indiv: Individual[Int, Int]): Int =
-      sampleRange.map { x => Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }.sum
+      sampleRange.foldLeft(0) { (a, x) => a + Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }
 
     val isle = new scalagp.Isle[Int, Int](
       repository = GP.repository,
