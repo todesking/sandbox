@@ -81,4 +81,9 @@ class Repository[Ctx] {
 
   private[this] def classNotRegistered[A](implicit klass: Class[A]) =
     throw new IllegalStateException(s"Tree definition for ${implicitly[Class[A]].getName} is not registered")
+  override def equals(other: Any) = other match {
+    case r: Repository[Ctx] => this eq r
+    case _ => false
+  }
+  override def hashCode = super.hashCode
 }

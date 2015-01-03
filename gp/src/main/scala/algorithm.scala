@@ -17,19 +17,19 @@ object Initialize {
 }
 
 trait Selection[A, C] {
-  def execute(individuals: Seq[Individual[A, C]], population: Int): (Seq[Individual[A, C]], SelectionReport)
+  def execute(individuals: Seq[Individual[A, C]], population: Int): Seq[Individual[A, C]]
 }
 
 object Selection {
   def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Selection[A, C] =
     new Selection[A, C] {
-      override def execute(individuals: Seq[Individual[A, C]], population: Int): (Seq[Individual[A, C]], SelectionReport) = {
+      override def execute(individuals: Seq[Individual[A, C]], population: Int): Seq[Individual[A, C]] = {
         val operations = Operations.default[A, C](tournament)
         val next = new ArrayBuffer[Individual[A, C]]
         while(next.size <= population) {
           next ++= operations.apply(individuals)
         }
-        (next, new SelectionReport)
+        next
       }
     }
 }

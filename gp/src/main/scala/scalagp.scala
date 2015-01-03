@@ -24,13 +24,21 @@ class Isle[A, C](
   var individuals: Seq[Individual[A, C]] =
     initialize.newIndividuals(repository, population)
 
-  def nextGeneration(): SelectionReport = {
-    val (next, report) = selection.execute(individuals, population)
-    this.individuals = next
+  def nextGeneration(): SelectionReport[A, C] = {
+    this.individuals = selection.execute(individuals, population)
     this._generation += 1
-    report
+    SelectionReport(generation, individuals)
   }
 }
 
-class SelectionReport
+case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A, C]]) {
+  lazy val uniqueIndividuals: Int = individuals.toSet.size
+  def percentiles[O: Ordering](percents:Double*)(f: Individual[A, C] => O): Seq[(O, Individual[A, C])] = {
+    val sorted = individuals.sortBy(f)
+    percents.map { p =>
+      val i = sorted((p * sorted.size / 100).toInt)
+      f(i) -> i
+    }
+  }
+}
 

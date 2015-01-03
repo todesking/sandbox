@@ -3,11 +3,11 @@ package com.todesking.scalagp
 import scala.util.Random
 import Ext._
 
-sealed abstract class Tree[A, C] {
+sealed abstract class Tree[A, C] extends Equals {
   def definition: Definition[A, C, Tree[A, C]]
   def apply(ctx: C): A
-  val height: Int
-  val size: Int
+  def height: Int
+  def size: Int
   def isConstant: Boolean = false
   def allPaths: Traversable[TreePath[A, C, _]] =
     allPaths(TreePath.Root(this))
@@ -19,8 +19,11 @@ sealed abstract class Tree[A, C] {
       klass.isAssignableFrom(p.value.definition.klass)
     }.toSeq.sample().map(_.asInstanceOf[TreePath[A, C, X]])
   }
+
+  override def canEqual(rhs: Any): Boolean =
+    rhs.isInstanceOf[Tree[_, _]]
 }
-abstract class Leaf[A, C] extends Tree[A, C] {
+sealed abstract class Leaf[A, C] extends Tree[A, C] {
   override def definition: LeafDefinition[A, C, Leaf[A, C]]
   override val height = 0
   override val size = 1
@@ -36,6 +39,14 @@ class ConstLeaf[A, C](val value: A, override val definition: LeafDefinition[A, C
   override def apply(ctx: C): A = value
   override def toString =
     s"(${definition.name} ${value.toString})"
+
+  override def equals(rhs: Any): Boolean = rhs match {
+    case t: ConstLeaf[A, C] =>
+      t.canEqual(this) && t.definition == this.definition && t.value == this.value
+    case _ => false
+  }
+  override def hashCode =
+    definition.hashCode ^ value.hashCode
 }
 object ConstLeaf {
   def unapply[A, C](cl: ConstLeaf[A, C]): Option[(Class[_ <: A], A)] =
@@ -46,6 +57,12 @@ class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefi
     function(ctx)
   override def toString =
     s"(${definition.name})"
+  override def equals(rhs: Any): Boolean = rhs match {
+    case t: FunctionLeaf[A, C] => t.canEqual(this) && t.definition == this.definition
+    case _ => false
+  }
+  override def hashCode =
+    definition.hashCode
 }
 sealed abstract class Branch[A, C, P](
   val function: ((C, P)) => A
@@ -56,7 +73,7 @@ sealed abstract class Branch[A, C, P](
   override lazy val isConstant = children.forall(_.isConstant)
 
   override def definition: BranchDefinition[A, C, Branch[A, C, P]]
-  override lazy val height = children.map(_.height).max
+  override lazy val height = children.map(_.height).max + 1
   override lazy val size = children.map(_.size).sum + 1
 
   private[this] var _cached: Any = null
@@ -76,6 +93,14 @@ sealed abstract class Branch[A, C, P](
 
   override def toString =
     s"(${definition.name} ${children.map(_.toString).mkString(" ")})"
+
+  override def equals(rhs: Any): Boolean = rhs match {
+    case rhs: Branch[A, C, P] => rhs.canEqual(this) && rhs.children == this.children
+    case _ => false
+  }
+
+  override def hashCode =
+    children.foldLeft(definition.hashCode) { (a, x) => a ^ x.hashCode }
 }
 class Branch2[A, C, B1, B2](
   override val definition: BranchDefinition[A, C, Branch2[A, C, B1, B2]],
