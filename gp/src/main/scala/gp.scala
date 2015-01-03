@@ -44,6 +44,12 @@ object Main {
         Tournament.maximizeScore(100) { individual => score(individual) }
       )
     )
+
+    println("Definitions:")
+    GP.repository.allDefinitions.foreach { d =>
+      println(s"  * ${d}")
+    }
+
     var generationStatus = isle.nextGeneration()
     while(isle.generation < 1000) {
       println(s"Generation ${isle.generation}")

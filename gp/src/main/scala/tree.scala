@@ -35,7 +35,7 @@ class ConstLeaf[A, C](val value: A, override val definition: LeafDefinition[A, C
   override def isConstant = true
   override def apply(ctx: C): A = value
   override def toString =
-    value.toString
+    s"(${definition.name} ${value.toString})"
 }
 object ConstLeaf {
   def unapply[A, C](cl: ConstLeaf[A, C]): Option[(Class[_ <: A], A)] =

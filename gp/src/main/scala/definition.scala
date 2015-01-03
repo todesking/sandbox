@@ -15,7 +15,7 @@ abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: C
 abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   def create(children: Seq[Tree[_, C]]): T
   override def toString() =
-    s"Definition(${name}, ${klass.getName}, [${childClasses.map(_.getName).mkString(", ")}](${arity}))"
+    s"(${name} ${childClasses.map(_.getName).mkString(" ")}) => ${klass.getName}"
 }
 abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   override val childClasses = Seq.empty
@@ -23,5 +23,5 @@ abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class
   override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
   override def toString() =
-    s"Definition(${name}, ${klass.getName})"
+    s"(${name}) => ${klass.getName}"
 }
