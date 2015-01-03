@@ -1,0 +1,28 @@
+package com.todesking.scalagp
+
+import scala.util.Random
+import Ext._
+
+abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: Class[_ <: A], repository: Repository[C]) {
+  type InstanceType = T
+  def arity: Int = childClasses.size
+  def childClasses: Seq[Class[_]]
+  def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T
+  def compatibleShapeDefinitions(): Traversable[Definition[A, C, T]] =
+    repository.definitions(klass).filter { d =>
+      d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.isAssignableFrom(b) }
+    }.asInstanceOf[Traversable[Definition[A, C, T]]]
+}
+abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
+  def create(children: Seq[Tree[_, C]]): T
+  override def toString() =
+    s"Definition(${name}, ${klass.getName}, [${childClasses.map(_.getName).mkString(", ")}](${arity}))"
+}
+abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
+  override val childClasses = Seq.empty
+  def create(): T
+  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): InstanceType =
+    create()
+  override def toString() =
+    s"Definition(${name}, ${klass.getName})"
+}
