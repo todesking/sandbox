@@ -32,6 +32,9 @@ class Isle[A, C](
 }
 
 case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A, C]]) {
+  // returns (majolity, population)
+  lazy val majolity: (Individual[A, C], Int) =
+    individuals.groupBy(_.tree).toSeq.sortBy(_._2.size).map { x => (x._2.head, x._2.size) }.last
   lazy val uniqueIndividuals: Int = individuals.toSet.size
   def percentiles[O: Ordering](percents:Double*)(f: Individual[A, C] => O): Seq[(O, Individual[A, C])] = {
     val sorted = individuals.sortBy(f)

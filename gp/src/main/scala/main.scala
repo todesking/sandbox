@@ -40,7 +40,7 @@ object Main {
       population = 1000,
       initialize = Initialize.random(20),
       selection = Selection.default(
-        Tournament.maximizeScore(30) { individual => score(individual) }
+        Tournament.maximizeScore(50) { individual => score(individual) }
       )
     )
 
@@ -51,10 +51,10 @@ object Main {
 
     var report = isle.nextGeneration()
     while(isle.generation < 1000) {
-      println(s"Generation ${isle.generation}")
-      val sampled = isle.individuals.head
-      println(s"sample: score=${score(sampled)}")
-      println(sampled.tree.toString)
+      val (majolity, pop) = report.majolity
+      println(s"========== Generation ${isle.generation} ==========")
+      println(s"Majolity: population=${pop}, size=${majolity.tree.size}, score=${score(majolity)}")
+      println(majolity.tree.toString)
       println(s"Uniqueness: ${report.uniqueIndividuals}/${report.individuals.size}")
       println(s"Size(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.size).map(_._1).mkString(", ")}")
       println(s"Depth(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.height).map(_._1).mkString(", ")}")

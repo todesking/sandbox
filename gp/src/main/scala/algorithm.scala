@@ -70,7 +70,7 @@ object Operations {
       path.value match {
         case _ if random.nextDouble < 0.1 =>
           Seq(Individual(path.unsafeReplace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
-        case cl@ConstLeaf(klass, value) if random.nextDouble < 0.3 =>
+        case cl@ConstLeaf(klass, value) if random.nextDouble < 0.5 =>
           Seq(Individual(path.unsafeReplace(mutateLeafValue(cl))))
         case l@Leaf(klass) =>
           Seq(Individual(path.unsafeReplace(mutateLeafType(l))))
@@ -97,7 +97,7 @@ object Operations {
           Seq(
             crossover -> 90,
             mutation -> 9,
-            copy -> 100
+            copy -> 1
           )
         definitions.weightedSampleBy(_._2).get._1.apply(individuals, tournament)
       }
