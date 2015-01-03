@@ -43,7 +43,7 @@ object Tournament {
       override def fittest(individuals: Seq[Individual[A, C]]): Individual[A, C] = {
         require(individuals.nonEmpty)
         val group = individuals.sample(size).toSeq
-        group.maxBy(scoring(_))
+        group.zip(group.map(scoring(_))).maxBy(_._2)._1
       }
     }
 }
