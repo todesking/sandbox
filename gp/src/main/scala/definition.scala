@@ -3,7 +3,7 @@ package com.todesking.scalagp
 import scala.util.Random
 import Ext._
 
-abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: Class[_ <: A], val repository: Repository[C]) extends Equals {
+sealed abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: Class[_ <: A], val repository: Repository[C]) extends Equals {
   def arity: Int = childClasses.size
   def childClasses: Seq[Class[_]]
   def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T
@@ -26,9 +26,17 @@ abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass
 }
 abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   override val childClasses = Seq.empty
-  def create(): T
   override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
   override def toString() =
     s"(${name}) => ${klass.getName}"
+  def create(): T
+}
+
+abstract class ConstLeafDefinition[A, C, +T <: ConstLeaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends LeafDefinition[A, C, T](name, klass, repository) {
+  override val childClasses = Seq.empty
+  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
+    create()
+
+  def create(value: A): T
 }

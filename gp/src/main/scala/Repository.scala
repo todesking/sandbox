@@ -10,6 +10,8 @@ class Repository[Ctx] {
     new ArrayBuffer[Definition[_, Ctx, Tree[_, Ctx]]]
 
   private[this] def register[A <: Definition[_, Ctx, Tree[_, Ctx]]](definition: A): A  = {
+    if(definitionByName(definition.name).nonEmpty)
+      throw new IllegalArgumentException(s""""${definition.name}" is already defined""")
     _definitions += definition
     definition
   }
@@ -18,9 +20,11 @@ class Repository[Ctx] {
       (name: String, generateValue: () => A)
       : Definition[A, Ctx, ConstLeaf[A, Ctx]] =
     register(
-      new LeafDefinition[A, Ctx, ConstLeaf[A, Ctx]](name, implicitly[Class[A]], this) {
+      new ConstLeafDefinition[A, Ctx, ConstLeaf[A, Ctx]](name, implicitly[Class[A]], this) {
         override def create(): ConstLeaf[A, Ctx] =
           new ConstLeaf(generateValue(), this)
+        override def create(value: A): ConstLeaf[A, Ctx] =
+          new ConstLeaf(value, this)
       }
     )
 
@@ -78,6 +82,12 @@ class Repository[Ctx] {
     } else {
       definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(this, depth)
     }
+
+  def definitionByName(name: String): Option[Definition[_, Ctx, Tree[_, Ctx]]] =
+    allDefinitions.filter(_.name == name).headOption
+
+  def parse[A](s: String)(implicit klass: Class[A]): Tree[A, Ctx] =
+    new Parser[A, Ctx](this).parse(klass, s)
 
   private[this] def classNotRegistered[A](implicit klass: Class[A]) =
     throw new IllegalStateException(s"Tree definition for ${implicitly[Class[A]].getName} is not registered")

@@ -34,7 +34,7 @@ object Leaf {
   def unapply[A, C](l: Leaf[A, C]): Option[Class[_ <: A]] =
     Some(l.definition.klass)
 }
-class ConstLeaf[A, C](val value: A, override val definition: LeafDefinition[A, C, ConstLeaf[A, C]]) extends Leaf[A, C] {
+class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C, ConstLeaf[A, C]]) extends Leaf[A, C] {
   override def isConstant = true
   override def apply(ctx: C): A = value
   override def toString =
