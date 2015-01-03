@@ -36,8 +36,6 @@ object Main {
     def score(indiv: Individual[Int, Int]): Int =
       sampleRange.map { x => Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }.sum
 
-    println(GP.repository.allDefinitions)
-
     val isle = new scalagp.Isle[Int, Int](
       repository = GP.repository,
       population = 1000,

@@ -8,6 +8,7 @@ sealed abstract class Tree[A, C] {
   def apply(ctx: C): A
   val height: Int
   val size: Int
+  def isConstant: Boolean = false
   def allPaths: Traversable[TreePath[A, C, _]] =
     allPaths(TreePath.Root(this))
   def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]]
@@ -31,6 +32,7 @@ object Leaf {
     Some(l.definition.klass)
 }
 class ConstLeaf[A, C](val value: A, override val definition: LeafDefinition[A, C, ConstLeaf[A, C]]) extends Leaf[A, C] {
+  override def isConstant = true
   override def apply(ctx: C): A = value
   override def toString =
     value.toString
@@ -50,15 +52,28 @@ sealed abstract class Branch[A, C, P](
 ) extends Tree[A, C] {
   def children: Seq[Tree[_, C]]
   def childrenParam: P
+
+  override lazy val isConstant = children.forall(_.isConstant)
+
   override def definition: BranchDefinition[A, C, Branch[A, C, P]]
   override lazy val height = children.map(_.height).max
   override lazy val size = children.map(_.size).sum + 1
+
+  private[this] var _cached: Any = null
   override def apply(ctx: C): A =
-    function((ctx, childrenParam))
+    if(isConstant && _cached != null) {
+      _cached.asInstanceOf[A]
+    } else {
+      _cached = function((ctx, childrenParam))
+      _cached.asInstanceOf[A]
+    }
+
   def replaceChild(index: Int, c: Tree[_, C]): Branch[A, C, P] =
     definition.create(children.updated(index, c))
+
   override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]] =
     base +: children.zipWithIndex.flatMap { case (c: Tree[_, C], i) => c.allPaths(TreePath.Descent(base, i, c)) }
+
   override def toString =
     s"(${definition.name} ${children.map(_.toString).mkString(" ")})"
 }
