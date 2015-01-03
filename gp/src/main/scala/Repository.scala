@@ -76,9 +76,9 @@ class Repository[Ctx] {
     if(depth == 0) {
       leafDefinitions[A].toSeq.sample().get.create()
     } else {
-      definitions[A].toSeq.sample().getOrElse(throw classNotRegistered[A]).randomTree(this, depth)
+      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(this, depth)
     }
 
   private[this] def classNotRegistered[A](implicit klass: Class[A]) =
-    new IllegalStateException(s"Tree definition for ${implicitly[Class[A]].getName} is not registered")
+    throw new IllegalStateException(s"Tree definition for ${implicitly[Class[A]].getName} is not registered")
 }
