@@ -15,7 +15,7 @@ class Repository[Ctx] {
   }
 
   def registerConstLeaf[A: Class]
-      (name: String, generateValue: () => A, mutateValue: A => A)
+      (name: String, generateValue: () => A)
       : Definition[A, Ctx, ConstLeaf[A, Ctx]] =
     register(
       new LeafDefinition[A, Ctx, ConstLeaf[A, Ctx]](name, implicitly[Class[A]], this) {

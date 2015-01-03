@@ -68,7 +68,9 @@ object Operations {
       val target = tournament.fittest(individuals).tree
       val path = target.randomPath()
       path.value match {
-        case cl@ConstLeaf(klass, value) if true =>
+        case _ if random.nextDouble < 0.1 =>
+          Seq(Individual(path.unsafeReplace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
+        case cl@ConstLeaf(klass, value) if random.nextDouble < 0.3 =>
           Seq(Individual(path.unsafeReplace(mutateLeafValue(cl))))
         case l@Leaf(klass) =>
           Seq(Individual(path.unsafeReplace(mutateLeafType(l))))
@@ -78,7 +80,7 @@ object Operations {
     }
     def mutateLeafValue[A, C](leaf: ConstLeaf[A, C]): ConstLeaf[A, C] =
       leaf.definition.create()
-    def mutateLeafType[A, C](leaf: Leaf[A, C])(implicit  random: Random): Leaf[A, C] = {
+    def mutateLeafType[A, C](leaf: Leaf[A, C])(implicit random: Random): Leaf[A, C] = {
       leaf.definition.compatibleShapeDefinitions.toSeq.sample().get.asInstanceOf[LeafDefinition[A, C, Leaf[A, C]]].create()
     }
     def mutateBranchType[A, C, P](branch: Branch[A, C, P])(implicit random: Random): Branch[A, C, P] =

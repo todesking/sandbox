@@ -10,8 +10,7 @@ object GP {
     import scalagp.implicits.BasicClasses._
 
     val const = registerConstLeaf[Int]("const",
-      generateValue = () => random.nextInt(100),
-      mutateValue = n => n + random.nextInt(3) - 1
+      generateValue = () => random.nextInt(100)
     )
 
     val x = registerLeaf[Int]("x") { ctx => ctx }
