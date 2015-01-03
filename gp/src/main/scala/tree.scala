@@ -41,7 +41,7 @@ class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition
     s"(${definition.name} ${value.toString})"
 
   override def equals(rhs: Any): Boolean = rhs match {
-    case t: ConstLeaf[A, C] =>
+    case t: ConstLeaf[A, C] @unchecked =>
       t.canEqual(this) && t.definition == this.definition && t.value == this.value
     case _ => false
   }
@@ -58,7 +58,7 @@ class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefi
   override def toString =
     s"(${definition.name})"
   override def equals(rhs: Any): Boolean = rhs match {
-    case t: FunctionLeaf[A, C] => t.canEqual(this) && t.definition == this.definition
+    case t: FunctionLeaf[A, C] @unchecked => t.canEqual(this) && t.definition == this.definition
     case _ => false
   }
   override def hashCode =
@@ -95,7 +95,7 @@ sealed abstract class Branch[A, C, P](
     s"(${definition.name} ${children.map(_.toString).mkString(" ")})"
 
   override def equals(rhs: Any): Boolean = rhs match {
-    case rhs: Branch[A, C, P] => rhs.canEqual(this) && rhs.children == this.children
+    case rhs: Branch[A, C, P] @unchecked => rhs.canEqual(this) && rhs.children == this.children
     case _ => false
   }
 

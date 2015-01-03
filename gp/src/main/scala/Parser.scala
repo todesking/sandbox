@@ -31,7 +31,7 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
     case SList(Seq(Symbol(sym), args@_*)) =>
       val definition = repository.definitionByName(sym)
       definition match {
-        case Some(d: ConstLeafDefinition[A, C, Leaf[A, C]]) =>
+        case Some(d: ConstLeafDefinition[A, C , Leaf[A, C]] @unchecked) =>
           if(args.size != 1)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           args match {
@@ -42,11 +42,11 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
             case _ =>
               throw new IllegalArgumentException(s"Illegal argument for ${d.name}: $expr")
           }
-        case Some(d: LeafDefinition[A, C, Leaf[A, C]]) =>
+        case Some(d: LeafDefinition[A, C, Leaf[A, C]] @unchecked) =>
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create()
-        case Some(d: BranchDefinition[A, C, Branch[A, C, _]]) =>
+        case Some(d: BranchDefinition[A, C, Branch[A, C, _]] @unchecked) =>
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create(args.map { a => toTree(a) })
