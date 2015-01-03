@@ -39,9 +39,9 @@ object Main {
     val isle = new scalagp.Isle[Int, Int](
       repository = GP.repository,
       population = 1000,
-      initialize = Initialize.random(10),
+      initialize = Initialize.random(20),
       selection = Selection.default(
-        Tournament.maximizeScore(100) { individual => score(individual) }
+        Tournament.maximizeScore(30) { individual => score(individual) }
       )
     )
 
