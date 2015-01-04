@@ -48,7 +48,7 @@ object Main {
 
     runner.run(
       isle,
-      stop = { report => report.generation >= 1|| score(report.majolity._1) > -10 },
+      stop = { report => report.generation >= 100 || score(report.majolity._1) > -10 },
       describe = { individual => s"score = ${score(individual)}" }
     )
   }

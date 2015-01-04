@@ -25,13 +25,15 @@ class Isle[A, C](
     initialize.newIndividuals(repository, population)
 
   def nextGeneration(): SelectionReport[A, C] = {
+    val start = System.nanoTime()
     this.individuals = selection.execute(individuals, population)
     this._generation += 1
-    SelectionReport(generation, individuals)
+    SelectionReport(generation, individuals, System.nanoTime() - start)
   }
 }
 
-case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A, C]]) {
+case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A, C]], executionNanos: Long) {
+  def executionMillis: Long = executionNanos / 1000 / 1000
   // returns (majolity, population)
   lazy val majolity: (Individual[A, C], Int) =
     individuals.groupBy(_.tree).toSeq.sortBy(_._2.size).map { x => (x._2.head, x._2.size) }.last
