@@ -6,8 +6,10 @@ import scala.util.Random
 import Ext._
 
 case class Individual[A, C](tree: Tree[A, C]) {
+  lazy val optimized: Tree[A, C] =
+    tree.optimized
   def apply(ctx: C): A =
-    tree(ctx)
+    optimized(ctx)
 }
 
 class Isle[A, C](

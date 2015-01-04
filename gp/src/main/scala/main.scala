@@ -22,22 +22,28 @@ object GP {
   val add_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("add*") { (ctx, children) =>
     children.foldLeft(0) { (a, c) => a + c(ctx) }
   }
-
-  repository.optimizeRule {
-    case add(add(a, b), add(c, d)) =>
-      add_*(Seq(a, b, c, d))
-    case add(add(a, b), c) =>
-      add_*(Seq(a, b, c))
-    case add(a, add(b, c)) =>
-      add_*(Seq(a, b, c))
-    case add(add_*(da), add_*(db)) =>
-      add_*(da ++ db)
-    case add(add_*(da), b) =>
-      add_*(da :+ b)
-    case add(a, add_*(db)) =>
-      add_*(a +: db)
+  val mul_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("mul*") { (ctx, children) =>
+    children.foldLeft(1) { (a, c) => a * c(ctx) }
   }
 
+  def b2Fusion[A: Class](o: scalagp.Branch2Definition[A, Int, A, A, scalagp.Branch2[A, Int, A, A]], p: scalagp.OptimizeDefinition[A, Int, Seq[Tree[A, Int]]]): Unit =
+    repository.optimizeRule[A, Seq[Tree[A, Int]]] {
+      case o(o(a, b), o(c, d)) =>
+        p(Seq(a, b, c, d))
+      case o(o(a, b), c) =>
+        p(Seq(a, b, c))
+      case o(a, o(b, c)) =>
+        p(Seq(a, b, c))
+      case o(p(da), p(db)) =>
+        p(da ++ db)
+      case o(p(da), b) =>
+        p(da :+ b)
+      case o(a, p(db)) =>
+        p(a +: db)
+    }
+
+  b2Fusion(add, add_*)
+  b2Fusion(mul, mul_*)
 }
 
 object Main {

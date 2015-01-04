@@ -24,6 +24,8 @@ class Runner[A, C] {
     println(s"Time: ${report.executionMillis}[ms]")
     println(s"Majolity: population=${pop}, size=${majolity.tree.size}, ${describe(majolity)}")
     println(majolity.tree.toString)
+    if(majolity.tree ne majolity.optimized)
+      println(s"(optimized)${majolity.optimized.toString}")
     println(s"Uniqueness: ${report.uniqueIndividuals}/${report.individuals.size}")
     println(s"Size(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.size).map(_._1).mkString(", ")}")
     println(s"Depth(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.height).map(_._1).mkString(", ")}")

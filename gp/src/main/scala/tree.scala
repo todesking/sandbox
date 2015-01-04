@@ -9,6 +9,8 @@ sealed abstract class Tree[A, C] extends Equals {
   def height: Int
   def size: Int
   def isConstant: Boolean = false
+  def optimized: Tree[A, C] =
+    definition.repository.optimize(this)
   def allPaths: Traversable[TreePath[A, C, _]] =
     allPaths(TreePath.Root(this))
   def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]]

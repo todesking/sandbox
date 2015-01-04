@@ -66,6 +66,7 @@ class Repository[Ctx] {
     new OptimizeDefinition[A, Ctx, D](name, implicitly[Class[A]], f, this)
 
   private[this] val optimizeRules = new ArrayBuffer[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
+
   def optimizeRule[A: Class, D](ruleDef: PartialFunction[Tree[_, Ctx], Tree[A, Ctx] => OptimizedTree[A, Ctx, D]]): Unit =
     optimizeRules += ruleDef.lift.asInstanceOf[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
 
