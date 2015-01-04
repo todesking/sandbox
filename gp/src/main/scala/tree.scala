@@ -23,6 +23,22 @@ sealed abstract class Tree[A, C] extends Equals {
   override def canEqual(rhs: Any): Boolean =
     rhs.isInstanceOf[Tree[_, _]]
 }
+
+class OptimizedTree[A, C, D](val realDefinition: OptimizeDefinition[A, C, D], val wrapped: Tree[A, C], val data: D, val f: (C, D) => A) extends Tree[A, C] {
+  override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]] =
+    wrapped.allPaths(base)
+  override def definition: Definition[A, C, Tree[A, C]] =
+    wrapped.definition
+  override def height =
+    wrapped.height
+  override def size =
+    wrapped.size
+  def apply(ctx: C): A =
+    f(ctx, data)
+  override def toString =
+    s"[${realDefinition.name} ${data}]${wrapped.toString}"
+}
+
 sealed abstract class Leaf[A, C] extends Tree[A, C] {
   override def definition: LeafDefinition[A, C, Leaf[A, C]]
   override val height = 0

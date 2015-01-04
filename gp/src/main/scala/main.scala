@@ -1,25 +1,43 @@
 import com.todesking.scalagp
 
 object GP {
+  import scalagp.{Tree, OptimizedTree}
+
   val repository = new scalagp.Repository[Int]
 
   val random = new scala.util.Random
 
-  object Tree {
-    import repository._
-    import scalagp.implicits.BasicClasses._
+  import scalagp.implicits.BasicClasses._
 
-    val const = registerConstLeaf[Int]("const",
-      generateValue = () => random.nextInt(100)
-    )
+  val const = repository.registerConstLeaf[Int]("const",
+    generateValue = () => random.nextInt(100)
+  )
 
-    val x = registerLeaf[Int]("x") { ctx => ctx }
+  val x = repository.registerLeaf[Int]("x") { ctx => ctx }
 
-    val add = registerBranch2[Int, Int, Int]("+") { (c, l, r) => l(c) + r(c) }
-    val sub = registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
-    val mul = registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
+  val add = repository.registerBranch2[Int, Int, Int]("+") { (c, l, r) => l(c) + r(c) }
+  val sub = repository.registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
+  val mul = repository.registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
+
+  val add_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("add*") { (ctx, children) =>
+    children.foldLeft(0) { (a, c) => a + c(ctx) }
   }
-  Tree // force initialize
+
+  repository.optimizeRule {
+    case add(add(a, b), add(c, d)) =>
+      add_*(Seq(a, b, c, d))
+    case add(add(a, b), c) =>
+      add_*(Seq(a, b, c))
+    case add(a, add(b, c)) =>
+      add_*(Seq(a, b, c))
+    case add(add_*(da), add_*(db)) =>
+      add_*(da ++ db)
+    case add(add_*(da), b) =>
+      add_*(da :+ b)
+    case add(a, add_*(db)) =>
+      add_*(a +: db)
+  }
+
 }
 
 object Main {

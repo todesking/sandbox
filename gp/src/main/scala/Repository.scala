@@ -40,9 +40,9 @@ class Repository[Ctx] {
       (name: String)
       (f: (Ctx, Tree[B1, Ctx], Tree[B2, Ctx]) => A)
       (implicit c1: Class[B1], c2: Class[B2])
-      : Definition[A, Ctx, Branch2[A, Ctx, B1, B2]] =
+      : Branch2Definition[A, Ctx, B1, B2, Branch2[A, Ctx, B1, B2]] =
     register(
-      new BranchDefinition[A, Ctx, Branch2[A, Ctx, B1, B2]](name, implicitly[Class[A]], this) {
+      new Branch2Definition[A, Ctx, B1, B2, Branch2[A, Ctx, B1, B2]](name, implicitly[Class[A]], this) {
         override val childClasses = Seq(c1, c2)
         override def create(children: Seq[Tree[_, Ctx]]): Branch2[A, Ctx, B1, B2] = {
           require(children.size == 2)
@@ -62,6 +62,43 @@ class Repository[Ctx] {
         }
       }
     )
+  def registerOptimized[A: Class, D](name: String)(f: (Ctx, D) => A): OptimizeDefinition[A, Ctx, D] =
+    new OptimizeDefinition[A, Ctx, D](name, implicitly[Class[A]], f, this)
+
+  private[this] val optimizeRules = new ArrayBuffer[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
+  def optimizeRule[A: Class, D](ruleDef: PartialFunction[Tree[_, Ctx], Tree[A, Ctx] => OptimizedTree[A, Ctx, D]]): Unit =
+    optimizeRules += ruleDef.lift.asInstanceOf[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
+
+  def optimize[A](tree: Tree[A, Ctx]): Tree[A, Ctx] =
+    tree match {
+      case t: Leaf[A, Ctx] =>
+        optimize1(t)
+      case t: Branch[A, Ctx, _] =>
+        val children = t.children.map(optimize(_))
+        if(t.children.zip(children).forall { case(c, oc) => c eq oc })
+          optimize1(t)
+        else
+          optimize1(t.definition.create(children))
+      case t =>
+        t
+    }
+
+  def optimize1[A](tree: Tree[A, Ctx]): Tree[A, Ctx] =
+    optimizeRules.foldLeft[Tree[A, Ctx]](tree) { (tree, rule) => rule(tree) map(_(unoptimize(tree)).asInstanceOf[Tree[A, Ctx]]) getOrElse tree }
+
+  def unoptimize[A](tree: Tree[A, Ctx]): Tree[A, Ctx] =
+    tree match {
+      case t: Leaf[A, Ctx] =>
+        t
+      case t: Branch[A, Ctx, _] =>
+        val children = t.children.map(unoptimize(_))
+        if(t.children.zip(children).forall { case(c, oc) => c eq oc })
+          t
+        else
+          t.definition.create(children)
+      case t: OptimizedTree[A, Ctx, _] =>
+        t.wrapped
+    }
 
   def allDefinitions: Traversable[Definition[_, Ctx, Tree[_, Ctx]]] =
     _definitions

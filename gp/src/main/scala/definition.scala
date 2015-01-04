@@ -21,8 +21,18 @@ sealed abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val k
 }
 abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   def create(children: Seq[Tree[_, C]]): T
+
   override def toString() =
     s"(${name} ${childClasses.map(_.getName).mkString(" ")}) => ${klass.getName}"
+}
+abstract class Branch2Definition[A, C, B1, B2, +T <: Branch2[A, C, B1, B2]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends BranchDefinition[A, C, T](name, klass, repository) {
+  def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
+    t match {
+      case b: Branch2[A, C, B1, B2] if b.definition == this =>
+        Some((b.child1, b.child2))
+      case _ =>
+        None
+    }
 }
 abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
   override val childClasses = Seq.empty
@@ -39,4 +49,17 @@ abstract class ConstLeafDefinition[A, C, +T <: ConstLeaf[A, C]](name: String, kl
     create()
 
   def create(value: A): T
+}
+
+class OptimizeDefinition[A, C, D](val name: String, val klass: Class[_ <: A], f: (C, D) => A, repository: Repository[C]) {
+  def apply(data: D): Tree[A, C] => OptimizedTree[A, C, D] =
+    tree => new OptimizedTree[A, C, D](this, tree, data, f)
+
+  def unapply(t: OptimizedTree[_, _, _]): Option[D] =
+    t match {
+      case ot: OptimizedTree[A, C, D] if ot.realDefinition == this =>
+        Some(ot.data)
+      case _ =>
+        None
+    }
 }
