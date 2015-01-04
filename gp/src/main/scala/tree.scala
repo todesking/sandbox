@@ -64,11 +64,9 @@ class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefi
   override def hashCode =
     definition.hashCode
 }
-sealed abstract class Branch[A, C, P](
-  val function: ((C, P)) => A
-) extends Tree[A, C] {
+sealed abstract class Branch[A, C, P] extends Tree[A, C] {
   def children: Seq[Tree[_, C]]
-  def childrenParam: P
+  protected def apply0(ctx: C): A
 
   override lazy val isConstant = children.forall(_.isConstant)
 
@@ -81,7 +79,7 @@ sealed abstract class Branch[A, C, P](
     if(isConstant && _cached != null) {
       _cached.asInstanceOf[A]
     } else {
-      _cached = function((ctx, childrenParam))
+      _cached = apply0(ctx)
       _cached.asInstanceOf[A]
     }
 
@@ -106,10 +104,11 @@ class Branch2[A, C, B1, B2](
   override val definition: BranchDefinition[A, C, Branch2[A, C, B1, B2]],
   val child1: Tree[B1, C],
   val child2: Tree[B2, C],
-  function: ((C,(Tree[B1, C], Tree[B2, C]))) => A
-) extends Branch[A, C, (Tree[B1, C], Tree[B2, C])](function) {
+  val function: (C, Tree[B1, C], Tree[B2, C]) => A
+) extends Branch[A, C, (Tree[B1, C], Tree[B2, C])] {
   override val children = Seq(child1, child2)
-  override val childrenParam = (child1, child2)
+  override def apply0(ctx: C): A =
+    function(ctx, child1, child2)
 }
 object Branch {
   def unapply[A, C, P](b: Branch[A, C, P]): Option[Class[_ <: A]] =

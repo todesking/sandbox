@@ -15,9 +15,9 @@ object GP {
 
     val x = registerLeaf[Int]("x") { ctx => ctx }
 
-    val add = registerBranch2[Int, Int, Int]("+") { case (ctx, (l, r)) => l(ctx) + r(ctx) }
-    val sub = registerBranch2[Int, Int, Int]("-") { case (ctx, (l, r)) => l(ctx) - r(ctx) }
-    val mul = registerBranch2[Int, Int, Int]("*") { case (ctx, (l, r)) => l(ctx) * r(ctx) }
+    val add = registerBranch2[Int, Int, Int]("+") { (c, l, r) => l(c) + r(c) }
+    val sub = registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
+    val mul = registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
   }
   Tree // force initialize
 }

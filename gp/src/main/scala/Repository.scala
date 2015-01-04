@@ -38,7 +38,7 @@ class Repository[Ctx] {
 
   def registerBranch2[A: Class, B1, B2]
       (name: String)
-      (f: ((Ctx, (Tree[B1, Ctx], Tree[B2, Ctx]))) => A)
+      (f: (Ctx, Tree[B1, Ctx], Tree[B2, Ctx]) => A)
       (implicit c1: Class[B1], c2: Class[B2])
       : Definition[A, Ctx, Branch2[A, Ctx, B1, B2]] =
     register(
