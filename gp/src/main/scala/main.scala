@@ -24,7 +24,7 @@ object GP {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    import scalagp.{Individual, Initialize, Selection, Tournament}
+    import scalagp.{Individual, Initialize, Selection, Tournament, Runner}
     import scalagp.implicits.BasicClasses._
 
     implicit val random = new scala.util.Random
@@ -44,22 +44,13 @@ object Main {
       )
     )
 
-    println("Definitions:")
-    GP.repository.allDefinitions.foreach { d =>
-      println(s"  * ${d}")
-    }
+    val runner = new Runner[Int, Int]()
 
-    var report = isle.nextGeneration()
-    while(isle.generation < 1000) {
-      val (majolity, pop) = report.majolity
-      println(s"========== Generation ${isle.generation} ==========")
-      println(s"Majolity: population=${pop}, size=${majolity.tree.size}, score=${score(majolity)}")
-      println(majolity.tree.toString)
-      println(s"Uniqueness: ${report.uniqueIndividuals}/${report.individuals.size}")
-      println(s"Size(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.size).map(_._1).mkString(", ")}")
-      println(s"Depth(99, 90, 50): ${report.percentiles(99, 90, 50)(_.tree.height).map(_._1).mkString(", ")}")
-      report = isle.nextGeneration()
-    }
+    runner.run(
+      isle,
+      stop = { report => report.generation >= 1|| score(report.majolity._1) > -10 },
+      describe = { individual => s"score = ${score(individual)}" }
+    )
   }
 }
 
