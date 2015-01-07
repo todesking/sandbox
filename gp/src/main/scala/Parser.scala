@@ -1,6 +1,7 @@
 package com.todesking.scalagp
 
 import scala.util.parsing.combinator._
+import scala.reflect.ClassTag
 
 class Parser[A, C](repository: Repository[C]) extends RegexParsers {
   def expr: Parser[SExpr] = atom | list
@@ -11,7 +12,7 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
   def intNum = """[1-9][0-9]*""".r ^^ { s => Atom(s.toInt) }
   def symbol = """[a-z+*/^!?\-][a-z+*/^!?0-9\-]*""".r ^^ { s => Symbol(s) }
 
-  def parse(klass: Class[A], source: String): Tree[A, C] =
+  def parse(klass: ClassTag[A], source: String): Tree[A, C] =
     parseAll(expr, source) match {
       case Success(expr, _) =>
         toTree(klass, expr)
@@ -19,7 +20,7 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
         throw new RuntimeException(s"Parse error: msg=${failure.msg}, source=${source}")
     }
 
-  private[this] def toTree(klass: Class[A], expr: SExpr): Tree[A, C] = {
+  private[this] def toTree(klass: ClassTag[A], expr: SExpr): Tree[A, C] = {
     val tree = toTree(expr)
     if(tree.definition.klass != klass)
       throw new IllegalArgumentException(s"parse result is ${tree} but required type is ${klass}")

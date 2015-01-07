@@ -2,6 +2,8 @@ package com.todesking.scalagp
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import scala.reflect.ClassTag
+
 import Ext._
 
 trait Initialize[A, C] {
@@ -9,7 +11,7 @@ trait Initialize[A, C] {
 }
 
 object Initialize {
-  def random[A: Class, C](depth: Int)(implicit random: Random): Initialize[A, C] =
+  def random[A: ClassTag, C](depth: Int)(implicit random: Random): Initialize[A, C] =
     new Initialize[A, C] {
       override def newIndividuals(repository: Repository[C], population: Int) =
         (0 to population) map { _ => Individual(repository.randomTree[A](depth)) }

@@ -1,6 +1,8 @@
 package com.todesking.scalagp
 
 import scala.util.Random
+import scala.reflect.ClassTag
+
 import Ext._
 
 sealed abstract class Tree[A, C] extends Equals {
@@ -16,9 +18,9 @@ sealed abstract class Tree[A, C] extends Equals {
   def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]]
   def randomPath()(implicit random: Random): TreePath[A, C, _] =
     allPaths.toSeq.sample().get
-  def randomPath[X](klass: Class[X])(implicit random: Random): Option[TreePath[A, C, X]] = {
+  def randomPath[X](klass: ClassTag[X])(implicit random: Random): Option[TreePath[A, C, X]] = {
     allPaths.filter { p =>
-      klass.isAssignableFrom(p.value.definition.klass)
+      klass.runtimeClass.isAssignableFrom(p.value.definition.klass.runtimeClass)
     }.toSeq.sample().map(_.asInstanceOf[TreePath[A, C, X]])
   }
 
@@ -49,7 +51,7 @@ sealed abstract class Leaf[A, C] extends Tree[A, C] {
     Seq(base)
 }
 object Leaf {
-  def unapply[A, C](l: Leaf[A, C]): Option[Class[_ <: A]] =
+  def unapply[A, C](l: Leaf[A, C]): Option[ClassTag[A]] =
     Some(l.definition.klass)
 }
 class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C, ConstLeaf[A, C]]) extends Leaf[A, C] {
@@ -67,7 +69,7 @@ class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition
     definition.hashCode ^ value.hashCode
 }
 object ConstLeaf {
-  def unapply[A, C](cl: ConstLeaf[A, C]): Option[(Class[_ <: A], A)] =
+  def unapply[A, C](cl: ConstLeaf[A, C]): Option[(ClassTag[A], A)] =
     Some(cl.definition.klass -> cl.value)
 }
 class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefinition[A, C, FunctionLeaf[A, C]]) extends Leaf[A, C] {
@@ -129,7 +131,7 @@ class Branch2[A, C, B1, B2](
     function(ctx, child1, child2)
 }
 object Branch {
-  def unapply[A, C, P](b: Branch[A, C, P]): Option[Class[_ <: A]] =
+  def unapply[A, C, P](b: Branch[A, C, P]): Option[ClassTag[A]] =
     Some(b.definition.klass)
 }
 

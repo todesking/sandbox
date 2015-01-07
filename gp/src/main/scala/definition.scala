@@ -1,15 +1,18 @@
 package com.todesking.scalagp
 
 import scala.util.Random
+import scala.reflect.ClassTag
+
 import Ext._
 
-sealed abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val klass: Class[A], val repository: Repository[C]) extends Equals {
+sealed abstract class Definition[A: ClassTag, C, +T <: Tree[A, C]](val name: String, val repository: Repository[C]) extends Equals {
+  val klass: ClassTag[A] = implicitly[ClassTag[A]]
   def arity: Int = childClasses.size
-  def childClasses: Seq[Class[_]]
+  def childClasses: Seq[ClassTag[_]]
   def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T
   def compatibleShapeDefinitions(): Traversable[Definition[A, C, T]] =
     repository.definitions(klass).filter { d =>
-      d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.isAssignableFrom(b) }
+      d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.runtimeClass.isAssignableFrom(b.runtimeClass) }
     }.asInstanceOf[Traversable[Definition[A, C, T]]]
   override def canEqual(rhs: Any): Boolean =
     rhs.isInstanceOf[Definition[_, _, _]]
@@ -19,13 +22,13 @@ sealed abstract class Definition[A, C, +T <: Tree[A, C]](val name: String, val k
     case _ => false
   }
 }
-abstract class BranchDefinition[A, C, +T <: Branch[A, C, _]](name: String, klass: Class[A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
+abstract class BranchDefinition[A: ClassTag, C, +T <: Branch[A, C, _]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
   def create(children: Seq[Tree[_, C]]): T
 
   override def toString() =
-    s"(${name} ${childClasses.map(_.getName).mkString(" ")}) => ${klass.getName}"
+    s"(${name} ${childClasses.map(_.runtimeClass.getName).mkString(" ")}) => ${klass.runtimeClass.getName}"
 }
-abstract class Branch2Definition[A, C, B1, B2, +T <: Branch2[A, C, B1, B2]](name: String, klass: Class[A], repository: Repository[C]) extends BranchDefinition[A, C, T](name, klass, repository) {
+abstract class Branch2Definition[A: ClassTag, C, B1, B2, +T <: Branch2[A, C, B1, B2]](name: String, repository: Repository[C]) extends BranchDefinition[A, C, T](name, repository) {
   def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
     t match {
       case b: Branch2[A, C, B1, B2] if b.definition == this =>
@@ -34,16 +37,16 @@ abstract class Branch2Definition[A, C, B1, B2, +T <: Branch2[A, C, B1, B2]](name
         None
     }
 }
-abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class[A], repository: Repository[C]) extends Definition[A, C, T](name, klass, repository) {
+abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
   override val childClasses = Seq.empty
   override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
   override def toString() =
-    s"(${name}) => ${klass.getName}"
+    s"(${name}) => ${klass.runtimeClass.getName}"
   def create(): T
 }
 
-abstract class ConstLeafDefinition[A, C, +T <: ConstLeaf[A, C]](name: String, klass: Class[A], repository: Repository[C]) extends LeafDefinition[A, C, T](name, klass, repository) {
+abstract class ConstLeafDefinition[A: ClassTag, C, +T <: ConstLeaf[A, C]](name: String, repository: Repository[C]) extends LeafDefinition[A, C, T](name, repository) {
   override val childClasses = Seq.empty
   override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
@@ -51,7 +54,7 @@ abstract class ConstLeafDefinition[A, C, +T <: ConstLeaf[A, C]](name: String, kl
   def create(value: A): T
 }
 
-class OptimizeDefinition[A, C, D](val name: String, val klass: Class[_ <: A], f: (C, D) => A, repository: Repository[C]) {
+class OptimizeDefinition[A: ClassTag, C, D](val name: String, f: (C, D) => A, repository: Repository[C]) {
   def apply(data: D): Tree[A, C] => OptimizedTree[A, C, D] =
     tree => new OptimizedTree[A, C, D](this, tree, data, f)
 

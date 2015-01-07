@@ -2,6 +2,7 @@ package com.todesking.scalagp
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import scala.reflect.ClassTag
 
 trait TreePath[A, C, V] {
   type RootType = A
@@ -10,7 +11,7 @@ trait TreePath[A, C, V] {
 
   def root: Tree[A, C]
   def value: Tree[V, C]
-  def klass: Class[_ <: V] = value.definition.klass
+  def klass: ClassTag[V] = value.definition.klass
   def replace(tree: Tree[V, C]): Tree[A, C]
   def unsafeReplace(tree: Tree[_, C]): Tree[A, C] =
     replace(tree.asInstanceOf[Tree[V, C]])

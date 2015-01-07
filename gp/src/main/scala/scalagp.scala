@@ -2,6 +2,7 @@ package com.todesking.scalagp
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import scala.reflect.ClassTag
 
 import Ext._
 
@@ -12,12 +13,12 @@ case class Individual[A, C](tree: Tree[A, C]) {
     optimized(ctx)
 }
 
-class Isle[A, C](
+class Isle[A: ClassTag, C](
   val repository: Repository[C],
   val population: Int,
   val initialize: Initialize[A, C],
   val selection: Selection[A, C]
-)(implicit ev: Class[A]) {
+) {
   def generation: Int =
     _generation
 

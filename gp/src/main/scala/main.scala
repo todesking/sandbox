@@ -1,13 +1,13 @@
 import com.todesking.scalagp
 
+import scala.reflect.ClassTag
+
 object GP {
   import scalagp.{Tree, OptimizedTree}
 
   val repository = new scalagp.Repository[Int]
 
   val random = new scala.util.Random
-
-  import scalagp.implicits.BasicClasses._
 
   val const = repository.registerConstLeaf[Int]("const",
     generateValue = () => random.nextInt(100)
@@ -26,7 +26,7 @@ object GP {
     children.foldLeft(1) { (a, c) => a * c(ctx) }
   }
 
-  def b2Fusion[A: Class](o: scalagp.Branch2Definition[A, Int, A, A, scalagp.Branch2[A, Int, A, A]], p: scalagp.OptimizeDefinition[A, Int, Seq[Tree[A, Int]]]): Unit =
+  def b2Fusion[A: ClassTag](o: scalagp.Branch2Definition[A, Int, A, A, scalagp.Branch2[A, Int, A, A]], p: scalagp.OptimizeDefinition[A, Int, Seq[Tree[A, Int]]]): Unit =
     repository.optimizeRule[A, Seq[Tree[A, Int]]] {
       case o(o(a, b), o(c, d)) =>
         p(Seq(a, b, c, d))
@@ -49,7 +49,6 @@ object GP {
 object Main {
   def main(args: Array[String]): Unit = {
     import scalagp.{Individual, Initialize, Selection, Tournament, Runner}
-    import scalagp.implicits.BasicClasses._
 
     implicit val random = new scala.util.Random
 
