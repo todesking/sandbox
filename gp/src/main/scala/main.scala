@@ -19,31 +19,51 @@ object GP {
   val sub = repository.registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
   val mul = repository.registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
 
-  val add_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("add*") { (ctx, children) =>
-    children.foldLeft(0) { (a, c) => a + c(ctx) }
-  }
-  val mul_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("mul*") { (ctx, children) =>
-    children.foldLeft(1) { (a, c) => a * c(ctx) }
-  }
 
-  def b2Fusion[A: Class](o: scalagp.Branch2Definition[A, Int, A, A, scalagp.Branch2[A, Int, A, A]], p: scalagp.OptimizeDefinition[A, Int, Seq[Tree[A, Int]]]): Unit =
-    repository.optimizeRule[A, Seq[Tree[A, Int]]] {
-      case o(o(a, b), o(c, d)) =>
-        p(Seq(a, b, c, d))
-      case o(o(a, b), c) =>
-        p(Seq(a, b, c))
-      case o(a, o(b, c)) =>
-        p(Seq(a, b, c))
-      case o(p(da), p(db)) =>
-        p(da ++ db)
-      case o(p(da), b) =>
-        p(da :+ b)
-      case o(a, p(db)) =>
-        p(a +: db)
+  object Nashorn {
+    import javax.script.{ScriptEngine, ScriptEngineManager}
+    import jdk.nashorn.api.scripting.ScriptObjectMirror
+
+    val engine = new ScriptEngineManager(null).getEngineByName("nashorn").asInstanceOf[ScriptEngine]
+
+    val cache =
+      new scala.collection.mutable.HashMap[String, ScriptObjectMirror]
+
+    def toFunction(body: String): ScriptObjectMirror = {
+      cache.get(body) getOrElse {
+        println(s"Compiling ${body}")
+        val value = engine.eval(s"function(ctx) { return ${body} }").asInstanceOf[ScriptObjectMirror]
+        cache.put(body, value)
+        value
+      }
     }
 
-  b2Fusion(add, add_*)
-  b2Fusion(mul, mul_*)
+    case class Compiled(body: String) {
+      lazy val func =
+        toFunction(body)
+
+      def apply(ctx: Int): Int =
+        func.call(null, ctx.asInstanceOf[java.lang.Object]) match {
+          case i: java.lang.Integer => i
+          case d: java.lang.Double => d.toInt
+        }
+    }
+  }
+
+  val jsCompiled = repository.registerOptimized[Int, Nashorn.Compiled]("<JS>") { (ctx, compiled) => compiled(ctx) }
+
+  repository.optimizeRule {
+    case const(a) =>
+      jsCompiled(Nashorn.Compiled(a.toString))
+    case x() =>
+      jsCompiled(Nashorn.Compiled("ctx"))
+    case add(jsCompiled(l), jsCompiled(r)) =>
+      jsCompiled(Nashorn.Compiled(s"(${l.body}) + (${r.body})"))
+    case sub(jsCompiled(l), jsCompiled(r)) =>
+      jsCompiled(Nashorn.Compiled(s"(${l.body}) - (${r.body})"))
+    case mul(jsCompiled(l), jsCompiled(r)) =>
+      jsCompiled(Nashorn.Compiled(s"(${l.body}) * (${r.body})"))
+  }
 }
 
 object Main {

@@ -18,7 +18,7 @@ class Repository[Ctx] {
 
   def registerConstLeaf[A: Class]
       (name: String, generateValue: () => A)
-      : Definition[A, Ctx, ConstLeaf[A, Ctx]] =
+      : ConstLeafDefinition[A, Ctx, ConstLeaf[A, Ctx]] =
     register(
       new ConstLeafDefinition[A, Ctx, ConstLeaf[A, Ctx]](name, implicitly[Class[A]], this) {
         override def create(): ConstLeaf[A, Ctx] =
@@ -28,9 +28,9 @@ class Repository[Ctx] {
       }
     )
 
-  def registerLeaf[A: Class](name: String)(f: Ctx => A): Definition[A, Ctx, FunctionLeaf[A, Ctx]] =
+  def registerLeaf[A: Class](name: String)(f: Ctx => A): FunctionLeafDefinition[A, Ctx, FunctionLeaf[A, Ctx]] =
     register(
-      new LeafDefinition[A, Ctx, FunctionLeaf[A, Ctx]](name, implicitly[Class[A]], this) {
+      new FunctionLeafDefinition[A, Ctx, FunctionLeaf[A, Ctx]](name, implicitly[Class[A]], this) {
         override def create() =
           new FunctionLeaf(f, this)
       }

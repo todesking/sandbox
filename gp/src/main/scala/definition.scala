@@ -43,12 +43,28 @@ abstract class LeafDefinition[A, C, +T <: Leaf[A, C]](name: String, klass: Class
   def create(): T
 }
 
+abstract class FunctionLeafDefinition[A, C, +T <: FunctionLeaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends LeafDefinition[A, C, T](name, klass, repository) {
+  def unapply(l: Leaf[_, C]): Boolean = l match {
+    case l: Leaf[A, C] if l.definition == this =>
+      true
+    case _ =>
+      false
+  }
+}
+
 abstract class ConstLeafDefinition[A, C, +T <: ConstLeaf[A, C]](name: String, klass: Class[_ <: A], repository: Repository[C]) extends LeafDefinition[A, C, T](name, klass, repository) {
   override val childClasses = Seq.empty
   override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
     create()
 
   def create(value: A): T
+
+  def unapply(l: ConstLeaf[_, _]): Option[A] = l match {
+    case cl: ConstLeaf[A, C] if cl.definition == this =>
+      Some(cl.value)
+    case _ =>
+      None
+  }
 }
 
 class OptimizeDefinition[A, C, D](val name: String, val klass: Class[_ <: A], f: (C, D) => A, repository: Repository[C]) {
