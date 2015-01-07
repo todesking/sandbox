@@ -6,6 +6,9 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    def native(x: Int) =
+      x + 1 + 2 + 3 + (4 + (5 + x) + 6 + x)
+
     val s = S.Parser.parse("(+ x 1 2 3 (+ 4 (+ 5 x) 6 x))")
     val env = S.Env.global
 
@@ -15,23 +18,38 @@ object Main {
 
     val engineManager = new ScriptEngineManager(null);
     val engine = engineManager.getEngineByExtension("js").asInstanceOf[ScriptEngine with Invocable]
+
     val compiled = engine.eval("function(x) { return (x + 1 + 2 + 3 + (4 + (5 + x) + 6 + x)); }")
       .asInstanceOf[jdk.nashorn.api.scripting.ScriptObjectMirror]
 
-    bench("Neive", N) { i =>
-      env.put(S.Sym("x"), S.Atom(i))
-      s.eval(env)
-    }
+      engine.eval("function add(args) { var i = 0, l = args.length, sum = 0; for(; i < l; i++) sum += args[i]; return sum }")
+    val compiledFun = engine.eval("function(x) { return add(x, 1, 2, 3, add(4, add(5, x), 6, x)); }")
+      .asInstanceOf[jdk.nashorn.api.scripting.ScriptObjectMirror]
 
-    bench(engine.getFactory().getEngineName(), N) { i =>
-      compiled.call(null, i: java.lang.Integer)
-    }
+    (1 to 3) foreach { _ =>
+      bench("Native", N) { i =>
+        native(i)
+      }
 
-    bench(s"${engine.getFactory().getEngineName()} define function(cached)", 1000) { i =>
-      engine.eval(s"function(x) { return x + 1 }")
-    }
-    bench(s"${engine.getFactory().getEngineName()} define function(uncached)", 1000) { i =>
-      engine.eval(s"function(x) { return x + ${i} }")
+      bench("Neive", N) { i =>
+        env.put(S.Sym("x"), S.Atom(i))
+        s.eval(env)
+      }
+
+      bench(s"${engine.getFactory().getEngineName()}(+)", N) { i =>
+        compiled.call(null, i: java.lang.Integer)
+      }
+
+      bench(s"${engine.getFactory().getEngineName()}(function)", N) { i =>
+        compiledFun.call(null, i: java.lang.Integer)
+      }
+
+      bench(s"${engine.getFactory().getEngineName()} define function(cached)", 1000) { i =>
+        engine.eval(s"function(x) { return x + 1 }")
+      }
+      bench(s"${engine.getFactory().getEngineName()} define function(uncached)", 1000) { i =>
+        engine.eval(s"function(x) { return x + ${i} }")
+      }
     }
   }
 }
