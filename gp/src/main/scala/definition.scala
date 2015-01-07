@@ -9,7 +9,7 @@ sealed abstract class Definition[A: ClassTag, C, +T <: Tree[A, C]](val name: Str
   val klass: ClassTag[A] = implicitly[ClassTag[A]]
   def arity: Int = childClasses.size
   def childClasses: Seq[ClassTag[_]]
-  def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T
+  def randomTree(depth: Int)(implicit random: Random): T
   def compatibleShapeDefinitions(): Traversable[Definition[A, C, T]] =
     repository.definitions(klass).filter { d =>
       d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.runtimeClass.isAssignableFrom(b.runtimeClass) }
@@ -39,7 +39,7 @@ abstract class Branch2Definition[A: ClassTag, C, B1, B2, +T <: Branch2[A, C, B1,
 }
 abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
   override val childClasses = Seq.empty
-  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
+  override def randomTree(depth: Int)(implicit random: Random): T =
     create()
   override def toString() =
     s"(${name}) => ${klass.runtimeClass.getName}"
@@ -48,7 +48,7 @@ abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](name: String, re
 
 abstract class ConstLeafDefinition[A: ClassTag, C, +T <: ConstLeaf[A, C]](name: String, repository: Repository[C]) extends LeafDefinition[A, C, T](name, repository) {
   override val childClasses = Seq.empty
-  override def randomTree(repository: Repository[C], depth: Int)(implicit random: Random): T =
+  override def randomTree(depth: Int)(implicit random: Random): T =
     create()
 
   def create(value: A): T

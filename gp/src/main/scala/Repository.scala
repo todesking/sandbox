@@ -54,7 +54,7 @@ class Repository[Ctx] {
             f
           )
         }
-        override def randomTree(repository: Repository[Ctx], depth: Int)(implicit random: Random): Branch2[A, Ctx, B1, B2] = {
+        override def randomTree(depth: Int)(implicit random: Random): Branch2[A, Ctx, B1, B2] = {
           create(Seq(
             repository.randomTree[B1](depth - 1),
             repository.randomTree[B2](depth - 1)
@@ -118,7 +118,7 @@ class Repository[Ctx] {
     if(depth == 0) {
       leafDefinitions[A].toSeq.sample().get.create()
     } else {
-      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(this, depth)
+      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(depth) // TODO: BUG!!!!
     }
 
   def definitionByName(name: String): Option[Definition[_, Ctx, Tree[_, Ctx]]] =
