@@ -118,7 +118,7 @@ class Repository[Ctx] {
     if(depth == 0) {
       leafDefinitions[A].toSeq.sample().get.create()
     } else {
-      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(depth) // TODO: BUG!!!!
+      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(depth - 1)
     }
 
   def definitionByName(name: String): Option[Definition[_, Ctx, Tree[_, Ctx]]] =
