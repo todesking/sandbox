@@ -50,6 +50,16 @@ object Main {
       bench(s"${engine.getFactory().getEngineName()} define function(uncached)", 1000) { i =>
         engine.eval(s"function(x) { return x + ${i} }")
       }
+      bench(s"${engine.getFactory().getEngineName()} define function(uncached, batch x10)", 100) { i =>
+        engine.eval(
+          (0 to 10) map { j => s"function f_${i}_${j}(x) { return ${i} + ${j} };" } mkString("")
+        )
+      }
+      bench(s"${engine.getFactory().getEngineName()} define function(uncached, batch x10)", 1) { i =>
+        engine.eval(
+          (0 to 1000) map { j => s"function f_${i}_${j}(x) { return ${i} + ${j} };" } mkString("")
+        )
+      }
     }
   }
 }
