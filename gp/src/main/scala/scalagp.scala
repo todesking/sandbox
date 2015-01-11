@@ -52,3 +52,7 @@ case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A,
   }
 }
 
+class OptimizeRule[Ctx](name: String, rule: Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]) {
+  def apply[A](tree: Tree[A, Ctx]): Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]] =
+    rule(tree)
+}

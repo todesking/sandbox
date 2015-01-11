@@ -65,10 +65,20 @@ class Repository[Ctx] {
   def registerOptimized[A: ClassTag, D](name: String)(f: (Ctx, D) => A): OptimizeDefinition[A, Ctx, D] =
     new OptimizeDefinition[A, Ctx, D](name, f, this)
 
-  private[this] val optimizeRules = new ArrayBuffer[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
+  private[this] val optimizeRules = new ArrayBuffer[OptimizeRule[Ctx]]
 
-  def optimizeRule[A: ClassTag, D](ruleDef: PartialFunction[Tree[_, Ctx], Tree[A, Ctx] => OptimizedTree[A, Ctx, D]]): Unit =
-    optimizeRules += ruleDef.lift.asInstanceOf[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]]
+  def registerOptimizer[A: ClassTag, D](name: String)(ruleDef: PartialFunction[Tree[_, Ctx], Tree[A, Ctx] => OptimizedTree[A, Ctx, D]]): OptimizeRule[Ctx] = {
+    val rule = new OptimizeRule[Ctx](name, ruleDef.lift.asInstanceOf[Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]])
+    optimizeRules += rule
+    rule
+  }
+
+  def disableOptimizer(rule: OptimizeRule[Ctx]): Unit = {
+    optimizeRules -= rule
+  }
+
+  def optimizerEnabled(rule: OptimizeRule[Ctx]): Boolean =
+    optimizeRules.contains(rule)
 
   def optimize[A](tree: Tree[A, Ctx]): Tree[A, Ctx] =
     tree match {

@@ -21,7 +21,7 @@ object GP {
 
   val nashorn = repository.registerOptimized[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
 
-  repository.optimizeRule {
+  val nashornRule = repository.registerOptimizer("nashorn") {
     case t if t.definition == x =>
       nashorn(Nashorn.Compiled("ctx"))
     case t: ConstLeaf[Int, Int] if t.definition == const =>
@@ -35,6 +35,8 @@ object GP {
     case unk =>
       throw new RuntimeException(unk.toString)
   }
+
+  repository.disableOptimizer(nashornRule)
 
   object Nashorn {
     import jdk.nashorn.api.scripting.ScriptObjectMirror
@@ -102,9 +104,11 @@ object Main {
         Tournament.maximizeScore(100) { individual => score(individual) }
       ),
       beforeSelection = { isle =>
-        GP.Nashorn.batchCompile(
-          isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
-        )
+        if(GP.repository.optimizerEnabled(GP.nashornRule)) {
+          GP.Nashorn.batchCompile(
+            isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
+          )
+        }
       }
     )
 
