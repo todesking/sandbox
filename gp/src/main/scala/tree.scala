@@ -126,10 +126,6 @@ sealed class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDef
   override def hashCode =
     definition.hashCode ^ value.hashCode
 }
-object ConstLeaf {
-  def unapply[A, C](cl: ConstLeaf[A, C]): Boolean =
-    true
-}
 
 sealed class FunctionLeafDefinition[A: ClassTag, C](
   name: String,
@@ -150,11 +146,6 @@ sealed class FunctionLeaf[A, C](val function: C => A, override val definition: F
   }
   override def hashCode =
     definition.hashCode
-}
-
-object FunctionLeaf {
-  def unapply[A, C](l: FunctionLeaf[A, C]): Boolean =
-    true
 }
 
 sealed abstract class BranchDefinition[A: ClassTag, C, +T <: Branch[A, C, _]](
@@ -246,8 +237,3 @@ sealed class Branch2[A, C, B1, B2](
   override def apply0(ctx: C): A =
     function(ctx, child1, child2)
 }
-object Branch {
-  def unapply[A, C, P](b: Branch[A, C, P]): Option[ClassTag[A]] =
-    Some(b.definition.klass)
-}
-

@@ -72,12 +72,12 @@ object Operations {
       path.value match {
         case _ if random.nextDouble < 0.1 =>
           Seq(Individual(path.unsafeReplace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
-        case cl@ConstLeaf() if random.nextDouble < 0.5 =>
-          Seq(Individual(path.unsafeReplace(mutateLeafValue(cl))))
-        case l@FunctionLeaf() =>
-          Seq(Individual(path.unsafeReplace(mutateLeafType(l))))
-        case b@Branch(klass) =>
-          Seq(Individual(path.unsafeReplace(mutateBranchType(b))))
+        case t: ConstLeaf[A, C] if random.nextDouble < 0.5 =>
+          Seq(Individual(path.unsafeReplace(mutateLeafValue(t))))
+        case t: FunctionLeaf[A, C] =>
+          Seq(Individual(path.unsafeReplace(mutateLeafType(t))))
+        case t: Branch[A, C, _] =>
+          Seq(Individual(path.unsafeReplace(mutateBranchType(t))))
       }
     }
     def mutateLeafValue[A, C](leaf: ConstLeaf[A, C]): ConstLeaf[A, C] =
