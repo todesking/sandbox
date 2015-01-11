@@ -1,7 +1,11 @@
 package com.todesking.scalagp
 
 class Runner[A, C] {
-  def run(isle: Isle[A, C], stop: SelectionReport[A, C] => Boolean, describe: Individual[A, C] => String = defaultDescribe): Unit = {
+  def run(
+    isle: Isle[A, C],
+    stop: SelectionReport[A, C] => Boolean,
+    describe: Individual[A, C] => String = defaultDescribe
+  ): Unit = {
     println("Definitions:")
     isle.repository.allDefinitions.foreach { d =>
       println(s"  * ${d}")

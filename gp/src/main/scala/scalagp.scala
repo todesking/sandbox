@@ -17,7 +17,8 @@ class Isle[A: ClassTag, C](
   val repository: Repository[C],
   val population: Int,
   val initialize: Initialize[A, C],
-  val selection: Selection[A, C]
+  val selection: Selection[A, C],
+  val beforeSelection: Isle[A, C] => Unit = { _: Isle[A, C] => () }
 ) {
   def generation: Int =
     _generation
@@ -29,6 +30,7 @@ class Isle[A: ClassTag, C](
 
   def nextGeneration(): SelectionReport[A, C] = {
     val start = System.nanoTime()
+    beforeSelection(this)
     this.individuals = selection.execute(individuals, population)
     this._generation += 1
     SelectionReport(generation, individuals, System.nanoTime() - start)

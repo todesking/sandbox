@@ -3,7 +3,7 @@ import com.todesking.scalagp
 import scala.reflect.ClassTag
 
 object GP {
-  import scalagp.{Tree, OptimizedTree}
+  import scalagp.{Tree, OptimizedTree, ConstLeaf, Branch2}
 
   val repository = new scalagp.Repository[Int]
 
@@ -19,31 +19,67 @@ object GP {
   val sub = repository.registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
   val mul = repository.registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
 
-  val add_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("add*") { (ctx, children) =>
-    children.foldLeft(0) { (a, c) => a + c(ctx) }
-  }
-  val mul_* = repository.registerOptimized[Int, Seq[Tree[Int, Int]]]("mul*") { (ctx, children) =>
-    children.foldLeft(1) { (a, c) => a * c(ctx) }
+  val nashorn = repository.registerOptimized[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
+
+  repository.optimizeRule {
+    case t if t.definition == x =>
+      nashorn(Nashorn.Compiled("ctx"))
+    case t: ConstLeaf[Int, Int] if t.definition == const =>
+      nashorn(Nashorn.Compiled(t.value.toString))
+    case add(nashorn(l), nashorn(r)) =>
+      nashorn(l + r)
+    case sub(nashorn(l), nashorn(r)) =>
+      nashorn(l - r)
+    case mul(nashorn(l), nashorn(r)) =>
+      nashorn(l * r)
+    case unk =>
+      throw new RuntimeException(unk.toString)
   }
 
-  def b2Fusion[A: ClassTag](o: scalagp.Branch2Definition[A, Int, A, A, scalagp.Branch2[A, Int, A, A]], p: scalagp.OptimizeDefinition[A, Int, Seq[Tree[A, Int]]]): Unit =
-    repository.optimizeRule[A, Seq[Tree[A, Int]]] {
-      case o(o(a, b), o(c, d)) =>
-        p(Seq(a, b, c, d))
-      case o(o(a, b), c) =>
-        p(Seq(a, b, c))
-      case o(a, o(b, c)) =>
-        p(Seq(a, b, c))
-      case o(p(da), p(db)) =>
-        p(da ++ db)
-      case o(p(da), b) =>
-        p(da :+ b)
-      case o(a, p(db)) =>
-        p(a +: db)
+  object Nashorn {
+    import jdk.nashorn.api.scripting.ScriptObjectMirror
+    import javax.script.{ScriptEngine, ScriptEngineManager}
+    import scala.collection.JavaConverters._
+
+    lazy val engineManager = new ScriptEngineManager(null);
+    lazy val engine = engineManager.getEngineByName("nashorn").asInstanceOf[ScriptEngine]
+
+    case class Compiled(src: String) {
+      lazy val function =
+        Nashorn.compile(src)
+      def apply(ctx: Int): Int =
+        function.call(null, (ctx: java.lang.Integer)) match {
+          case i: java.lang.Integer => i
+          case d: java.lang.Double => d.toInt
+        }
+
+      def +(rhs: Compiled) =
+        operator("+", rhs)
+      def -(rhs: Compiled) =
+        operator("-", rhs)
+      def *(rhs: Compiled) =
+        operator("*", rhs)
+
+      def operator(op: String, rhs: Compiled) =
+        Compiled(s"(${src}) ${op} (${rhs.src})")
     }
 
-  b2Fusion(add, add_*)
-  b2Fusion(mul, mul_*)
+    def compile(src: String): ScriptObjectMirror =
+      functions.get(src) getOrElse(throw new RuntimeException(s"Not found: ${src}"))
+
+    def batchCompile(sources: Traversable[String]): Unit = {
+      val uncached = sources.filterNot(functions.contains(_)).toSet.toSeq
+      println(s"Compiling ${uncached.size} trees")
+      val source = s"[${uncached.map(src => s"function(ctx) { return ${src} }").mkString(", ")}]"
+      val compiled = engine.eval(source).asInstanceOf[javax.script.Bindings].asScala
+      assert(uncached.size == compiled.size)
+      for(i <- 0 until compiled.size) {
+        functions.put(uncached(i), compiled(i.toString).asInstanceOf[ScriptObjectMirror])
+      }
+    }
+
+    val functions = new scala.collection.mutable.HashMap[String, ScriptObjectMirror]
+  }
 }
 
 object Main {
@@ -63,8 +99,13 @@ object Main {
       population = 1000,
       initialize = Initialize.random(20),
       selection = Selection.default(
-        Tournament.maximizeScore(50) { individual => score(individual) }
-      )
+        Tournament.maximizeScore(100) { individual => score(individual) }
+      ),
+      beforeSelection = { isle =>
+        GP.Nashorn.batchCompile(
+          isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
+        )
+      }
     )
 
     val runner = new Runner[Int, Int]()
