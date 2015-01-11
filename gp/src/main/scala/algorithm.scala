@@ -71,13 +71,13 @@ object Operations {
       val path = target.randomPath()
       path.value match {
         case _ if random.nextDouble < 0.1 =>
-          Seq(Individual(path.unsafeReplace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
-        case t: ConstLeaf[A, C] if random.nextDouble < 0.5 =>
-          Seq(Individual(path.unsafeReplace(mutateLeafValue(t))))
-        case t: FunctionLeaf[A, C] =>
-          Seq(Individual(path.unsafeReplace(mutateLeafType(t))))
-        case t: Branch[A, C, _] =>
-          Seq(Individual(path.unsafeReplace(mutateBranchType(t))))
+          Seq(Individual(path.replace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
+        case t: ConstLeaf[path.Value, path.Context] if random.nextDouble < 0.5 =>
+          Seq(Individual(path.replace(mutateLeafValue(t))))
+        case t: FunctionLeaf[path.Value, path.Context] =>
+          Seq(Individual(path.replace(mutateLeafType(t))))
+        case t: Branch[path.Value, path.Context, _] =>
+          Seq(Individual(path.replace(mutateBranchType(t))))
       }
     }
     def mutateLeafValue[A, C](leaf: ConstLeaf[A, C]): ConstLeaf[A, C] =
