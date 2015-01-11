@@ -46,7 +46,7 @@ sealed abstract class Tree[A, C] extends Equals {
     rhs.isInstanceOf[Tree[_, _]]
 }
 
-class OptimizeDefinition[A: ClassTag, C, D](val name: String, f: (C, D) => A, repository: Repository[C]) {
+sealed class OptimizeDefinition[A: ClassTag, C, D](val name: String, f: (C, D) => A, repository: Repository[C]) {
   def apply(data: D): Tree[A, C] => OptimizedTree[A, C, D] =
     tree => new OptimizedTree[A, C, D](this, tree, data, f)
 
@@ -59,7 +59,7 @@ class OptimizeDefinition[A: ClassTag, C, D](val name: String, f: (C, D) => A, re
     }
 }
 
-class OptimizedTree[A, C, D](val realDefinition: OptimizeDefinition[A, C, D], val wrapped: Tree[A, C], val data: D, val f: (C, D) => A) extends Tree[A, C] {
+sealed class OptimizedTree[A, C, D](val realDefinition: OptimizeDefinition[A, C, D], val wrapped: Tree[A, C], val data: D, val f: (C, D) => A) extends Tree[A, C] {
   override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]] =
     wrapped.allPaths(base)
   override def definition: Definition[A, C, Tree[A, C]] =
@@ -74,7 +74,7 @@ class OptimizedTree[A, C, D](val realDefinition: OptimizeDefinition[A, C, D], va
     s"[${realDefinition.name} ${data}]${wrapped.toString}"
 }
 
-abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
+sealed abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
   override val childClasses = Seq.empty
   override def randomTree(depth: Int)(implicit random: Random): T =
     create()
@@ -90,20 +90,20 @@ sealed abstract class Leaf[A, C] extends Tree[A, C] {
   override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, A]] =
     Seq(base)
 }
-object Leaf {
-  def unapply[A, C](l: Leaf[A, C]): Option[ClassTag[A]] =
-    Some(l.definition.klass)
-}
 
-abstract class ConstLeafDefinition[A: ClassTag, C, +T <: ConstLeaf[A, C]](name: String, repository: Repository[C]) extends LeafDefinition[A, C, T](name, repository) {
+sealed class ConstLeafDefinition[A: ClassTag, C](name: String, repository: Repository[C], generateValue: () => A) extends LeafDefinition[A, C, ConstLeaf[A, C]](name, repository) {
   override val childClasses = Seq.empty
-  override def randomTree(depth: Int)(implicit random: Random): T =
+  override def randomTree(depth: Int)(implicit random: Random): ConstLeaf[A, C] =
     create()
 
-  def create(value: A): T
+  override def create() =
+    create(generateValue())
+
+  def create(value: A) =
+    new ConstLeaf[A, C](value, this)
 }
 
-class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C, ConstLeaf[A, C]]) extends Leaf[A, C] {
+sealed class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C]) extends Leaf[A, C] {
   override def isConstant = true
   override def apply(ctx: C): A = value
   override def toString =
@@ -118,10 +118,15 @@ class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition
     definition.hashCode ^ value.hashCode
 }
 object ConstLeaf {
-  def unapply[A, C](cl: ConstLeaf[A, C]): Option[(ClassTag[A], A)] =
-    Some(cl.definition.klass -> cl.value)
+  def unapply[A, C](cl: ConstLeaf[A, C]): Boolean =
+    true
 }
-class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefinition[A, C, FunctionLeaf[A, C]]) extends Leaf[A, C] {
+
+sealed class FunctionLeafDefinition[A: ClassTag, C](name: String, repository: Repository[C], function: C => A) extends LeafDefinition[A, C, FunctionLeaf[A, C]](name, repository) {
+  override def create() = new FunctionLeaf[A, C](function, this)
+}
+
+sealed class FunctionLeaf[A, C](val function: C => A, override val definition: FunctionLeafDefinition[A, C]) extends Leaf[A, C] {
   override def apply(ctx: C): A =
     function(ctx)
   override def toString =
@@ -134,7 +139,12 @@ class FunctionLeaf[A, C](val function: C => A, override val definition: LeafDefi
     definition.hashCode
 }
 
-abstract class BranchDefinition[A: ClassTag, C, +T <: Branch[A, C, _]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
+object FunctionLeaf {
+  def unapply[A, C](l: FunctionLeaf[A, C]): Boolean =
+    true
+}
+
+sealed abstract class BranchDefinition[A: ClassTag, C, +T <: Branch[A, C, _]](name: String, repository: Repository[C]) extends Definition[A, C, T](name, repository) {
   def create(children: Seq[Tree[_, C]]): T
 
   override def toString() =
@@ -178,7 +188,24 @@ sealed abstract class Branch[A, C, P] extends Tree[A, C] {
     children.foldLeft(definition.hashCode) { (a, x) => a ^ x.hashCode }
 }
 
-abstract class Branch2Definition[A: ClassTag, C, B1, B2, +T <: Branch2[A, C, B1, B2]](name: String, repository: Repository[C]) extends BranchDefinition[A, C, T](name, repository) {
+sealed class Branch2Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag](name: String, repository: Repository[C], function: (C, Tree[B1, C], Tree[B2, C]) => A) extends BranchDefinition[A, C, Branch2[A, C, B1, B2]](name, repository) {
+  override val childClasses = Seq(implicitly[ClassTag[B1]], implicitly[ClassTag[B2]])
+  override def create(children: Seq[Tree[_, C]]): Branch2[A, C, B1, B2] = {
+    require(children.size == 2)
+    require(children.zip(childClasses).forall { case(c, k) => klass.runtimeClass.isAssignableFrom(c.definition.klass.runtimeClass) })
+    new Branch2(
+      this,
+      children(0).asInstanceOf[Tree[B1, C]],
+      children(1).asInstanceOf[Tree[B2, C]],
+      function
+    )
+  }
+  override def randomTree(depth: Int)(implicit random: Random): Branch2[A, C, B1, B2] = {
+    create(Seq(
+      repository.randomTree[B1](depth - 1),
+      repository.randomTree[B2](depth - 1)
+    ))
+  }
   def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
     t match {
       case b: Branch2[A, C, B1, B2] if b.definition == this =>
@@ -189,7 +216,7 @@ abstract class Branch2Definition[A: ClassTag, C, B1, B2, +T <: Branch2[A, C, B1,
     }
 }
 
-class Branch2[A, C, B1, B2](
+sealed class Branch2[A, C, B1, B2](
   override val definition: BranchDefinition[A, C, Branch2[A, C, B1, B2]],
   val child1: Tree[B1, C],
   val child2: Tree[B2, C],

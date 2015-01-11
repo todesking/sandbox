@@ -32,7 +32,7 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
     case SList(Seq(Symbol(sym), args@_*)) =>
       val definition = repository.definitionByName(sym)
       definition match {
-        case Some(d: ConstLeafDefinition[A, C , Leaf[A, C]] @unchecked) =>
+        case Some(d: ConstLeafDefinition[A, C] @unchecked) =>
           if(args.size != 1)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           args match {

@@ -20,48 +20,17 @@ class Repository[Ctx] {
   def registerConstLeaf[A: ClassTag]
       (name: String, generateValue: () => A)
       : Definition[A, Ctx, ConstLeaf[A, Ctx]] =
-    register(
-      new ConstLeafDefinition[A, Ctx, ConstLeaf[A, Ctx]](name, this) {
-        override def create(): ConstLeaf[A, Ctx] =
-          new ConstLeaf(generateValue(), this)
-        override def create(value: A): ConstLeaf[A, Ctx] =
-          new ConstLeaf(value, this)
-      }
-    )
+    register(new ConstLeafDefinition[A, Ctx](name, this, generateValue))
 
   def registerLeaf[A: ClassTag](name: String)(f: Ctx => A): Definition[A, Ctx, FunctionLeaf[A, Ctx]] =
-    register(
-      new LeafDefinition[A, Ctx, FunctionLeaf[A, Ctx]](name, this) {
-        override def create() =
-          new FunctionLeaf(f, this)
-      }
-    )
+    register(new FunctionLeafDefinition[A, Ctx](name, this, f))
 
   def registerBranch2[A: ClassTag, B1: ClassTag, B2: ClassTag]
       (name: String)
       (f: (Ctx, Tree[B1, Ctx], Tree[B2, Ctx]) => A)
-      : Branch2Definition[A, Ctx, B1, B2, Branch2[A, Ctx, B1, B2]] =
-    register(
-      new Branch2Definition[A, Ctx, B1, B2, Branch2[A, Ctx, B1, B2]](name, this) {
-        override val childClasses = Seq(implicitly[ClassTag[B1]], implicitly[ClassTag[B2]])
-        override def create(children: Seq[Tree[_, Ctx]]): Branch2[A, Ctx, B1, B2] = {
-          require(children.size == 2)
-          require(children.zip(childClasses).forall { case(c, k) => klass.runtimeClass.isAssignableFrom(c.definition.klass.runtimeClass) })
-          new Branch2(
-            this,
-            children(0).asInstanceOf[Tree[B1, Ctx]],
-            children(1).asInstanceOf[Tree[B2, Ctx]],
-            f
-          )
-        }
-        override def randomTree(depth: Int)(implicit random: Random): Branch2[A, Ctx, B1, B2] = {
-          create(Seq(
-            repository.randomTree[B1](depth - 1),
-            repository.randomTree[B2](depth - 1)
-          ))
-        }
-      }
-    )
+      : Branch2Definition[A, Ctx, B1, B2] =
+    register(new Branch2Definition[A, Ctx, B1, B2](name, this, f))
+
   def registerOptimized[A: ClassTag, D](name: String)(f: (Ctx, D) => A): OptimizeDefinition[A, Ctx, D] =
     new OptimizeDefinition[A, Ctx, D](name, f, this)
 

@@ -72,9 +72,9 @@ object Operations {
       path.value match {
         case _ if random.nextDouble < 0.1 =>
           Seq(Individual(path.unsafeReplace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
-        case cl@ConstLeaf(klass, value) if random.nextDouble < 0.5 =>
+        case cl@ConstLeaf() if random.nextDouble < 0.5 =>
           Seq(Individual(path.unsafeReplace(mutateLeafValue(cl))))
-        case l@Leaf(klass) =>
+        case l@FunctionLeaf() =>
           Seq(Individual(path.unsafeReplace(mutateLeafType(l))))
         case b@Branch(klass) =>
           Seq(Individual(path.unsafeReplace(mutateBranchType(b))))
