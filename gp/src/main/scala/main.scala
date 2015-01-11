@@ -13,19 +13,19 @@ object GP {
     generateValue = () => random.nextInt(100)
   )
 
-  val x = repository.registerLeaf[Int]("x") { ctx => ctx }
+  val x = repository.registerFunctionLeaf[Int]("x") { ctx => ctx }
 
   val add = repository.registerBranch2[Int, Int, Int]("+") { (c, l, r) => l(c) + r(c) }
   val sub = repository.registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
   val mul = repository.registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
 
-  val nashorn = repository.registerOptimized[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
+  val nashorn = repository.registerOptimizerNode[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
 
   val nashornRule = repository.registerOptimizer("nashorn") {
-    case t if t.definition == x =>
+    case x() =>
       nashorn(Nashorn.Compiled("ctx"))
-    case t: ConstLeaf[Int, Int] if t.definition == const =>
-      nashorn(Nashorn.Compiled(t.value.toString))
+    case const(value) =>
+      nashorn(Nashorn.Compiled(value.toString))
     case add(nashorn(l), nashorn(r)) =>
       nashorn(l + r)
     case sub(nashorn(l), nashorn(r)) =>

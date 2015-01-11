@@ -19,10 +19,10 @@ class Repository[Ctx] {
 
   def registerConstLeaf[A: ClassTag]
       (name: String, generateValue: () => A)
-      : Definition[A, Ctx, ConstLeaf[A, Ctx]] =
+      : ConstLeafDefinition[A, Ctx] =
     register(new ConstLeafDefinition[A, Ctx](name, this, generateValue))
 
-  def registerLeaf[A: ClassTag](name: String)(f: Ctx => A): Definition[A, Ctx, FunctionLeaf[A, Ctx]] =
+  def registerFunctionLeaf[A: ClassTag](name: String)(f: Ctx => A): FunctionLeafDefinition[A, Ctx] =
     register(new FunctionLeafDefinition[A, Ctx](name, this, f))
 
   def registerBranch2[A: ClassTag, B1: ClassTag, B2: ClassTag]
@@ -31,7 +31,7 @@ class Repository[Ctx] {
       : Branch2Definition[A, Ctx, B1, B2] =
     register(new Branch2Definition[A, Ctx, B1, B2](name, this, f))
 
-  def registerOptimized[A: ClassTag, D](name: String)(f: (Ctx, D) => A): OptimizeDefinition[A, Ctx, D] =
+  def registerOptimizerNode[A: ClassTag, D](name: String)(f: (Ctx, D) => A): OptimizeDefinition[A, Ctx, D] =
     new OptimizeDefinition[A, Ctx, D](name, f, this)
 
   private[this] val optimizeRules = new ArrayBuffer[OptimizeRule[Ctx]]

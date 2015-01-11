@@ -110,6 +110,11 @@ sealed class ConstLeafDefinition[A: ClassTag, C](
     create(generateValue())
   def create(value: A) =
     new ConstLeaf[A, C](value, this)
+  def unapply[AX, CX](leaf: ConstLeaf[AX, CX]): Option[A] =
+    if(leaf.definition == this)
+      Some(leaf.asInstanceOf[ConstLeaf[A, C]].value)
+    else
+      None
 }
 
 sealed class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C]) extends Leaf[A, C] {
@@ -133,6 +138,9 @@ sealed class FunctionLeafDefinition[A: ClassTag, C](
   function: C => A
 ) extends LeafDefinition[A, C, FunctionLeaf[A, C]](name, repository) {
   override def create() = new FunctionLeaf[A, C](function, this)
+
+  def unapply[AX, CX](t: FunctionLeaf[AX, CX]): Boolean =
+    t.definition == this
 }
 
 sealed class FunctionLeaf[A, C](val function: C => A, override val definition: FunctionLeafDefinition[A, C]) extends Leaf[A, C] {
