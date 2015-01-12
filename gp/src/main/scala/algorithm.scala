@@ -61,7 +61,7 @@ object Operations {
     override def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
       val p1: TreePath[A, C, _] = tournament.fittest(individuals).tree.randomPath()
       tournament.fittest(individuals).tree.randomPath(p1.klass) map { p2 =>
-        Seq(Individual(p1.unsafeReplace(p2.value)), Individual(p2.unsafeReplace(p1.value)))
+        Seq(Individual(p1.replace(p2.value)), Individual(p2.replace(p1.value)))
       } getOrElse Seq.empty
     }
   }

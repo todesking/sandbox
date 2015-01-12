@@ -5,6 +5,7 @@ import scala.util.Random
 import scala.reflect.ClassTag
 
 trait TreePath[A, C, V] {
+  import com.todesking.scalagp
   type Root = A
   type Context = C
   type Value = V
@@ -13,8 +14,6 @@ trait TreePath[A, C, V] {
   def value: Tree[Value, Context]
   def klass: ClassTag[Value] = value.definition.klass
   def replace(tree: Tree[Value, Context]): Tree[Root, Context]
-  def unsafeReplace(tree: Tree[_, Context]): Tree[Root, Context] =
-    replace(tree.asInstanceOf[Tree[Value, Context]])
 }
 object TreePath {
   case class Root[A, C](override val root: Tree[A, C]) extends TreePath[A, C, A] {
