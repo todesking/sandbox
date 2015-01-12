@@ -74,7 +74,7 @@ object Operations {
           Seq(Individual(path.replace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
         case t: ConstLeaf[path.Value, path.Context] if random.nextDouble < 0.5 =>
           Seq(Individual(path.replace(mutateLeafValue(t))))
-        case t: FunctionLeaf[path.Value, path.Context] =>
+        case t: Leaf[path.Value, path.Context] =>
           Seq(Individual(path.replace(mutateLeafType(t))))
         case t: Branch[path.Value, path.Context, _] =>
           Seq(Individual(path.replace(mutateBranchType(t))))
@@ -83,10 +83,10 @@ object Operations {
     def mutateLeafValue[A, C](leaf: ConstLeaf[A, C]): ConstLeaf[A, C] =
       leaf.definition.create()
     def mutateLeafType[A, C](leaf: Leaf[A, C])(implicit random: Random): Leaf[A, C] = {
-      leaf.definition.compatibleShapeDefinitions.toSeq.sample().get.asInstanceOf[LeafDefinition[A, C, Leaf[A, C]]].create()
+      leaf.definition.compatibleShapeDefinitions.sample().get.create()
     }
     def mutateBranchType[A, C, P](branch: Branch[A, C, P])(implicit random: Random): Branch[A, C, P] =
-      branch.definition.compatibleShapeDefinitions.toSeq.sample.get.asInstanceOf[BranchDefinition[A, C, Branch[A, C, P]]].create(branch.children)
+      branch.definition.compatibleShapeDefinitions.sample().get.create(branch.children)
   }
   val copy = new Operation {
     override def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =

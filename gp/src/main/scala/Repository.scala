@@ -8,9 +8,9 @@ import Ext._
 
 class Repository[Ctx] {
   private[this] var _definitions =
-    new ArrayBuffer[Definition[_, Ctx, Tree[_, Ctx]]]
+    new ArrayBuffer[Definition[_, Ctx]]
 
-  private[this] def register[A <: Definition[_, Ctx, Tree[_, Ctx]]](definition: A): A  = {
+  private[this] def register[A <: Definition[_, Ctx]](definition: A): A  = {
     if(definitionByName(definition.name).nonEmpty)
       throw new IllegalArgumentException(s""""${definition.name}" is already defined""")
     _definitions += definition
@@ -80,18 +80,18 @@ class Repository[Ctx] {
         t.wrapped
     }
 
-  def allDefinitions: Traversable[Definition[_, Ctx, Tree[_, Ctx]]] =
+  def allDefinitions: Traversable[Definition[_, Ctx]] =
     _definitions
 
-  def definitions[A: ClassTag]: Traversable[Definition[A, Ctx, Tree[A, Ctx]]] =
+  def definitions[A: ClassTag]: Traversable[Definition[A, Ctx]] =
     _definitions.filter { d =>
       implicitly[ClassTag[A]].runtimeClass.isAssignableFrom(d.klass.runtimeClass)
-    }.asInstanceOf[Traversable[Definition[A, Ctx, Tree[A, Ctx]]]]
+    }.asInstanceOf[Traversable[Definition[A, Ctx]]]
 
-  def leafDefinitions[A: ClassTag]: Traversable[LeafDefinition[A, Ctx, _ <: Leaf[A, Ctx]]] =
+  def leafDefinitions[A: ClassTag]: Traversable[LeafDefinition[A, Ctx]] =
     _definitions
-      .filter(_.isInstanceOf[LeafDefinition[_, _, _]])
-      .asInstanceOf[Traversable[LeafDefinition[A, Ctx, _ <: Leaf[A, Ctx]]]]
+      .filter(_.isInstanceOf[LeafDefinition[_, _]])
+      .asInstanceOf[Traversable[LeafDefinition[A, Ctx]]]
 
   def randomTree[A: ClassTag](depth: Int)(implicit random: Random): Tree[A, Ctx] =
     if(depth == 0) {
@@ -100,7 +100,7 @@ class Repository[Ctx] {
       definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(depth - 1)
     }
 
-  def definitionByName(name: String): Option[Definition[_, Ctx, Tree[_, Ctx]]] =
+  def definitionByName(name: String): Option[Definition[_, Ctx]] =
     allDefinitions.filter(_.name == name).headOption
 
   def parse[A: ClassTag](s: String): Tree[A, Ctx] =

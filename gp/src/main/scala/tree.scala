@@ -5,26 +5,29 @@ import scala.reflect.ClassTag
 
 import Ext._
 
-sealed abstract class Definition[A: ClassTag, C, +T <: Tree[A, C]](val name: String, val repository: Repository[C]) extends Equals {
+sealed abstract class Definition[A: ClassTag, C](val name: String, val repository: Repository[C]) extends Equals {
+  type TREE <: Tree[A, C]
+  type CompatibleType <: Definition[A, C]
+
   val klass: ClassTag[A] = implicitly[ClassTag[A]]
   def arity: Int = childClasses.size
   def childClasses: Seq[ClassTag[_]]
-  def randomTree(depth: Int)(implicit random: Random): T
-  def compatibleShapeDefinitions(): Traversable[Definition[A, C, T]] =
+  def randomTree(depth: Int)(implicit random: Random): TREE
+  def compatibleShapeDefinitions(): Seq[CompatibleType] =
     repository.definitions(klass).filter { d =>
       d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.runtimeClass.isAssignableFrom(b.runtimeClass) }
-    }.asInstanceOf[Traversable[Definition[A, C, T]]]
+    }.map(_.asInstanceOf[CompatibleType]).toSeq
   override def canEqual(rhs: Any): Boolean =
-    rhs.isInstanceOf[Definition[_, _, _]]
+    rhs.isInstanceOf[Definition[_, _]]
   override def equals(rhs: Any): Boolean = rhs match {
-    case d: Definition[A, C, T] =>
+    case d: Definition[A, C] =>
       d.canEqual(this) && d.repository == this.repository && d.name == this.name
     case _ => false
   }
 }
 
 sealed abstract class Tree[A, C] extends Equals {
-  def definition: Definition[A, C, Tree[A, C]]
+  def definition: Definition[A, C]
   def apply(ctx: C): A
   def height: Int
   def size: Int
@@ -66,7 +69,7 @@ sealed class OptimizedTree[A, C, D](
 ) extends Tree[A, C] {
   override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]] =
     wrapped.allPaths(base)
-  override def definition: Definition[A, C, Tree[A, C]] =
+  override def definition: Definition[A, C] =
     wrapped.definition
   override def height =
     wrapped.height
@@ -78,20 +81,22 @@ sealed class OptimizedTree[A, C, D](
     s"[${realDefinition.name} ${data}]${wrapped.toString}"
 }
 
-sealed abstract class LeafDefinition[A: ClassTag, C, +T <: Leaf[A, C]](
+sealed abstract class LeafDefinition[A: ClassTag, C](
   name: String,
   repository: Repository[C]
-) extends Definition[A, C, T](name, repository) {
+) extends Definition[A, C](name, repository) {
+  override type TREE <: Leaf[A, C]
+  override type CompatibleType = LeafDefinition[A, C]
   override val childClasses = Seq.empty
-  override def randomTree(depth: Int)(implicit random: Random): T =
+  override def randomTree(depth: Int)(implicit random: Random): TREE =
     create()
   override def toString() =
     s"(${name}) => ${klass.runtimeClass.getName}"
-  def create(): T
+  def create(): TREE
 }
 
 sealed abstract class Leaf[A, C] extends Tree[A, C] {
-  override def definition: LeafDefinition[A, C, Leaf[A, C]]
+  override def definition: LeafDefinition[A, C]
   override val height = 0
   override val size = 1
   override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, A]] =
@@ -102,7 +107,8 @@ sealed class ConstLeafDefinition[A: ClassTag, C](
   name: String,
   repository: Repository[C],
   generateValue: () => A
-) extends LeafDefinition[A, C, ConstLeaf[A, C]](name, repository) {
+) extends LeafDefinition[A, C](name, repository) {
+  override type TREE = ConstLeaf[A, C]
   override val childClasses = Seq.empty
   override def randomTree(depth: Int)(implicit random: Random): ConstLeaf[A, C] =
     create()
@@ -136,7 +142,8 @@ sealed class FunctionLeafDefinition[A: ClassTag, C](
   name: String,
   repository: Repository[C],
   function: C => A
-) extends LeafDefinition[A, C, FunctionLeaf[A, C]](name, repository) {
+) extends LeafDefinition[A, C](name, repository) {
+  override type TREE = FunctionLeaf[A, C]
   override def create() = new FunctionLeaf[A, C](function, this)
 
   def unapply[AX, CX](t: FunctionLeaf[AX, CX]): Boolean =
@@ -156,11 +163,14 @@ sealed class FunctionLeaf[A, C](val function: C => A, override val definition: F
     definition.hashCode
 }
 
-sealed abstract class BranchDefinition[A: ClassTag, C, +T <: Branch[A, C, _]](
+sealed abstract class BranchDefinition[A: ClassTag, C, P](
   name: String,
   repository: Repository[C]
-) extends Definition[A, C, T](name, repository) {
-  def create(children: Seq[Tree[_, C]]): T
+) extends Definition[A, C](name, repository) {
+  override type TREE <: Branch[A, C, P]
+  override type CompatibleType <: BranchDefinition[A, C, P]
+
+  def create(children: Seq[Tree[_, C]]): TREE
 
   override def toString() =
     s"(${name} ${childClasses.map(_.runtimeClass.getName).mkString(" ")}) => ${klass.runtimeClass.getName}"
@@ -172,7 +182,7 @@ sealed abstract class Branch[A, C, P] extends Tree[A, C] {
 
   override lazy val isConstant = children.forall(_.isConstant)
 
-  override def definition: BranchDefinition[A, C, Branch[A, C, P]]
+  override def definition: BranchDefinition[A, C, P]
   override lazy val height = children.map(_.height).max + 1
   override lazy val size = children.map(_.size).sum + 1
 
@@ -207,7 +217,10 @@ sealed class Branch2Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag](
   name: String,
   repository: Repository[C],
   function: (C, Tree[B1, C], Tree[B2, C]) => A
-) extends BranchDefinition[A, C, Branch2[A, C, B1, B2]](name, repository) {
+) extends BranchDefinition[A, C, (Tree[B1, C], Tree[B2, C])](name, repository) {
+  override type TREE = Branch2[A, C, B1, B2]
+  override type CompatibleType <: Branch2Definition[A, C, B1, B2]
+
   override val childClasses = Seq(implicitly[ClassTag[B1]], implicitly[ClassTag[B2]])
   override def create(children: Seq[Tree[_, C]]): Branch2[A, C, B1, B2] = {
     require(children.size == 2)
@@ -236,7 +249,7 @@ sealed class Branch2Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag](
 }
 
 sealed class Branch2[A, C, B1, B2](
-  override val definition: BranchDefinition[A, C, Branch2[A, C, B1, B2]],
+  override val definition: BranchDefinition[A, C, (Tree[B1, C], Tree[B2, C])],
   val child1: Tree[B1, C],
   val child2: Tree[B2, C],
   val function: (C, Tree[B1, C], Tree[B2, C]) => A

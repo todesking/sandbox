@@ -43,11 +43,11 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
             case _ =>
               throw new IllegalArgumentException(s"Illegal argument for ${d.name}: $expr")
           }
-        case Some(d: LeafDefinition[A, C, Leaf[A, C]] @unchecked) =>
+        case Some(d: LeafDefinition[A, C] @unchecked) =>
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create()
-        case Some(d: BranchDefinition[A, C, Branch[A, C, _]] @unchecked) =>
+        case Some(d: BranchDefinition[A, C, _] @unchecked) =>
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create(args.map { a => toTree(a) })
