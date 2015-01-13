@@ -47,7 +47,7 @@ class Parser[A, C](repository: Repository[C]) extends RegexParsers {
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create()
-        case Some(d: BranchDefinition[A, C, _] @unchecked) =>
+        case Some(d: BranchDefinition[A, C] @unchecked) =>
           if(args.size != d.arity)
             throw new IllegalArgumentException(s"Illegal argument size for ${d.name}: $expr")
           d.create(args.map { a => toTree(a) })

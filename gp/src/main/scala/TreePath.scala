@@ -24,7 +24,7 @@ object TreePath {
     override def root = parent.root
     override def replace(tree: Tree[V, C]): Tree[A, C] = {
       parent.value match {
-        case b: Branch[PV, C, _] =>
+        case b: Branch[PV, C] =>
           parent.replace(b.replaceChild(index, tree))
         case _: Leaf[_, _] | _:OptimizedTree[_, _, _]   =>
           throw new AssertionError()

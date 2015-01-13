@@ -15,9 +15,13 @@ object GP {
 
   val x = repository.registerFunctionLeaf[Int]("x") { ctx => ctx }
 
-  val add = repository.registerBranch2[Int, Int, Int]("+") { (c, l, r) => l(c) + r(c) }
-  val sub = repository.registerBranch2[Int, Int, Int]("-") { (c, l, r) => l(c) - r(c) }
-  val mul = repository.registerBranch2[Int, Int, Int]("*") { (c, l, r) => l(c) * r(c) }
+  val add2 = repository.registerBranch2[Int, Int, Int]("+2") { (c, l, r) => l(c) + r(c) }
+  val sub2 = repository.registerBranch2[Int, Int, Int]("-2") { (c, l, r) => l(c) - r(c) }
+  val mul2 = repository.registerBranch2[Int, Int, Int]("*2") { (c, l, r) => l(c) * r(c) }
+
+  val add3 = repository.registerBranch3[Int, Int, Int, Int]("+3") { (ctx, a, b, c) => a(ctx) + b(ctx) + c(ctx) }
+  val sub3 = repository.registerBranch3[Int, Int, Int, Int]("-3") { (ctx, a, b, c) => a(ctx) - b(ctx) - c(ctx) }
+  val mul3 = repository.registerBranch3[Int, Int, Int, Int]("*3") { (ctx, a, b, c) => a(ctx) * b(ctx) * c(ctx) }
 
   val nashorn = repository.registerOptimizerNode[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
 
@@ -26,11 +30,11 @@ object GP {
       nashorn(Nashorn.Compiled("ctx"))
     case const(value) =>
       nashorn(Nashorn.Compiled(value.toString))
-    case add(nashorn(l), nashorn(r)) =>
+    case add2(nashorn(l), nashorn(r)) =>
       nashorn(l + r)
-    case sub(nashorn(l), nashorn(r)) =>
+    case sub2(nashorn(l), nashorn(r)) =>
       nashorn(l - r)
-    case mul(nashorn(l), nashorn(r)) =>
+    case mul2(nashorn(l), nashorn(r)) =>
       nashorn(l * r)
     case unk =>
       throw new RuntimeException(unk.toString)
@@ -101,7 +105,7 @@ object Main {
       population = 1000,
       initialize = Initialize.random(20),
       selection = Selection.default(
-        Tournament.maximizeScore(100) { individual => score(individual) }
+        Tournament.maximizeScore(50) { individual => score(individual) }
       ),
       beforeSelection = { isle =>
         if(GP.repository.optimizerEnabled(GP.nashornRule)) {

@@ -31,6 +31,12 @@ class Repository[C] {
       : Branch2Definition[A, C, B1, B2] =
     register(new Branch2Definition[A, C, B1, B2](name, this, f))
 
+  def registerBranch3[A: ClassTag, B1: ClassTag, B2: ClassTag, B3: ClassTag]
+      (name: String)
+      (f: (C, Tree[B1, C], Tree[B2, C], Tree[B3, C]) => A)
+      : Branch3Definition[A, C, B1, B2, B3] =
+    register(new Branch3Definition[A, C, B1, B2, B3](name, this, f))
+
   def registerOptimizerNode[A: ClassTag, D](name: String)(f: (C, D) => A): OptimizeDefinition[A, C, D] =
     new OptimizeDefinition[A, C, D](name, f, this)
 
@@ -53,7 +59,7 @@ class Repository[C] {
     tree match {
       case t: Leaf[A, C] =>
         optimize1(t)
-      case t: Branch[A, C, _] =>
+      case t: Branch[A, C] =>
         val children = t.children.map(optimize(_))
         if(t.children.zip(children).forall { case(c, oc) => c eq oc })
           optimize1(t)
@@ -70,7 +76,7 @@ class Repository[C] {
     tree match {
       case t: Leaf[A, C] =>
         t
-      case t: Branch[A, C, _] =>
+      case t: Branch[A, C] =>
         val children = t.children.map(unoptimize(_))
         if(t.children.zip(children).forall { case(c, oc) => c eq oc })
           t

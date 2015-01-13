@@ -76,7 +76,7 @@ object Operations {
           Seq(Individual(path.replace(mutateLeafValue(t))))
         case t: Leaf[path.Value, path.Context] =>
           Seq(Individual(path.replace(mutateLeafType(t))))
-        case t: Branch[path.Value, path.Context, _] =>
+        case t: Branch[path.Value, path.Context] =>
           Seq(Individual(path.replace(mutateBranchType(t))))
       }
     }
@@ -85,7 +85,7 @@ object Operations {
     def mutateLeafType[A, C](leaf: Leaf[A, C])(implicit random: Random): Leaf[A, C] = {
       leaf.definition.compatibleShapeDefinitions.sample().get.create()
     }
-    def mutateBranchType[A, C, P](branch: Branch[A, C, P])(implicit random: Random): Branch[A, C, P] =
+    def mutateBranchType[A, C](branch: Branch[A, C])(implicit random: Random): Branch[A, C] =
       branch.definition.compatibleShapeDefinitions.sample().get.create(branch.children)
   }
   val copy = new Operation {
