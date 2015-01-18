@@ -26,10 +26,10 @@ object Selection {
   def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Selection[A, C] =
     new Selection[A, C] {
       override def execute(individuals: Seq[Individual[A, C]], population: Int): Seq[Individual[A, C]] = {
-        val operations = Operations.default[A, C](tournament)
+        val operation = Operation.default[A, C](tournament)
         val next = new ArrayBuffer[Individual[A, C]]
         while(next.size <= population) {
-          next ++= operations.apply(individuals)
+          next ++= operation.apply(individuals, tournament)
         }
         next
       }
@@ -50,23 +50,25 @@ object Tournament {
     }
 }
 
-trait Operations[A, C] {
-  def apply(individuals: Seq[Individual[A, C]])(implicit random: Random): Traversable[Individual[A, C]]
+trait Operation[A, C] {
+  def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random): Traversable[Individual[A, C]]
 }
-trait Operation {
-  def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random): Traversable[Individual[A, C]]
-}
-object Operations {
-  val crossover = new Operation {
-    override def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
+object Operation {
+  def oneOf[A, C](operations: (Operation[A, C], Int)*): Operation[A, C] =
+    new Operation[A, C] {
+      override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
+        operations.weightedSampleBy(_._2).get._1.apply(individuals, tournament)
+    }
+  def crossover[A, C]() = new Operation[A, C] {
+    override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
       val p1: TreePath[A, C, _] = tournament.fittest(individuals).tree.randomPath()
       tournament.fittest(individuals).tree.randomPath(p1.klass) map { p2 =>
         Seq(Individual(p1.replace(p2.value)), Individual(p2.replace(p1.value)))
       } getOrElse Seq.empty
     }
   }
-  val mutation = new Operation {
-    override def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
+  def mutation[A, C]() = new Operation[A, C] {
+    override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
       val target = tournament.fittest(individuals).tree
       val path = target.randomPath()
       path.value match {
@@ -88,21 +90,15 @@ object Operations {
     def mutateBranchType[A, C](branch: Branch[A, C])(implicit random: Random): Branch[A, C] =
       branch.definition.compatibleShapeDefinitions.sample().get.create(branch.children)
   }
-  val copy = new Operation {
-    override def apply[A, C](individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
+  def copy[A, C]() = new Operation[A, C] {
+    override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
       Seq(tournament.fittest(individuals))
   }
-  def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Operations[A, C] =
-    new Operations[A, C] {
-      override def apply(individuals: Seq[Individual[A, C]])(implicit random: Random): Traversable[Individual[A, C]] = {
-        val definitions: Seq[(Operation, Int)] =
-          Seq(
-            crossover -> 90,
-            mutation -> 9,
-            copy -> 1
-          )
-        definitions.weightedSampleBy(_._2).get._1.apply(individuals, tournament)
-      }
-    }
+  def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Operation[A, C] =
+    oneOf(
+      crossover() -> 90,
+      mutation() -> 9,
+      copy() -> 1
+    )
 }
 
