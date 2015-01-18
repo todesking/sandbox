@@ -6,6 +6,34 @@ import scala.reflect.ClassTag
 
 import Ext._
 
+trait Distribution[C] {
+  def sample[A: ClassTag](implicit random: Random): Definition[A, C]
+  def sampleLeaf[A: ClassTag](implicit random: Random): LeafDefinition[A, C]
+  def sampleCompatible[A](definition: Definition[A, C])(implicit random: Random): Definition[A, C]
+  def randomTree[A: ClassTag](maxDepth: Int)(implicit random: Random): Tree[A, C]
+}
+
+object Distribution {
+  def uniform[C](repository: Repository[C]) = new Distribution[C] {
+    override def sample[A: ClassTag](implicit random: Random): Definition[A, C] =
+      repository.definitions[A].toSeq.sample().get
+
+    override def sampleLeaf[A: ClassTag](implicit random: Random): LeafDefinition[A, C] =
+      repository.leafDefinitions[A].toSeq.sample().get
+
+    override def sampleCompatible[A](definition: Definition[A, C])(implicit random: Random): Definition[A, C] =
+      repository.definitions[A](definition.klass).filter(definition.isCompatible(_)).toSeq.sample().get
+
+    override def randomTree[A: ClassTag](maxDepth: Int)(implicit random: Random): Tree[A, C] =
+      if(maxDepth == 0)
+        sampleLeaf[A].create()
+      else {
+        val definition = sample[A]
+        definition.create(definition.childClasses.map { klass => randomTree(maxDepth - 1)(klass, random) })
+      }
+  }
+}
+
 trait Initialize[A, C] {
   def newIndividuals(repository: Repository[C], population: Int): Seq[Individual[A, C]]
 }

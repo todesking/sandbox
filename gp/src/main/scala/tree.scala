@@ -12,6 +12,7 @@ sealed abstract class Definition[A: ClassTag, C](val name: String, val repositor
   val klass: ClassTag[A] = implicitly[ClassTag[A]]
   def arity: Int = childClasses.size
   def childClasses: Seq[ClassTag[_]]
+  def create(children: Seq[Tree[_, C]]): TREE
   def randomTree(depth: Int)(implicit random: Random): TREE
   def compatibleShapeDefinitions(): Seq[CompatibleType] =
     repository.definitions(klass).filter(isCompatible(_)).map(_.asInstanceOf[CompatibleType]).toSeq
@@ -88,6 +89,10 @@ sealed abstract class LeafDefinition[A: ClassTag, C](
   override type TREE <: Leaf[A, C]
   override type CompatibleType = LeafDefinition[A, C]
   override val childClasses = Seq.empty
+  override def create(children: Seq[Tree[_, C]]) = {
+    require(children.isEmpty)
+    create()
+  }
   override def randomTree(depth: Int)(implicit random: Random): TREE =
     create()
   override def toString() =
@@ -169,8 +174,6 @@ sealed abstract class BranchDefinition[A: ClassTag, C](
 ) extends Definition[A, C](name, repository) {
   override type TREE <: Branch[A, C]
   override type CompatibleType <: BranchDefinition[A, C]
-
-  def create(children: Seq[Tree[_, C]]): TREE
 
   override def toString() =
     s"(${name} ${childClasses.map(_.runtimeClass.getName).mkString(" ")}) => ${klass.runtimeClass.getName}"
