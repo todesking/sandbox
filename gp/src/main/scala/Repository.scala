@@ -112,6 +112,9 @@ class Repository[C] {
   def parse[A: ClassTag](s: String): Tree[A, C] =
     new Parser[A, C](this).parse(implicitly[ClassTag[A]], s)
 
+  def uniformDistribution(): Distribution[C] =
+    Distribution.uniform(this)
+
   private[this] def classNotRegistered[A: ClassTag] =
     throw new IllegalStateException(s"Tree definition for ${implicitly[ClassTag[A]].runtimeClass.getName} is not registered")
   override def equals(other: Any) = other match {

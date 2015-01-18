@@ -51,10 +51,9 @@ trait Selection[A, C] {
 }
 
 object Selection {
-  def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Selection[A, C] =
+  def default[A, C](tournament: Tournament[A, C], operation: Operation[A, C])(implicit random: scala.util.Random): Selection[A, C] =
     new Selection[A, C] {
       override def execute(individuals: Seq[Individual[A, C]], population: Int): Seq[Individual[A, C]] = {
-        val operation = Operation.default[A, C](tournament)
         val next = new ArrayBuffer[Individual[A, C]]
         while(next.size <= population) {
           next ++= operation.apply(individuals, tournament)
@@ -95,13 +94,13 @@ object Operation {
       } getOrElse Seq.empty
     }
   }
-  def mutation[A, C]() = new Operation[A, C] {
+  def mutation[A, C](distribution: Distribution[C]) = new Operation[A, C] {
     override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) = {
       val target = tournament.fittest(individuals).tree
       val path = target.randomPath()
       path.value match {
         case _ if random.nextDouble < 0.1 =>
-          Seq(Individual(path.replace(target.definition.repository.randomTree(10)(path.value.definition.klass, random))))
+          Seq(Individual(path.replace(distribution.randomTree(10)(path.value.definition.klass, random))))
         case t: ConstLeaf[path.Value, path.Context] if random.nextDouble < 0.5 =>
           Seq(Individual(path.replace(mutateLeafValue(t))))
         case t: Leaf[path.Value, path.Context] =>
@@ -122,10 +121,10 @@ object Operation {
     override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
       Seq(tournament.fittest(individuals))
   }
-  def default[A, C](tournament: Tournament[A, C])(implicit random: scala.util.Random): Operation[A, C] =
+  def default[A, C](distribution: Distribution[C])(implicit random: scala.util.Random): Operation[A, C] =
     oneOf(
       crossover() -> 90,
-      mutation() -> 9,
+      mutation(distribution) -> 9,
       copy() -> 1
     )
 }

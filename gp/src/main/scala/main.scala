@@ -90,7 +90,7 @@ object GP {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    import scalagp.{Individual, Initialize, Selection, Tournament, Runner}
+    import scalagp.{Individual, Initialize, Selection, Tournament, Operation, Runner}
 
     implicit val random = new scala.util.Random
 
@@ -105,7 +105,10 @@ object Main {
       population = 1000,
       initialize = Initialize.random(20),
       selection = Selection.default(
-        Tournament.maximizeScore(50) { individual => score(individual) }
+        tournament = Tournament.maximizeScore(50) { individual => score(individual) },
+        operation = Operation.default(
+          GP.repository.uniformDistribution()
+        )
       ),
       beforeSelection = { isle =>
         if(GP.repository.optimizerEnabled(GP.nashornRule)) {
