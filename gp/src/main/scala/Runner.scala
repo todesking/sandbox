@@ -2,24 +2,24 @@ package com.todesking.scalagp
 
 class Runner[A, C] {
   def run(
-    isle: Isle[A, C],
+    world: World[A, C],
     stop: SelectionReport[A, C] => Boolean,
     describe: Individual[A, C] => String = defaultDescribe
   ): Unit = {
-    var report = isle.nextGeneration()
-    printReport(isle, report, describe)
+    var report =world.nextGeneration()
+    printReport(world, report, describe)
     while(!stop(report)) {
-      report = isle.nextGeneration()
-      printReport(isle, report, describe)
+      report =world.nextGeneration()
+      printReport(world, report, describe)
     }
   }
 
   def defaultDescribe(individual: Individual[A, C]): String = ""
 
-  def printReport(isle: Isle[A, C], report: SelectionReport[A, C], describe: Individual[A, C] => String): Unit = {
+  def printReport(world: World[A, C], report: SelectionReport[A, C], describe: Individual[A, C] => String): Unit = {
     val end = System.nanoTime()
     val (majolity, pop) = report.majolity
-    println(s"========== Generation ${isle.generation} ==========")
+    println(s"========== Generation ${world.generation} ==========")
     println(s"Time: ${report.executionMillis}[ms]")
     println(s"Majolity: population=${pop}, size=${majolity.tree.size}, ${describe(majolity)}")
     println(majolity.tree.toString)

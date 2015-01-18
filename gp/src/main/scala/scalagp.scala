@@ -13,26 +13,51 @@ case class Individual[A, C](tree: Tree[A, C]) {
     optimized(ctx)
 }
 
+trait World[A, C] {
+  def generation(): Int
+  def nextGeneration(): SelectionReport[A, C]
+  def individuals(): Traversable[Individual[A, C]]
+}
+
 class Isle[A: ClassTag, C](
   val population: Int,
   val initialize: Initialize[A, C],
   val selection: Selection[A, C],
   val beforeSelection: Isle[A, C] => Unit = { _: Isle[A, C] => () }
-) {
-  def generation: Int =
+) extends World[A, C] {
+  override def generation: Int =
     _generation
 
   private[this] var _generation: Int = 0
 
-  var individuals: Seq[Individual[A, C]] =
+  private[this] var _individuals: Seq[Individual[A, C]] =
     initialize.newIndividuals(population)
 
-  def nextGeneration(): SelectionReport[A, C] = {
+  override def individuals = _individuals
+
+  override def nextGeneration(): SelectionReport[A, C] = {
     val start = System.nanoTime()
     beforeSelection(this)
-    this.individuals = selection.execute(individuals, population)
+    this._individuals = selection.execute(individuals, population)
     this._generation += 1
     SelectionReport(generation, individuals, System.nanoTime() - start)
+  }
+}
+
+class Archipelago[A, C](elements: Traversable[World[A, C]]) extends World[A, C] {
+  private var _generation = 0
+
+  override def generation =
+    _generation
+
+  override def individuals =
+    elements.flatMap(_.individuals)
+
+  override def nextGeneration() = {
+    val start = System.nanoTime()
+    elements.foreach(_.nextGeneration())
+    _generation += 1
+    SelectionReport(_generation, individuals.toSeq, System.nanoTime() - start)
   }
 }
 

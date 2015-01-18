@@ -15,8 +15,8 @@ sealed abstract class Definition[A: ClassTag, C](val name: String, val repositor
   def create(children: Seq[Tree[_, C]]): TREE
   def compatibleShapeDefinitions(): Seq[CompatibleType] =
     repository.definitions(klass).filter(isCompatible(_)).map(_.asInstanceOf[CompatibleType]).toSeq
-  def isCompatible(d: Definition[A, C]): Boolean =
-    d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.runtimeClass.isAssignableFrom(b.runtimeClass) }
+  def isCompatible(d: Definition[_, C]): Boolean =
+    d.klass == klass && d.arity == arity && d.childClasses.zip(childClasses).forall { case (a, b) => a.runtimeClass.isAssignableFrom(b.runtimeClass) }
   override def canEqual(rhs: Any): Boolean =
     rhs.isInstanceOf[Definition[_, _]]
   override def equals(rhs: Any): Boolean = rhs match {

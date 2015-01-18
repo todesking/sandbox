@@ -90,7 +90,7 @@ object GP {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    import scalagp.{Individual, Initialize, Selection, Tournament, Operation, Runner}
+    import scalagp.{Individual, Initialize, Selection, Tournament, Operation, Runner, Archipelago}
 
     implicit val random = new scala.util.Random
 
@@ -100,28 +100,34 @@ object Main {
     def score(indiv: Individual[Int, Int]): Int =
       sampleRange.foldLeft(0) { (a, x) => a + Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }
 
-    val distribution = GP.repository.uniformDistribution
+    val distributions = (1 to 4).map { _ =>
+      GP.repository.randomDistribution(10 to 15)
+    }
 
-    val isle = new scalagp.Isle[Int, Int](
-      population = 1000,
-      initialize = Initialize.random(10, distribution),
-      selection = Selection.default(
-        tournament = Tournament.maximizeScore(50) { individual => score(individual) },
-        operation = Operation.default(distribution)
-      ),
-      beforeSelection = { isle =>
-        if(GP.repository.optimizerEnabled(GP.nashornRule)) {
-          GP.Nashorn.batchCompile(
-            isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
-          )
+    val isles = distributions.map { distribution => 
+      new scalagp.Isle[Int, Int](
+        population = 1000,
+        initialize = Initialize.random(10, distribution),
+        selection = Selection.default(
+          tournament = Tournament.maximizeScore(50) { individual => score(individual) },
+          operation = Operation.default(distribution)
+        ),
+        beforeSelection = { isle =>
+          if(GP.repository.optimizerEnabled(GP.nashornRule)) {
+            GP.Nashorn.batchCompile(
+              isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
+            )
+          }
         }
-      }
-    )
+      )
+    }
+
+    val archipelago = new Archipelago[Int, Int](isles)
 
     val runner = new Runner[Int, Int]()
 
     runner.run(
-      isle,
+      archipelago,
       stop = { report => report.generation >= 100 || score(report.majolity._1) > -10 },
       describe = { individual => s"score = ${score(individual)}" }
     )

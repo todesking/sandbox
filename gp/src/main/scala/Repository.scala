@@ -108,6 +108,16 @@ class Repository[C] {
   def uniformDistribution(): Distribution[C] =
     Distribution.uniform(this)
 
+  def randomDistribution(weightRange: Range)(implicit random: Random): Distribution[C] = {
+    val start = weightRange.start
+    val end = weightRange.inclusive.end
+    Distribution.weighted(
+      allDefinitions.map { d =>
+        d -> (start + random.nextInt(end - start))
+      }
+    )
+  }
+
   private[this] def classNotRegistered[A: ClassTag] =
     throw new IllegalStateException(s"Tree definition for ${implicitly[ClassTag[A]].runtimeClass.getName} is not registered")
   override def equals(other: Any) = other match {

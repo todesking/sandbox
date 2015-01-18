@@ -10,7 +10,13 @@ trait Distribution[C] {
   def sample[A: ClassTag](implicit random: Random): Definition[A, C]
   def sampleLeaf[A: ClassTag](implicit random: Random): LeafDefinition[A, C]
   def sampleCompatible[A](definition: Definition[A, C])(implicit random: Random): Definition[A, C]
-  def randomTree[A: ClassTag](maxDepth: Int)(implicit random: Random): Tree[A, C]
+  def randomTree[A: ClassTag](maxDepth: Int)(implicit random: Random): Tree[A, C] =
+    if(maxDepth == 0)
+      sampleLeaf[A].create()
+    else {
+      val definition = sample[A]
+      definition.create(definition.childClasses.map { klass => randomTree(maxDepth - 1)(klass, random) })
+    }
 }
 
 object Distribution {
@@ -23,15 +29,25 @@ object Distribution {
 
     override def sampleCompatible[A](definition: Definition[A, C])(implicit random: Random): Definition[A, C] =
       repository.definitions[A](definition.klass).filter(definition.isCompatible(_)).toSeq.sample().get
-
-    override def randomTree[A: ClassTag](maxDepth: Int)(implicit random: Random): Tree[A, C] =
-      if(maxDepth == 0)
-        sampleLeaf[A].create()
-      else {
-        val definition = sample[A]
-        definition.create(definition.childClasses.map { klass => randomTree(maxDepth - 1)(klass, random) })
-      }
   }
+
+  def weighted[C](weights: Traversable[(Definition[_, C], Int)]) =
+    new Distribution[C] {
+      override def sample[A: ClassTag](implicit random: Random) =
+        weights.filter(_._1.klass == implicitly[ClassTag[A]]).weightedSampleBy(_._2).get._1.asInstanceOf[Definition[A, C]]
+
+      override def sampleLeaf[A: ClassTag](implicit random: Random) =
+        weights
+          .filter(_._1.isInstanceOf[LeafDefinition[_, _]])
+          .filter(_._1.klass == implicitly[ClassTag[A]])
+          .weightedSampleBy(_._2).get._1.asInstanceOf[LeafDefinition[A, C]]
+
+      override def sampleCompatible[A](definition: Definition[A, C])(implicit random: Random) =
+        weights
+          .filter(d => definition.isCompatible(d._1))
+          .weightedSampleBy(_._2).get._1
+          .asInstanceOf[Definition[A, C]]
+    }
 }
 
 trait Initialize[A, C] {
