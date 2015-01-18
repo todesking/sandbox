@@ -6,11 +6,6 @@ class Runner[A, C] {
     stop: SelectionReport[A, C] => Boolean,
     describe: Individual[A, C] => String = defaultDescribe
   ): Unit = {
-    println("Definitions:")
-    isle.repository.allDefinitions.foreach { d =>
-      println(s"  * ${d}")
-    }
-
     var report = isle.nextGeneration()
     printReport(isle, report, describe)
     while(!stop(report)) {

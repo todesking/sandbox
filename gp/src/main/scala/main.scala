@@ -100,15 +100,14 @@ object Main {
     def score(indiv: Individual[Int, Int]): Int =
       sampleRange.foldLeft(0) { (a, x) => a + Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }
 
+    val distribution = GP.repository.uniformDistribution
+
     val isle = new scalagp.Isle[Int, Int](
-      repository = GP.repository,
       population = 1000,
-      initialize = Initialize.random(20),
+      initialize = Initialize.random(10, distribution),
       selection = Selection.default(
         tournament = Tournament.maximizeScore(50) { individual => score(individual) },
-        operation = Operation.default(
-          GP.repository.uniformDistribution()
-        )
+        operation = Operation.default(distribution)
       ),
       beforeSelection = { isle =>
         if(GP.repository.optimizerEnabled(GP.nashornRule)) {

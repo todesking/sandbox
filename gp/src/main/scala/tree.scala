@@ -13,7 +13,6 @@ sealed abstract class Definition[A: ClassTag, C](val name: String, val repositor
   def arity: Int = childClasses.size
   def childClasses: Seq[ClassTag[_]]
   def create(children: Seq[Tree[_, C]]): TREE
-  def randomTree(depth: Int)(implicit random: Random): TREE
   def compatibleShapeDefinitions(): Seq[CompatibleType] =
     repository.definitions(klass).filter(isCompatible(_)).map(_.asInstanceOf[CompatibleType]).toSeq
   def isCompatible(d: Definition[A, C]): Boolean =
@@ -93,8 +92,6 @@ sealed abstract class LeafDefinition[A: ClassTag, C](
     require(children.isEmpty)
     create()
   }
-  override def randomTree(depth: Int)(implicit random: Random): TREE =
-    create()
   override def toString() =
     s"(${name}) => ${klass.runtimeClass.getName}"
   def create(): TREE
@@ -115,8 +112,6 @@ sealed class ConstLeafDefinition[A: ClassTag, C](
 ) extends LeafDefinition[A, C](name, repository) {
   override type TREE = ConstLeaf[A, C]
   override val childClasses = Seq.empty
-  override def randomTree(depth: Int)(implicit random: Random): ConstLeaf[A, C] =
-    create()
   override def create() =
     create(generateValue())
   def create(value: A) =
@@ -235,12 +230,6 @@ sealed class Branch2Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag](
       function
     )
   }
-  override def randomTree(depth: Int)(implicit random: Random): Branch2[A, C, B1, B2] = {
-    create(Seq(
-      repository.randomTree[B1](depth - 1),
-      repository.randomTree[B2](depth - 1)
-    ))
-  }
   def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
     t match {
       case b: Branch2[A, C, B1, B2] if b.definition == this =>
@@ -280,13 +269,6 @@ sealed class Branch3Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag, B3: C
       children(2).asInstanceOf[Tree[B3, C]],
       function
     )
-  }
-  override def randomTree(depth: Int)(implicit random: Random): Branch3[A, C, B1, B2, B3] = {
-    create(Seq(
-      repository.randomTree[B1](depth - 1),
-      repository.randomTree[B2](depth - 1),
-      repository.randomTree[B3](depth - 1)
-    ))
   }
   def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
     t match {

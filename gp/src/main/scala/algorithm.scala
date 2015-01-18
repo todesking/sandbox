@@ -35,14 +35,14 @@ object Distribution {
 }
 
 trait Initialize[A, C] {
-  def newIndividuals(repository: Repository[C], population: Int): Seq[Individual[A, C]]
+  def newIndividuals(population: Int): Seq[Individual[A, C]]
 }
 
 object Initialize {
-  def random[A: ClassTag, C](depth: Int)(implicit random: Random): Initialize[A, C] =
+  def random[A: ClassTag, C](depth: Int, distribution: Distribution[C])(implicit random: Random): Initialize[A, C] =
     new Initialize[A, C] {
-      override def newIndividuals(repository: Repository[C], population: Int) =
-        (0 to population) map { _ => Individual(repository.randomTree[A](depth)) }
+      override def newIndividuals(population: Int) =
+        (0 to population) map { _ => Individual(distribution.randomTree[A](depth)) }
     }
 }
 

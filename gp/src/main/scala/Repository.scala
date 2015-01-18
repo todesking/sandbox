@@ -99,13 +99,6 @@ class Repository[C] {
       .filter(_.isInstanceOf[LeafDefinition[_, _]])
       .asInstanceOf[Traversable[LeafDefinition[A, C]]]
 
-  def randomTree[A: ClassTag](depth: Int)(implicit random: Random): Tree[A, C] =
-    if(depth == 0) {
-      leafDefinitions[A].toSeq.sample().get.create()
-    } else {
-      definitions[A].toSeq.sample().getOrElse(classNotRegistered[A]).randomTree(depth - 1)
-    }
-
   def definitionByName(name: String): Option[Definition[_, C]] =
     allDefinitions.filter(_.name == name).headOption
 

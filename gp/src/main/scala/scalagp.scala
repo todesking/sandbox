@@ -14,7 +14,6 @@ case class Individual[A, C](tree: Tree[A, C]) {
 }
 
 class Isle[A: ClassTag, C](
-  val repository: Repository[C],
   val population: Int,
   val initialize: Initialize[A, C],
   val selection: Selection[A, C],
@@ -26,7 +25,7 @@ class Isle[A: ClassTag, C](
   private[this] var _generation: Int = 0
 
   var individuals: Seq[Individual[A, C]] =
-    initialize.newIndividuals(repository, population)
+    initialize.newIndividuals(population)
 
   def nextGeneration(): SelectionReport[A, C] = {
     val start = System.nanoTime()
