@@ -25,19 +25,19 @@ object GP {
   val sub3 = repository.registerBranch3[Int, Int, Int, Int]("-3") { (ctx, a, b, c) => a(ctx) - b(ctx) - c(ctx) }
   val mul3 = repository.registerBranch3[Int, Int, Int, Int]("*3") { (ctx, a, b, c) => a(ctx) * b(ctx) * c(ctx) }
 
-  val nashorn = repository.registerOptimizerNode[Int, Nashorn.Compiled]("nashorn") { (ctx, compiled) => compiled(ctx) }
+  val nashorn = repository.newOptimizerNode[Int, String, Nashorn.Compiled]("nashorn")(src => Nashorn.Compiled(src)){case t:Nashorn.Compiled => t}
 
   val nashornRule = repository.registerOptimizer("nashorn") {
     case x() =>
-      nashorn(Nashorn.Compiled("ctx"))
+      nashorn("ctx")
     case const(value) =>
-      nashorn(Nashorn.Compiled(value.toString))
+      nashorn(value.toString)
     case add2(nashorn(l), nashorn(r)) =>
-      nashorn(l + r)
+      l + r
     case sub2(nashorn(l), nashorn(r)) =>
-      nashorn(l - r)
+      l - r
     case mul2(nashorn(l), nashorn(r)) =>
-      nashorn(l * r)
+      l * r
     case unk =>
       throw new RuntimeException(unk.toString)
   }
@@ -52,10 +52,10 @@ object GP {
     lazy val engineManager = new ScriptEngineManager(null);
     lazy val engine = engineManager.getEngineByName("nashorn").asInstanceOf[ScriptEngine]
 
-    case class Compiled(src: String) {
+    case class Compiled(src: String) extends scalagp.Computable[Int, Int] {
       lazy val function =
         Nashorn.compile(src)
-      def apply(ctx: Int): Int =
+      override def apply(ctx: Int): Int =
         function.call(null, (ctx: java.lang.Integer)) match {
           case i: java.lang.Integer => i
           case d: java.lang.Double => d.toInt

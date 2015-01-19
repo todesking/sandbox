@@ -8,7 +8,7 @@ import Ext._
 
 case class Individual[A, C](tree: Tree[A, C]) {
   lazy val optimized: Tree[A, C] =
-    tree.optimized
+    tree.definition.repository.optimize(tree)
   def apply(ctx: C): A =
     optimized(ctx)
 }
@@ -90,7 +90,10 @@ case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A,
   }
 }
 
-class OptimizeRule[Ctx](name: String, rule: Tree[_, Ctx] => Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]]) {
-  def apply[A](tree: Tree[A, Ctx]): Option[Tree[_, Ctx] => OptimizedTree[_, Ctx, _]] =
-    rule(tree)
+case class OptimizeRule[C](
+  name: String,
+  rule: Tree[_, C] => Option[Computable[_, C]]
+) {
+  def apply[A](tree: Tree[A, C]): Option[Computable[A, C]] =
+    rule(tree).map { t => tree.makeOptimized(t.asInstanceOf[Computable[A, C]]) }
 }

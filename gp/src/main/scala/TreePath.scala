@@ -26,7 +26,7 @@ object TreePath {
       parent.value match {
         case b: Branch[PV, C] =>
           parent.replace(b.replaceChild(index, tree))
-        case _: Leaf[_, _] | _:OptimizedTree[_, _, _]   =>
+        case _: Leaf[_, _] | _:OptimizedTree[_, _]   =>
           throw new AssertionError()
       }
     }

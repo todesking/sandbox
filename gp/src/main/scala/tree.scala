@@ -5,6 +5,10 @@ import scala.reflect.ClassTag
 
 import Ext._
 
+trait Computable[A, C] {
+  def apply(ctx: C): A
+}
+
 sealed abstract class Definition[A: ClassTag, C](val name: String, val repository: Repository[C]) extends Equals {
   type TREE <: Tree[A, C]
   type CompatibleType <: Definition[A, C]
@@ -26,14 +30,20 @@ sealed abstract class Definition[A: ClassTag, C](val name: String, val repositor
   }
 }
 
-sealed abstract class Tree[A, C] extends Equals {
+sealed abstract class Tree[A, C] extends Computable[A, C] with Equals {
+  override def apply(ctx: C): A
+
   def definition: Definition[A, C]
-  def apply(ctx: C): A
+  def klass: ClassTag[A] = definition.klass
+
   def height: Int
   def size: Int
+
+  def ensureKlass[AX: ClassTag]: Tree[AX, C] =
+    if(klass == implicitly[ClassTag[AX]]) this.asInstanceOf[Tree[AX, C]]
+    else throw new AssertionError()
+
   def isConstant: Boolean = false
-  def optimized: Tree[A, C] =
-    definition.repository.optimize(this)
   def allPaths: Traversable[TreePath[A, C, _]] =
     allPaths(TreePath.Root(this))
   def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]]
@@ -44,41 +54,23 @@ sealed abstract class Tree[A, C] extends Equals {
       klass.runtimeClass.isAssignableFrom(p.value.definition.klass.runtimeClass)
     }.toSeq.sample().map(_.asInstanceOf[TreePath[A, C, X]])
   }
+  def makeOptimized(optimized: Computable[A, C]): OptimizedTree[A, C] =
+    new OptimizedTree(this, optimized)
 
   override def canEqual(rhs: Any): Boolean =
     rhs.isInstanceOf[Tree[_, _]]
 }
 
-sealed class OptimizeDefinition[A: ClassTag, C, D](val name: String, f: (C, D) => A, repository: Repository[C]) {
-  def apply(data: D): Tree[A, C] => OptimizedTree[A, C, D] =
-    tree => new OptimizedTree[A, C, D](this, tree, data, f)
-
-  def unapply(t: OptimizedTree[_, _, _]): Option[D] =
-    t match {
-      case ot: OptimizedTree[A, C, D] if ot.realDefinition == this =>
-        Some(ot.data)
-      case _ =>
-        None
-    }
-}
-
-sealed class OptimizedTree[A, C, D](
-  val realDefinition: OptimizeDefinition[A, C, D],
+sealed class OptimizedTree[A, C](
   val wrapped: Tree[A, C],
-  val data: D, val f: (C, D) => A
+  val optimized: Computable[A, C]
 ) extends Tree[A, C] {
-  override def allPaths[R](base: TreePath[R, C, A]): Traversable[TreePath[R, C, _]] =
+  override def apply(ctx: C) = optimized.apply(ctx)
+  override def definition = wrapped.definition
+  override def height = wrapped.size
+  override def size = wrapped.size
+  override def allPaths[R](base: TreePath[R, C, A]) =
     wrapped.allPaths(base)
-  override def definition: Definition[A, C] =
-    wrapped.definition
-  override def height =
-    wrapped.height
-  override def size =
-    wrapped.size
-  def apply(ctx: C): A =
-    f(ctx, data)
-  override def toString =
-    s"[${realDefinition.name} ${data}]${wrapped.toString}"
 }
 
 sealed abstract class LeafDefinition[A: ClassTag, C](

@@ -37,13 +37,23 @@ class Repository[C] {
       : Branch3Definition[A, C, B1, B2, B3] =
     register(new Branch3Definition[A, C, B1, B2, B3](name, this, f))
 
-  def registerOptimizerNode[A: ClassTag, D](name: String)(f: (C, D) => A): OptimizeDefinition[A, C, D] =
-    new OptimizeDefinition[A, C, D](name, f, this)
+  trait Matcher[A, D, N <: Computable[A, C]] {
+    def apply(data: D): N
+    def unapply(tree: Tree[_, C]): Option[N]
+  }
+
+  def newOptimizerNode[A: ClassTag, D, N <: Computable[A, C]](name: String)(create: D => N)(tryMatch: PartialFunction[Computable[A, C], N]) =
+    new Matcher[A, D, N] {
+      override def apply(data: D): N = create(data)
+      override def unapply(tree: Tree[_, C]): Option[N] =
+        if(tree.klass == implicitly[ClassTag[A]]) tryMatch.lift.apply(tree.ensureKlass(implicitly[ClassTag[A]]))
+        else None
+    }
 
   private[this] val optimizeRules = new ArrayBuffer[OptimizeRule[C]]
 
-  def registerOptimizer[A: ClassTag, D](name: String)(ruleDef: PartialFunction[Tree[_, C], Tree[A, C] => OptimizedTree[A, C, D]]): OptimizeRule[C] = {
-    val rule = new OptimizeRule[C](name, ruleDef.lift.asInstanceOf[Tree[_, C] => Option[Tree[_, C] => OptimizedTree[_, C, _]]])
+  def registerOptimizer(name: String)(ruleDef: PartialFunction[Tree[_, C], Computable[_, C]]): OptimizeRule[C] = {
+    val rule = new OptimizeRule[C](name, ruleDef.lift)
     optimizeRules += rule
     rule
   }
@@ -70,20 +80,10 @@ class Repository[C] {
     }
 
   def optimize1[A](tree: Tree[A, C]): Tree[A, C] =
-    optimizeRules.foldLeft[Tree[A, C]](tree) { (tree, rule) => rule(tree) map(_(unoptimize(tree)).asInstanceOf[Tree[A, C]]) getOrElse tree }
-
-  def unoptimize[A](tree: Tree[A, C]): Tree[A, C] =
-    tree match {
-      case t: Leaf[A, C] =>
-        t
-      case t: Branch[A, C] =>
-        val children = t.children.map(unoptimize(_))
-        if(t.children.zip(children).forall { case(c, oc) => c eq oc })
-          t
-        else
-          t.definition.create(children)
-      case t: OptimizedTree[A, C, _] =>
-        t.wrapped
+    optimizeRules.foldLeft[Tree[A, C]](tree) { (tree, rule) =>
+      rule(tree) map { optimized =>
+        tree.makeOptimized(optimized)
+      } getOrElse tree
     }
 
   def allDefinitions: Traversable[Definition[_, C]] =
