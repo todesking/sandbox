@@ -6,6 +6,9 @@ class Runner[A, C] {
     stop: SelectionReport[A, C] => Boolean,
     describe: Individual[A, C] => String = defaultDescribe
   ): Unit = {
+    println("Initializing population")
+    world.individuals
+    println("Start generation 1")
     var report =world.nextGeneration()
     printReport(world, report, describe)
     while(!stop(report)) {

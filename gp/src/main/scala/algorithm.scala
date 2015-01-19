@@ -6,6 +6,8 @@ import scala.reflect.ClassTag
 
 import Ext._
 
+import scala.language.postfixOps
+
 trait Distribution[C] {
   def sample[A: ClassTag](implicit random: Random): Definition[A, C]
   def sampleLeaf[A: ClassTag](implicit random: Random): LeafDefinition[A, C]
@@ -137,6 +139,10 @@ object Operation {
     override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
       Seq(tournament.fittest(individuals))
   }
+  def migrate[A, C](worlds: Seq[World[A, C]]) = new Operation[A, C] {
+    override def apply(individuals: Seq[Individual[A, C]], tournament: Tournament[A, C])(implicit random: Random) =
+      worlds.sample().map { w => Seq(tournament.fittest(w.individuals)) } get
+  }
   def default[A, C](distribution: Distribution[C])(implicit random: scala.util.Random): Operation[A, C] =
     oneOf(
       crossover() -> 90,
@@ -145,3 +151,19 @@ object Operation {
     )
 }
 
+trait Migrate[A, C] {
+  def apply(worlds: Seq[World[A, C]]): Seq[(World[A, C], Seq[Individual[A, C]])]
+}
+object Migrate {
+  def none[A, C]() = new Migrate[A, C] {
+    override def apply(worlds: Seq[World[A, C]]) = Seq.empty[(World[A, C], Seq[Individual[A, C]])]
+  }
+  def default[A, C](n: Int, tournament: Tournament[A, C]) = new Migrate[A, C] {
+    override def apply(worlds: Seq[World[A, C]]) = {
+      val fittests = worlds.map { w =>
+        (1 to n) map { _ => tournament.fittest(w.individuals) }
+      }
+      worlds.zipWithIndex map { case(w, i) => w -> fittests((i + 1) % fittests.size) }
+    }
+  }
+}

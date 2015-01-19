@@ -16,7 +16,8 @@ case class Individual[A, C](tree: Tree[A, C]) {
 trait World[A, C] {
   def generation(): Int
   def nextGeneration(): SelectionReport[A, C]
-  def individuals(): Traversable[Individual[A, C]]
+  def individuals(): Seq[Individual[A, C]]
+  def migrate(individuals: Seq[Individual[A, C]]): Unit
 }
 
 class Isle[A: ClassTag, C](
@@ -30,10 +31,13 @@ class Isle[A: ClassTag, C](
 
   private[this] var _generation: Int = 0
 
-  private[this] var _individuals: Seq[Individual[A, C]] =
-    initialize.newIndividuals(population)
+  private[this] var _individuals: Seq[Individual[A, C]] = null
 
-  override def individuals = _individuals
+  override def individuals = {
+    if(_individuals == null)
+      _individuals = initialize.newIndividuals(population)
+    _individuals
+  }
 
   override def nextGeneration(): SelectionReport[A, C] = {
     val start = System.nanoTime()
@@ -42,9 +46,13 @@ class Isle[A: ClassTag, C](
     this._generation += 1
     SelectionReport(generation, individuals, System.nanoTime() - start)
   }
+
+  override def migrate(individuals: Seq[Individual[A, C]]) = {
+    this._individuals ++= individuals
+  }
 }
 
-class Archipelago[A, C](elements: Traversable[World[A, C]]) extends World[A, C] {
+class Archipelago[A, C](val elements: Seq[World[A, C]], migrate: Migrate[A, C] = Migrate.none[A, C]()) extends World[A, C] {
   private var _generation = 0
 
   override def generation =
@@ -56,9 +64,15 @@ class Archipelago[A, C](elements: Traversable[World[A, C]]) extends World[A, C] 
   override def nextGeneration() = {
     val start = System.nanoTime()
     elements.foreach(_.nextGeneration())
+    migrate(elements) foreach { case(w, individuals) =>
+      w.migrate(individuals)
+    }
     _generation += 1
     SelectionReport(_generation, individuals.toSeq, System.nanoTime() - start)
   }
+
+  override def migrate(individuals: Seq[Individual[A, C]]) =
+    elements.foreach(_.migrate(individuals))
 }
 
 case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A, C]], executionNanos: Long) {

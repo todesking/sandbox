@@ -2,6 +2,8 @@ import com.todesking.scalagp
 
 import scala.reflect.ClassTag
 
+import scalagp.Ext._
+
 object GP {
   import scalagp.{Tree, OptimizedTree, ConstLeaf, Branch2}
 
@@ -90,7 +92,7 @@ object GP {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    import scalagp.{Individual, Initialize, Selection, Tournament, Operation, Runner, Archipelago}
+    import scalagp.{Individual, Initialize, Selection, Tournament, Operation, Runner, Isle, Archipelago, World, Migrate}
 
     implicit val random = new scala.util.Random
 
@@ -101,15 +103,17 @@ object Main {
       sampleRange.foldLeft(0) { (a, x) => a + Math.pow((f(x) - indiv(x)).abs.min(1000), 2).toInt * -1 }
 
     val distributions = (1 to 4).map { _ =>
-      GP.repository.randomDistribution(10 to 15)
+      GP.repository.randomDistribution(100 to 110)
     }
 
-    val isles = distributions.map { distribution => 
-      new scalagp.Isle[Int, Int](
+    val tournament = Tournament.maximizeScore[Int, Int, Int](50) { individual => score(individual) }
+
+    val isles = distributions.map { distribution =>
+      new Isle[Int, Int](
         population = 1000,
         initialize = Initialize.random(10, distribution),
         selection = Selection.default(
-          tournament = Tournament.maximizeScore(50) { individual => score(individual) },
+          tournament,
           operation = Operation.default(distribution)
         ),
         beforeSelection = { isle =>
@@ -122,7 +126,7 @@ object Main {
       )
     }
 
-    val archipelago = new Archipelago[Int, Int](isles)
+    val archipelago = new Archipelago[Int, Int](isles, Migrate.default(5, tournament))
 
     val runner = new Runner[Int, Int]()
 
