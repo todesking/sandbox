@@ -46,13 +46,15 @@ object GP {
 
   repository.optimizer.disableOptimizer(nashornRule)
 
-  val reducingRule = repository.optimizer.registerOptimizer("reducing") {
+  val moveConstRule = repository.optimizer.registerOptimizer("move-const") {
     case add2(l, const(c)) =>
       add2(const(c), l)
     case sub2(l, const(c)) =>
       add2(const(-c), l)
     case mul2(l, const(c)) =>
       mul2(const(c), l)
+  }
+  val reducingRule = repository.optimizer.registerOptimizer("reducing") {
     case add2(const(l), const(r)) =>
       const(l + r)
     case sub2(const(l), const(r)) =>
