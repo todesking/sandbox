@@ -54,7 +54,7 @@ object GP {
     case mul2(l, const(c)) =>
       mul2(const(c), l)
   }
-  val reducingRule = repository.optimizer.registerOptimizer("reducing") {
+  val reducingRule = repository.optimizer.registerOptimizer("reducing", applyUntilFixed = true) {
     case add2(const(l), const(r)) =>
       const(l + r)
     case sub2(const(l), const(r)) =>
@@ -64,7 +64,7 @@ object GP {
     case mul2(const(c1), mul2(const(c2), r)) =>
       mul2(const(c1 * c2), r)
     case add2(l, r) if l == r =>
-      mul2(l, const(2))
+      mul2(const(2), l)
     case sub2(l, r) if l == r =>
       const(0)
     case add2(e1, mul2(e2, const(c))) if e1 == e2=>

@@ -22,8 +22,8 @@ class Optimizer[C] {
 
   private[this] val optimizeRules = new ArrayBuffer[OptimizeRule[C]]
 
-  def registerOptimizer(name: String)(ruleDef: PartialFunction[Tree[_, C], Computable[_, C]]): OptimizeRule[C] = {
-    val rule = new OptimizeRule[C](name, ruleDef.lift)
+  def registerOptimizer(name: String, applyUntilFixed: Boolean = false)(ruleDef: PartialFunction[Tree[_, C], Computable[_, C]]): OptimizeRule[C] = {
+    val rule = new OptimizeRule[C](name, applyUntilFixed, ruleDef.lift)
     optimizeRules += rule
     rule
   }

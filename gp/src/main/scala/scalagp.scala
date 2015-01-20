@@ -92,8 +92,27 @@ case class SelectionReport[A, C](generation: Int, individuals: Seq[Individual[A,
 
 case class OptimizeRule[C](
   name: String,
+  applyUntilFixed: Boolean,
   rule: Tree[_, C] => Option[Computable[_, C]]
 ) {
-  def apply[A](tree: Tree[A, C]): Option[Computable[A, C]] =
-    rule(tree).map { t => tree.makeOptimized(t.asInstanceOf[Computable[A, C]]) }
+  def apply[A](tree: Tree[A, C]): Option[Tree[A, C]] = {
+    if(!applyUntilFixed)
+      rule(tree).map { t => tree.makeOptimized(t.asInstanceOf[Computable[A, C]]) }
+    else {
+      var prev: Option[Tree[A, C]] = null
+      var optimized: Option[Tree[A, C]] = Some(tree)
+      while(optimized != prev) {
+        prev = optimized
+        optimized = rule(tree).map { t => tree.makeOptimized(t.asInstanceOf[Computable[A, C]]) }
+      }
+      if(optimized.isEmpty) {
+        if(prev == null)
+          None
+        else
+          prev
+      } else {
+        optimized
+      }
+    }
+  }
 }
