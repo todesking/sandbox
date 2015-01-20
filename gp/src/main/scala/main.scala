@@ -59,6 +59,10 @@ object GP {
       const(l + r)
     case sub2(const(l), const(r)) =>
       const(l - r)
+    case mul2(const(0), r) =>
+      const(0)
+    case mul2(const(1), r) =>
+      r
     case mul2(const(l), const(r)) =>
       const(l * r)
     case mul2(const(c1), mul2(const(c2), r)) =>
