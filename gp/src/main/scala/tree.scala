@@ -55,13 +55,18 @@ sealed abstract class Tree[A, C] extends Computable[A, C] with Equals {
     }.toSeq.sample().map(_.asInstanceOf[TreePath[A, C, X]])
   }
   def makeOptimized(optimized: Computable[A, C]): OptimizedTree[A, C] =
-    new OptimizedTree(this, optimized)
+    optimized match {
+      case OptimizedTree(w, o) =>
+        new OptimizedTree(OptimizedTree.unwrap(this), o)
+      case o =>
+        new OptimizedTree(OptimizedTree.unwrap(this), o)
+    }
 
   override def canEqual(rhs: Any): Boolean =
     rhs.isInstanceOf[Tree[_, _]]
 }
 
-sealed class OptimizedTree[A, C](
+sealed case class OptimizedTree[A, C](
   val wrapped: Tree[A, C],
   val optimized: Computable[A, C]
 ) extends Tree[A, C] {
@@ -71,6 +76,33 @@ sealed class OptimizedTree[A, C](
   override def size = wrapped.size
   override def allPaths[R](base: TreePath[R, C, A]) =
     wrapped.allPaths(base)
+  override def toString =
+    s"[${optimized.toString}]${wrapped.toString}"
+}
+
+object OptimizedTree {
+  def nakedTree[A, C](tree: Tree[A, C]): Tree[A, C] =
+    tree match {
+      case OptimizedTree(_, o) =>
+        o match {
+          case t: Tree[A, C] =>
+            t
+          case _ =>
+            tree
+        }
+      case t => t
+    }
+  def unwrap[A, C](tree: Tree[A, C]): Tree[A, C] =
+    tree match {
+      case b: Branch[A, C] =>
+        b.definition.create(
+          b.children.map(unwrap(_))
+        )
+      case OptimizedTree(w, o) =>
+        w
+      case t =>
+        t
+    }
 }
 
 sealed abstract class LeafDefinition[A: ClassTag, C](
@@ -106,13 +138,19 @@ sealed class ConstLeafDefinition[A: ClassTag, C](
   override val childClasses = Seq.empty
   override def create() =
     create(generateValue())
+
+  def apply(value: A) = create(value)
   def create(value: A) =
     new ConstLeaf[A, C](value, this)
-  def unapply[AX, CX](leaf: ConstLeaf[AX, CX]): Option[A] =
-    if(leaf.definition == this)
-      Some(leaf.asInstanceOf[ConstLeaf[A, C]].value)
-    else
-      None
+  def unapply[AX, CX](tree: Tree[AX, CX]): Option[A] =
+    tree match {
+      case OptimizedTree(wrapped, optimized: Tree[AX, CX]) =>
+        unapply(optimized)
+      case leaf if leaf.definition == this =>
+        Some(leaf.asInstanceOf[ConstLeaf[A, C]].value)
+      case _ =>
+        None
+    }
 }
 
 sealed class ConstLeaf[A, C](val value: A, override val definition: ConstLeafDefinition[A, C]) extends Leaf[A, C] {
@@ -138,8 +176,14 @@ sealed class FunctionLeafDefinition[A: ClassTag, C](
   override type TREE = FunctionLeaf[A, C]
   override def create() = new FunctionLeaf[A, C](function, this)
 
-  def unapply[AX, CX](t: FunctionLeaf[AX, CX]): Boolean =
-    t.definition == this
+  def unapply[AX, CX](tree: Tree[AX, CX]): Boolean =
+    tree match {
+      case OptimizedTree(w, o: TREE) =>
+        unapply(o)
+      case t if t.definition == this =>
+        true
+      case _ => false
+    }
 }
 
 sealed class FunctionLeaf[A, C](val function: C => A, override val definition: FunctionLeafDefinition[A, C]) extends Leaf[A, C] {
@@ -222,11 +266,15 @@ sealed class Branch2Definition[A: ClassTag, C, B1: ClassTag, B2: ClassTag](
       function
     )
   }
-  def unapply(t: Branch2[_, _, _, _]): Option[(Tree[B1, C], Tree[B2, C])] =
+  def apply(t1: Tree[B1, C], t2: Tree[B2, C]) =
+    create(Seq(t1, t2))
+  def unapply[AX, CX](t: Tree[AX, CX]): Option[(Tree[B1, C], Tree[B2, C])] =
     t match {
-      case b: Branch2[A, C, B1, B2] if b.definition == this =>
-        val x: Branch2[A, C, B1, B2] = b // I dont known why but it need
-        Some(x.child1 -> x.child2)
+      case b: Branch2[AX, CX, B1, B2] if b.definition == this =>
+        val x: Branch2[A, C, B1, B2] = b.asInstanceOf[Branch2[A, C, B1, B2]]
+        Some(OptimizedTree.nakedTree(x.child1) -> OptimizedTree.nakedTree(x.child2))
+      case OptimizedTree(w, o: TREE) =>
+        unapply(o)
       case _ =>
         None
     }

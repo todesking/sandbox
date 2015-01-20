@@ -25,6 +25,8 @@ object GP {
   val sub3 = repository.registerBranch3[Int, Int, Int, Int]("-3") { (ctx, a, b, c) => a(ctx) - b(ctx) - c(ctx) }
   val mul3 = repository.registerBranch3[Int, Int, Int, Int]("*3") { (ctx, a, b, c) => a(ctx) * b(ctx) * c(ctx) }
 
+  Seq(add3, sub3, mul3) foreach { op => repository.disable(op) }
+
   val nashorn = repository.optimizer.newOptimizerNode[Int, String, Nashorn.Compiled]("nashorn")(src => Nashorn.Compiled(src)){case t:Nashorn.Compiled => t}
 
   val nashornRule = repository.optimizer.registerOptimizer("nashorn") {
@@ -43,6 +45,41 @@ object GP {
   }
 
   repository.optimizer.disableOptimizer(nashornRule)
+
+  val reducingRule = repository.optimizer.registerOptimizer("reducing") {
+    case add2(l, const(c)) =>
+      add2(const(c), l)
+    case sub2(l, const(c)) =>
+      add2(const(-c), l)
+    case mul2(l, const(c)) =>
+      mul2(const(c), l)
+    case add2(const(l), const(r)) =>
+      const(l + r)
+    case sub2(const(l), const(r)) =>
+      const(l - r)
+    case mul2(const(l), const(r)) =>
+      const(l * r)
+    case mul2(const(c1), mul2(const(c2), r)) =>
+      mul2(const(c1 * c2), r)
+    case add2(l, r) if l == r =>
+      mul2(l, const(2))
+    case sub2(l, r) if l == r =>
+      const(0)
+    case add2(e1, mul2(e2, const(c))) if e1 == e2=>
+      mul2(e2, const(c + 1))
+    case add2(mul2(e2, const(c)), e1) if e1 == e2=>
+      mul2(e2, const(c + 1))
+    case add2(const(c1), add2(const(c2), t)) =>
+      add2(const(c1 + c2), t)
+    case add2(e1, sub2(e2, e3)) if e1 == e3 =>
+      e2
+    case sub2(add2(e1, e2), e3) if e3 == e1 =>
+      e2
+    case sub2(add2(e1, e2), e3) if e3 == e2 =>
+      e1
+    case sub2(add2(const(c1), e1), const(c2)) =>
+      sub2(e1, const(c2 - c1))
+  }
 
   object Nashorn {
     import jdk.nashorn.api.scripting.ScriptObjectMirror

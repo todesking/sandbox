@@ -19,6 +19,9 @@ class Repository[C] {
     definition
   }
 
+  def disable(definition: Definition[_, C]): Unit =
+    _definitions -= definition
+
   def registerConstLeaf[A: ClassTag]
       (name: String, generateValue: () => A)
       : ConstLeafDefinition[A, C] =
