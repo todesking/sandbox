@@ -25,9 +25,9 @@ object GP {
   val sub3 = repository.registerBranch3[Int, Int, Int, Int]("-3") { (ctx, a, b, c) => a(ctx) - b(ctx) - c(ctx) }
   val mul3 = repository.registerBranch3[Int, Int, Int, Int]("*3") { (ctx, a, b, c) => a(ctx) * b(ctx) * c(ctx) }
 
-  val nashorn = repository.newOptimizerNode[Int, String, Nashorn.Compiled]("nashorn")(src => Nashorn.Compiled(src)){case t:Nashorn.Compiled => t}
+  val nashorn = repository.optimizer.newOptimizerNode[Int, String, Nashorn.Compiled]("nashorn")(src => Nashorn.Compiled(src)){case t:Nashorn.Compiled => t}
 
-  val nashornRule = repository.registerOptimizer("nashorn") {
+  val nashornRule = repository.optimizer.registerOptimizer("nashorn") {
     case x() =>
       nashorn("ctx")
     case const(value) =>
@@ -42,7 +42,7 @@ object GP {
       throw new RuntimeException(unk.toString)
   }
 
-  repository.disableOptimizer(nashornRule)
+  repository.optimizer.disableOptimizer(nashornRule)
 
   object Nashorn {
     import jdk.nashorn.api.scripting.ScriptObjectMirror
@@ -117,7 +117,7 @@ object Main {
           operation = Operation.default(distribution)
         ),
         beforeSelection = { isle =>
-          if(GP.repository.optimizerEnabled(GP.nashornRule)) {
+          if(GP.repository.optimizer.optimizerEnabled(GP.nashornRule)) {
             GP.Nashorn.batchCompile(
               isle.individuals.map(_.optimized).collect { case GP.nashorn(compiled) => compiled.src }
             )

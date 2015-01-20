@@ -8,7 +8,7 @@ import Ext._
 
 case class Individual[A, C](tree: Tree[A, C]) {
   lazy val optimized: Tree[A, C] =
-    tree.definition.repository.optimize(tree)
+    tree.definition.repository.optimizer.optimize(tree)
   def apply(ctx: C): A =
     optimized(ctx)
 }
