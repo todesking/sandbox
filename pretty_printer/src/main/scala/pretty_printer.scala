@@ -2,22 +2,6 @@ package com.todesking.pretty_printer
 
 // from Christian et al. "Strictly Pretty"
 
-object Example {
-  import Doc._
-   def binop(l: String, op: String, r: String) = Group(Nest(2, Group( (Text(l) ^| Text(op)) ^| Text(r))))
-
-   val cond = binop("a", "==", "b")
-   val expr1 = binop("a", "<<", "2")
-   val expr2 = binop("a", "+", "b")
-   def ifthen(c: Doc, e1: Doc, e2: Doc) =
-     Group(
-       Group(Nest(2, Text("if") ^| c))
-       ^| Group(Nest(2, Text("then") ^| e1))
-       ^| Group(Nest(2, Text("else") ^| e2))
-     )
-   val doc = ifthen(cond, expr1, expr2)
-}
-
 object PrettyPrinter {
   def pretty(w: Int, doc: Doc): String = {
     val sdoc = Doc.format(w, 0, Seq((0, Mode.Flat, Doc.Group(doc))))
@@ -27,21 +11,34 @@ object PrettyPrinter {
 }
 
 sealed abstract class Doc {
+  import Doc._
+
   def ^^(y: Doc) =
-    Doc.Cons(this, y)
+    Cons(this, y)
+
   def ^|(y: Doc) = (this, y) match {
-    case (Doc.Nil, _) => y
-    case (_, Doc.Nil) => this
-    case (x, y) => x ^^ Doc.Break() ^^ y
+    case (Nil, _) => y
+    case (_, Nil) => this
+    case (x, y) => x ^^ Break() ^^ y
   }
 }
+
 object Doc {
   case object Nil                       extends Doc
-  case class Cons(car: Doc, cdr: Doc)   extends Doc
-  case class Text(value: String)        extends Doc
+  case class Cons(car: Doc, cdr: Doc)   extends Doc {
+    override def toString =
+      s"${car} ^^ ${cdr}"
+  }
+  case class Text(value: String)        extends Doc {
+    override def toString =
+      s""""${value}""""
+  }
   case class Nest(level: Int, doc: Doc) extends Doc
-  case class Break(value: String = " ")       extends Doc
-  case class Group(doc: Doc)            extends Doc
+  case class Break(value: String = " ") extends Doc
+  case class Group(doc: Doc)            extends Doc {
+    override def toString =
+      s"[${doc}]"
+  }
 
   def width(s: String): Int = s.size
 
