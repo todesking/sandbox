@@ -46,27 +46,27 @@ object Doc {
   def width(s: String): Int = s.size
 
   def fits(w: Int, ds: Seq[(Int, Mode, Doc)]): Boolean = ds match {
-    case _ if w < 0 => false
-    case Seq() => true
-    case (i, m, Nil) :: z => fits(w, z)
-    case (i, m, Cons(x, y)) :: z => fits(w, (i, m, x)::(i, m, y)::z)
-    case (i, m, Nest(j, x)) :: z => fits(w, (i + j, m, x)::z)
-    case (i, m, Text(s)) :: z => fits(w - width(s), z)
-    case (i, Mode.Flat, Break(s)) :: z => fits(w - width(s), z)
+    case _ if w < 0                     => false
+    case Seq()                          => true
+    case (i, m, Nil)               :: z => fits(w, z)
+    case (i, m, Cons(x, y))        :: z => fits(w, (i, m, x)::(i, m, y)::z)
+    case (i, m, Nest(j, x))        :: z => fits(w, (i + j, m, x)::z)
+    case (i, m, Text(s))           :: z => fits(w - width(s), z)
+    case (i, Mode.Flat, Break(s))  :: z => fits(w - width(s), z)
     case (i, Mode.Break, Break(_)) :: z => true
-    case (i, m, Group(x)) :: z => fits(w, (i, Mode.Flat, x)::z)
+    case (i, m, Group(x))          :: z => fits(w, (i, Mode.Flat, x)::z)
   }
 
   import SDoc._
   def format(w: Int, k: Int, ds: Seq[(Int, Mode, Doc)]): SDoc = ds match {
-    case Seq() => SNil
-    case (i, m, Nil) :: z => format(w, k, z)
-    case (i, m, Cons(x, y)) :: z => format(w, k, (i, m, x)::(i, m, y)::z)
-    case (i, m, Nest(j, x)) :: z => format(w, k, (i + j, m, x)::z)
-    case (i, m, Text(s)) :: z => SText(s, format(w, k + width(s), z))
-    case (i, Mode.Flat, Break(s)) :: z => SText(s, format(w, k + width(s), z))
+    case Seq()                          => SNil
+    case (i, m, Nil)               :: z => format(w, k, z)
+    case (i, m, Cons(x, y))        :: z => format(w, k, (i, m, x)::(i, m, y)::z)
+    case (i, m, Nest(j, x))        :: z => format(w, k, (i + j, m, x)::z)
+    case (i, m, Text(s))           :: z => SText(s, format(w, k + width(s), z))
+    case (i, Mode.Flat, Break(s))  :: z => SText(s, format(w, k + width(s), z))
     case (i, Mode.Break, Break(s)) :: z => SLine(i, format(w, i, z))
-    case (i, m, Group(x)) :: z =>
+    case (i, m, Group(x))          :: z =>
       if(fits(w - k, (i, Mode.Flat, x)::z)) format(w, k, (i, Mode.Flat, x)::z)
       else format(w, k, (i, Mode.Break, x)::z)
   }
