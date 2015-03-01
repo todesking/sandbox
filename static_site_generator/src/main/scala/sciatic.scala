@@ -80,9 +80,15 @@ object `path/to/template` extends Template[(String, Int)] {
   }
 }
 
-case class ParseError(msg: String, line: Int, col: Int, longString: String) extends RuntimeException
-case class CodeGenerationError() extends RuntimeException
-case class CompileError() extends RuntimeException
+abstract class SciaticError extends RuntimeException {
+}
+
+case class ParseError(msg: String, line: Int, col: Int, longString: String) extends SciaticError {
+  override def getMessage = toString
+  override def toString = s"ParseError(${msg}, ${line}, ${col})"
+}
+case class CodeGenerationError() extends SciaticError
+case class CompileError() extends SciaticError
 
 trait Parser {
   def parse(content: String): Try[AST]
@@ -111,6 +117,20 @@ class SlimParser extends Parser {
   object Definition extends scala.util.parsing.combinator.RegexParsers {
     import SlimAST._
 
+    override val skipWhitespace = false
+    implicit class WS[T](self: Parser[T]) {
+      private[this] val ws = "\\s*".r
+
+      def ~*~[U](right: Parser[U]): Parser[~[T, U]] =
+        (self <~ ws) ~ right
+
+      def ~*~>[U](right: Parser[U]): Parser[U] =
+        (self <~ ws) ~> right
+
+      def ~+~[U](right: Parser[U]): Parser[~[T, U]] =
+        (self <~ ws) ~ right
+    }
+
     def all: Parser[Seq[(Int, SlimAST)]] = rep(line)
 
     def line: Parser[(Int, SlimAST)] = indent ~ (tag | text | code) <~ "$".r ^^ {
@@ -119,29 +139,37 @@ class SlimParser extends Parser {
 
     def indent: Parser[Int] = "^ *".r ^^ { s => s.size }
 
-    def identifier: Parser[String] = "[a-zA-Z0-9_][-a-zA-Z0-9_]*".r
+    def ws_? = "\\s*".r
 
-    def tag: Parser[SlimAST] = identifier ~ rep(attributeShortcut) ~ opt(attributes) ^^ {
+    def identifier: Parser[String] = "[a-zA-Z0-9_][-a-zA-Z0-9_]*".r
+    def scalaIdentifier = "[a-zA-Z][a-zA-Z0-9_]*".r
+
+    def tag: Parser[SlimAST] = identifier ~ rep(ws_? ~> attributeShortcut) ~+~ opt(attributes) ^^ {
       case id ~ shortcuts ~ attrs => Tag(id, shortcuts.flatten.toMap ++ attrs.getOrElse(Map.empty))
     }
-    def text: Parser[SlimAST] = "| " ~> ".*".r ^^ { s => Text(s) }
-    def code: Parser[SlimAST] = "-|=".r ~ ".+".r ^^ {
+    def text: Parser[SlimAST] = literal("| ") ~*~> ".*".r ^^ { s => Text(s) }
+    def code: Parser[SlimAST] = regex("-|=".r) ~*~ ".+".r ^^ {
       case "-" ~ s => Code(s)
       case "=" ~ s => Out(s)
     }
 
-    def attributeShortcut: Parser[Map[String, String]] = """\\.|#""".r ~ identifier ^^ {
+    def attributeShortcut: Parser[Map[String, String]] = """\.|#""".r ~ identifier ^^ {
       case "." ~ id => Map("class" -> CodeUtil.stringLiteral(id))
       case "#" ~ id => Map("id" -> CodeUtil.stringLiteral(id))
     }
-    def attributes: Parser[Map[String, String]] = rep(identifier ~ "=" ~ simpleCode) ^^ { as =>
+    def attributes: Parser[Map[String, String]] = repsep(identifier ~ "=" ~ simpleCode, "\\s+".r) ^^ { as =>
       as.map{ case k ~ _ ~ v => k -> v }.toMap
     }
 
-    def simpleCode: Parser[String] = stringLiteralCode | functionCallCode | booleanLiteralCode
+    def simpleCode: Parser[String] = stringLiteralCode | numberLiteralCode | functionCallCode | booleanLiteralCode
+    def numberLiteralCode = "[0-9]+".r
     def booleanLiteralCode = "true" | "false"
-    def stringLiteralCode = "\"" ~ "([^\"]|\\\\\")*".r ~ "\"" ^^ { case a ~ b ~ c => a + b + c }
-    def functionCallCode = "[a-zA-Z0-9+]+".r ~ "(" ~ repsep(simpleCode, ",") ~ ")" ^^ { case a ~ b ~ c ~ d => a + b + c + d }
+    def stringLiteralCode = (opt(scalaIdentifier) <~ "\"") ~ "([^\"]|\\\\\")*".r <~ "\"" ^^ {
+      case id ~ content => id.getOrElse("") + "\"" + content + "\""
+    }
+    def functionCallCode = (scalaIdentifier <~ "(") ~ repsep(ws_? ~> simpleCode, ",") <~ ")" ^^ {
+      case id ~ args => s"${id}(${args.mkString(", ")})"
+    }
   }
 }
 
