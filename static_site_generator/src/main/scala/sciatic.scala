@@ -113,9 +113,11 @@ class SlimParser extends Parser {
 
     def all: Parser[Seq[(Int, SlimAST)]] = rep(line)
 
-    def line: Parser[(Int, SlimAST)] = indent ~ (tag | text | code | empty) <~ "$".r ^^ { case i ~ ast => (i -> ast) }
+    def line: Parser[(Int, SlimAST)] = indent ~ (tag | text | code) <~ "$".r ^^ {
+      case i ~ ast => (i -> ast)
+    }
 
-    def indent: Parser[Int] = " *".r ^^ { s => s.size }
+    def indent: Parser[Int] = "^ *".r ^^ { s => s.size }
 
     def identifier: Parser[String] = "[a-zA-Z0-9_][-a-zA-Z0-9_]*".r
 
@@ -127,7 +129,6 @@ class SlimParser extends Parser {
       case "-" ~ s => Code(s)
       case "=" ~ s => Out(s)
     }
-    def empty: Parser[SlimAST] = "" ^^ { _ => Empty }
 
     def attributeShortcut: Parser[Map[String, String]] = """\\.|#""".r ~ identifier ^^ {
       case "." ~ id => Map("class" -> CodeUtil.stringLiteral(id))
