@@ -1,14 +1,18 @@
 package com.todesking.sciatic
 
 import org.scalatest.Matchers._
+import org.expecty.Expecty
+
 import scala.util.{Success, Failure}
 
+
 class SciaticTest extends org.scalatest.FunSpec {
+  val expect = new Expecty
   describe("Slim") {
     describe("Parser(local AST)") {
-      it("a") {
+      it("should parse") {
         val parser = new SlimParser
-        parser.parseLocal("").get shouldEqual List.empty
+        expect { parser.parseLocal("").get == List(1) }
         parser.parseLocal("| hoge").get shouldEqual List(0 -> SlimAST.Text("hoge"))
         parser.parseLocal("  | fuga").get shouldEqual List(2 -> SlimAST.Text("fuga"))
         parser.parseLocal("""a href="hoge"""").get shouldEqual List(0 -> SlimAST.Tag("a", Map("href" -> """"hoge"""" )))
