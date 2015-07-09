@@ -49,6 +49,71 @@ object Main {
         prove[LessThan[_2, _5]](`L-SuccR`(`L-SuccR`(prove[LessThan[_2, _3]])))
       )
     }
+    describe("EvalNatExp") {
+      import GenericNum._
+      import Nat._
+      import EvalNatExp._
+      Seq(
+        prove[(E_0 + E_2) ⇓ E_2](
+          `E-Plus`(
+            prove[E_0 ⇓ E_0],
+            prove[E_2 ⇓ E_2],
+            prove[Plus[_0, _2, _2]])),
+        prove[(E_2 + E_0) ⇓ E_2](
+          `E-Plus`(
+            prove[E_2 ⇓ E_2],
+            prove[E_0 ⇓ E_0],
+            prove[Plus[_2, _0, _2]])),
+        prove[(E_1 + E_1 + E_1) ⇓ E_3](
+          `E-Plus`(
+            `E-Plus`(
+              prove[E_1 ⇓ E_1],
+              prove[E_1 ⇓ E_1],
+              prove[Plus[_1, _1, _2]]),
+            prove[E_1 ⇓ E_1],
+            prove[Plus[_2, _1, _3]]
+          )
+        ),
+        prove[(E_3 + (E_2 * E_1)) ⇓ E_5](
+          `E-Plus`(
+            `E-Const`[_3],
+            `E-Times`(
+              `E-Const`[_2],
+              `E-Const`[_1],
+              `T-Succ`(
+                `T-Succ`(
+                  `T-Zero`[_1],
+                  prove[Plus[_1, _0, _1]]),
+                prove[Plus[_1, _1, _2]])),
+            prove[Plus[_3, _2, _5]])
+        ),
+        prove[((E_2 + E_2) * E_0) ⇓ E_0](
+          `E-Times`(
+            `E-Plus`(
+              `E-Const`[_2],
+              `E-Const`[_2],
+              prove[Plus[_2, _2, _4]]),
+            `E-Const`[_0],
+            `T-Succ`(
+              `T-Succ`(
+                `T-Succ`(
+                  `T-Succ`(
+                    `T-Zero`[_0],
+                    prove[Plus[_0, _0, _0]]),
+                  prove[Plus[_0, _0, _0]]),
+                prove[Plus[_0, _0, _0]]),
+              prove[Plus[_0, _0, _0]])
+          )
+        ),
+        prove[(E_0 * (E_2 + E_2)) ⇓ E_0](
+          `E-Times`(
+            `E-Const`[_0],
+            `E-Plus`(`E-Const`[_2], `E-Const`[_2], prove[Plus[_2, _2, _4]]),
+            `T-Zero`[_4]
+          )
+        )
+      )
+    }
   }
 }
 
@@ -64,7 +129,7 @@ object Proof {
   def prove[A <: Proof](implicit ev: A): A = ev
 }
 
-case class Repr[A](str: String) {
+class Repr[A](str: String) {
   override def toString =str
 }
 
@@ -79,8 +144,10 @@ object GenericNum {
   trait Z extends Num
 
   object Num {
-    implicit val reprZ: Repr[Z] = Repr[Z]("Z")
-    implicit def repr[A <: Num](implicit ev: Repr[A]): Repr[S[A]] = Repr[S[A]](s"S(${ev})")
+    class IntRepr[A <: Num](val value: Int) extends Repr[A](value.toString)
+    implicit val reprZ: Repr[Z] = new IntRepr(0)
+    implicit def repr[N <: Num: Repr]: IntRepr[S[N]] =
+      new IntRepr(implicitly[Repr[N]].asInstanceOf[IntRepr[N]].value + 1)
   }
 
   type _0 = Z
@@ -156,4 +223,63 @@ object CompareNat3 {
     new LessThan[N, S[N]] { override def provenBy = "L-Succ" }
   implicit def `L-SuccR`[N1 <: Num: Repr, N2 <: Num: Repr](ev: LessThan[N1, N2]): LessThan[N1, S[N2]] =
     new LessThan[N1, S[N2]] { override def provenBy = "L-SuccR"; override def assumptions = Seq(ev) }
+}
+
+object EvalNatExp {
+  import GenericNum._
+  import Nat._
+  import Repr.repr
+
+  trait Exp
+  object Exp {
+    implicit def reprN[A <: Num: Repr]: Repr[ENum[A]] = new Repr(repr[A].toString)
+
+    implicit def repr_*[E1 <: Exp: Repr, E2 <: Exp: Repr]: Repr[E1 * E2] =
+      new Repr(s"(${repr[E1]} * ${repr[E2]})")
+
+    implicit def repr_+[E1 <: Exp: Repr, E2 <: Exp: Repr]: Repr[E1 + E2] =
+      new Repr(s"(${repr[E1]} + ${repr[E2]})")
+  }
+
+  abstract class ENum[A <: Num: Repr] extends Exp
+  abstract class +[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp
+  abstract class *[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp
+
+  type E_0 = ENum[_0]
+  type E_1 = ENum[_1]
+  type E_2 = ENum[_2]
+  type E_3 = ENum[_3]
+  type E_4 = ENum[_4]
+  type E_5 = ENum[_5]
+
+  abstract class Eval[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Proof {
+    override def str = s"${repr[E1]} ⇓ ${repr[E2]}"
+  }
+  type ⇓[A <: Exp, B <: Exp] = Eval[A, B]
+
+  implicit def `E-Const`[N <: Num: Repr]: ENum[N] ⇓ ENum[N] =
+    new Eval[ENum[N], ENum[N]] { override def provenBy = "E-Const" }
+
+  def `E-Plus`[
+    E1 <: Exp: Repr, N1 <: Num: Repr,
+    E2 <: Exp: Repr, N2 <: Num: Repr,
+    N <: Num: Repr
+  ](
+    ev1: E1 ⇓ ENum[N1], ev2: E2 ⇓ ENum[N2], ev3: Plus[N1, N2, N]
+  ): (E1 + E2) ⇓ ENum[N] =
+    new Eval[E1 + E2, ENum[N]] {
+      override def provenBy = "E-Plus"
+      override def assumptions = Seq(ev1, ev2, ev3)
+    }
+  def `E-Times`[
+    E1 <: Exp: Repr, N1 <: Num: Repr,
+    E2 <: Exp: Repr, N2 <: Num: Repr,
+    N <: Num: Repr
+  ](
+    ev1: E1 ⇓ ENum[N1], ev2: E2 ⇓ ENum[N2], ev3: Times[N1, N2, N]
+  ): (E1 * E2) ⇓ ENum[N] =
+    new Eval[E1 * E2, ENum[N]] {
+      override def provenBy = "E-Times"
+      override def assumptions = Seq(ev1, ev2, ev3)
+    }
 }
