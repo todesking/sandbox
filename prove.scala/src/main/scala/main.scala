@@ -28,7 +28,7 @@ object Main {
       import CompareNat1._
       Seq(
         prove[LessThan[_2, _3]],
-        prove[LessThan[_2, _5]](`L-Trans`(prove[LessThan[_2, _3]], `L-Trans`(prove[LessThan[_3, _4]], prove[LessThan[_4, _5]])))
+        prove[LessThan[_2, _5]]
       )
     }
     describe("CompareNat2") {
@@ -143,15 +143,18 @@ object GenericNum {
     type Minus[A <: Num] <: Num
     type IfZero[T, Then <: T, Else <: T] <: T
     type Pred <: Num
+    type Succ <: Num
   }
   trait S[A <: Num] extends Num {
     type Minus[B <: Num] = B#IfZero[Num, S[A], A#Minus[B#Pred]]
     type IfZero[T, Then <: T, Else <: T] = Else
     type Pred = A
+    type Succ = S[S[A]]
   }
   trait Z extends Num {
     type Minus[B <: Num] = B#IfZero[Num, Z, Nothing]
     type IfZero[T, Then <: T, Else <: T] = Then
+    type Succ = S[Z]
   }
 
   type -[A <: Num, B <: Num] = A#Minus[B]
@@ -212,10 +215,14 @@ object CompareNat1 {
 
   implicit def `L-Succ`[N1 <: Num: Repr]: LessThan[N1, S[N1]] =
     new LessThan[N1, S[N1]] { override def provenBy = "L-Succ" }
-  def `L-Trans`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](ev1: LessThan[N1, N2], ev2: LessThan[N2, N3]): LessThan[N1, N3] =
-    `L-Trans`[N1, N2, N3](implicitly[Repr[N1]], implicitly[Repr[N2]], implicitly[Repr[N3]], ev1, ev2)
-  implicit def `L-Trans`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](implicit ev1: LessThan[N1, N2], ev2: LessThan[N2, N3]): LessThan[N1, N3] =
+
+  def `L-Trans`[N1 <: Num: Repr, N2 <: Num, N3 <: Num: Repr](ev1: LessThan[N1, N2], ev2: LessThan[N2, N3]): LessThan[N1, N3] =
     new LessThan[N1, N3] { override def provenBy = "L-Trans"; override def assumptions = Seq(ev1, ev2) }
+
+  // diverge: (ev1: LessThan[N1, N3#Pred], ev2: LessThan[N3#Pred, N3]): LessThan[N1, N3]
+  // error: (ev1: LessThan[N1, N3#Pred]):LessThan[N1, N3]
+  implicit def `prove-L-Trans`[N1 <: Num: Repr, N3 <: Num: Repr](implicit ev1: LessThan[N1, N3]): LessThan[N1, S[N3]] =
+    `L-Trans`(ev1, `L-Succ`[N3])
 }
 
 object CompareNat2 {
