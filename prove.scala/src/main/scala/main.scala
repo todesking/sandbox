@@ -18,8 +18,8 @@ object Main {
         prove[Times[_0, _2, _0]],
         prove[Times[_1, _0, _0]],
         prove[Times[_1, _1, _1]],
-        prove[Times[_2, _0, _0]](`T-Succ`(`T-Succ`(prove[Times[_0, _0, _0]], prove[Plus[_0, _0, _0]]), prove[Plus[_0, _0, _0]])),
-        prove[Times[_2, _1, _2]](`T-Succ`(`T-Succ`(prove[Times[_0, _1, _0]], prove[Plus[_1, _0, _1]]), prove[Plus[_1, _1, _2]]))
+        prove[Times[_2, _0, _0]],
+        prove[Times[_2, _1, _2]]
       )
     }
     describe("CompareNat1") {
@@ -139,9 +139,22 @@ object Repr {
 
 
 object GenericNum {
-  trait Num
-  trait S[A <: Num] extends Num
-  trait Z extends Num
+  trait Num {
+    type Minus[A <: Num] <: Num
+    type IfZero[T, Then <: T, Else <: T] <: T
+    type Pred <: Num
+  }
+  trait S[A <: Num] extends Num {
+    type Minus[B <: Num] = B#IfZero[Num, S[A], A#Minus[B#Pred]]
+    type IfZero[T, Then <: T, Else <: T] = Else
+    type Pred = A
+  }
+  trait Z extends Num {
+    type Minus[B <: Num] = B#IfZero[Num, Z, Nothing]
+    type IfZero[T, Then <: T, Else <: T] = Then
+  }
+
+  type -[A <: Num, B <: Num] = A#Minus[B]
 
   object Num {
     class IntRepr[A <: Num](val value: Int) extends Repr[A](value.toString)
@@ -179,10 +192,10 @@ object Nat {
     new Times[Z, N, Z] { override def provenBy = "T-Zero" }
 
   def `T-Succ`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num, N4 <: Num: Repr](ev1: Times[N1, N2, N3], ev2: Plus[N2, N3, N4]): Times[S[N1], N2, N4] =
-    `T-Succ`[N1, N2, N3, N4](implicitly[Repr[N1]], implicitly[Repr[N2]], implicitly[Repr[N4]], ev1, ev2)
-
-  implicit def `T-Succ`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num, N4 <: Num: Repr](implicit ev1: Times[N1, N2, N3], ev2: Plus[N2, N3, N4]): Times[S[N1], N2, N4] =
     new Times[S[N1], N2, N4] { override def provenBy = "T-Succ"; override def assumptions = Seq(ev1, ev2) }
+
+  implicit def `prove-T-Succ`[N1 <: Num: Repr, N2 <: Num: Repr, N4 <: Num: Repr](implicit ev1: Times[N1, N2, N4 - N2], ev2: Plus[N2, N4 - N2, N4]): Times[S[N1], N2, N4] =
+    `T-Succ`(ev1, ev2)
 }
 
 object CompareNat {
