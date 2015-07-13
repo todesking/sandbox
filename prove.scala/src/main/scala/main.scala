@@ -1,3 +1,6 @@
+import scala.language.higherKinds
+import scala.language.implicitConversions
+
 object Main {
   def describe(name: String)(proofs: =>Seq[Proof]): Unit = {
     println(s"=== ${name} ===")
@@ -36,8 +39,8 @@ object Main {
       import CompareNat._
       import CompareNat2._
       Seq(
-        prove[LessThan[_2, _3]](`L-SuccSucc`(`L-SuccSucc`(`L-Zero`[_0]))),
-        prove[LessThan[_2, _5]](`L-SuccSucc`(`L-SuccSucc`(`L-Zero`[_2])))
+        prove[LessThan[_2, _3]],
+        prove[LessThan[_2, _5]]
       )
     }
     describe("CompareNat3") {
@@ -46,7 +49,7 @@ object Main {
       import CompareNat3._
       Seq(
         prove[LessThan[_2, _3]],
-        prove[LessThan[_2, _5]](`L-SuccR`(`L-SuccR`(prove[LessThan[_2, _3]])))
+        prove[LessThan[_2, _5]]
       )
     }
     describe("EvalNatExp") {
@@ -231,7 +234,7 @@ object CompareNat2 {
 
   implicit def `L-Zero`[N <: Num: Repr]: LessThan[Z, S[N]] =
     new LessThan[Z, S[N]] { override def provenBy = "L-Zero" }
-  implicit def `L-SuccSucc`[N1 <: Num: Repr, N2 <: Num: Repr](ev: LessThan[N1, N2]): LessThan[S[N1], S[N2]] =
+  implicit def `L-SuccSucc`[N1 <: Num: Repr, N2 <: Num: Repr](implicit ev: LessThan[N1, N2]): LessThan[S[N1], S[N2]] =
     new LessThan[S[N1], S[N2]] { override def provenBy = "L-SuccSucc"; override def assumptions = Seq(ev) }
 }
 
@@ -241,7 +244,7 @@ object CompareNat3 {
 
   implicit def `L-Succ`[N <: Num: Repr]: LessThan[N, S[N]] =
     new LessThan[N, S[N]] { override def provenBy = "L-Succ" }
-  implicit def `L-SuccR`[N1 <: Num: Repr, N2 <: Num: Repr](ev: LessThan[N1, N2]): LessThan[N1, S[N2]] =
+  implicit def `L-SuccR`[N1 <: Num: Repr, N2 <: Num: Repr](implicit ev: LessThan[N1, N2]): LessThan[N1, S[N2]] =
     new LessThan[N1, S[N2]] { override def provenBy = "L-SuccR"; override def assumptions = Seq(ev) }
 }
 
