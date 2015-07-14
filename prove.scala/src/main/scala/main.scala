@@ -57,64 +57,13 @@ object Main {
       import Nat._
       import EvalNatExp._
       Seq(
-        prove[(E_0 + E_2) ⇓ E_2](
-          `E-Plus`(
-            prove[E_0 ⇓ E_0],
-            prove[E_2 ⇓ E_2],
-            prove[Plus[_0, _2, _2]])),
-        prove[(E_2 + E_0) ⇓ E_2](
-          `E-Plus`(
-            prove[E_2 ⇓ E_2],
-            prove[E_0 ⇓ E_0],
-            prove[Plus[_2, _0, _2]])),
-        prove[(E_1 + E_1 + E_1) ⇓ E_3](
-          `E-Plus`(
-            `E-Plus`(
-              prove[E_1 ⇓ E_1],
-              prove[E_1 ⇓ E_1],
-              prove[Plus[_1, _1, _2]]),
-            prove[E_1 ⇓ E_1],
-            prove[Plus[_2, _1, _3]]
-          )
-        ),
-        prove[(E_3 + (E_2 * E_1)) ⇓ E_5](
-          `E-Plus`(
-            `E-Const`[_3],
-            `E-Times`(
-              `E-Const`[_2],
-              `E-Const`[_1],
-              `T-Succ`(
-                `T-Succ`(
-                  `T-Zero`[_1],
-                  prove[Plus[_1, _0, _1]]),
-                prove[Plus[_1, _1, _2]])),
-            prove[Plus[_3, _2, _5]])
-        ),
-        prove[((E_2 + E_2) * E_0) ⇓ E_0](
-          `E-Times`(
-            `E-Plus`(
-              `E-Const`[_2],
-              `E-Const`[_2],
-              prove[Plus[_2, _2, _4]]),
-            `E-Const`[_0],
-            `T-Succ`(
-              `T-Succ`(
-                `T-Succ`(
-                  `T-Succ`(
-                    `T-Zero`[_0],
-                    prove[Plus[_0, _0, _0]]),
-                  prove[Plus[_0, _0, _0]]),
-                prove[Plus[_0, _0, _0]]),
-              prove[Plus[_0, _0, _0]])
-          )
-        ),
-        prove[(E_0 * (E_2 + E_2)) ⇓ E_0](
-          `E-Times`(
-            `E-Const`[_0],
-            `E-Plus`(`E-Const`[_2], `E-Const`[_2], prove[Plus[_2, _2, _4]]),
-            `T-Zero`[_4]
-          )
-        )
+        prove[E_0 ⇓ E_0],
+        prove[(E_0 + E_2) ⇓ E_2],
+        prove[(E_2 + E_0) ⇓ E_2],
+        prove[(E_1 + E_1 + E_1) ⇓ E_3],
+        prove[(E_3 + (E_2 * E_1)) ⇓ E_5],
+        prove[((E_2 + E_2) * E_0) ⇓ E_0],
+        prove[(E_0 * (E_2 + E_2)) ⇓ E_0]
       )
     }
   }
@@ -144,29 +93,37 @@ object Repr {
 object GenericNum {
   trait Num {
     type Minus[A <: Num] <: Num
+    type Plus[A <: Num] <: Num
+    type Times[A <: Num] <: Num
     type IfZero[T, Then <: T, Else <: T] <: T
     type Pred <: Num
     type Succ <: Num
   }
   trait S[A <: Num] extends Num {
-    type Minus[B <: Num] = B#IfZero[Num, S[A], A#Minus[B#Pred]]
-    type IfZero[T, Then <: T, Else <: T] = Else
-    type Pred = A
-    type Succ = S[S[A]]
+    override type Minus[B <: Num] = B#IfZero[Num, S[A], A#Minus[B#Pred]]
+    override type Plus[B <: Num] = A#Plus[S[B]]
+    override type Times[B <: Num] = B#Plus[A#Times[B]]
+    override type IfZero[T, Then <: T, Else <: T] = Else
+    override type Pred = A
+    override type Succ = S[S[A]]
   }
   trait Z extends Num {
-    type Minus[B <: Num] = B#IfZero[Num, Z, Nothing]
-    type IfZero[T, Then <: T, Else <: T] = Then
-    type Succ = S[Z]
+    override type Minus[B <: Num] = B#IfZero[Num, Z, Nothing]
+    override type Times[A <: Num] = Z
+    override type Plus[B <: Num] = B
+    override type IfZero[T, Then <: T, Else <: T] = Then
+    override type Succ = S[Z]
   }
 
-  type -[A <: Num, B <: Num] = A#Minus[B]
+  object Operators {
+    type -[A <: Num, B <: Num] = A#Minus[B]
+    type +[A <: Num, B <: Num] = A#Plus[B]
+  }
 
   object Num {
-    class IntRepr[A <: Num](val value: Int) extends Repr[A](value.toString)
-    implicit val reprZ: Repr[Z] = new IntRepr(0)
-    implicit def repr[N <: Num: Repr]: IntRepr[S[N]] =
-      new IntRepr(implicitly[Repr[N]].asInstanceOf[IntRepr[N]].value + 1)
+    implicit val reprZ: Repr[Z] = new Repr("0")
+    implicit def repr[N <: Num: Repr]: Repr[S[N]] =
+      new Repr[S[N]]((implicitly[Repr[N]].toString.toInt + 1).toString)
   }
 
   type _0 = Z
@@ -179,6 +136,7 @@ object GenericNum {
 
 object Nat {
   import GenericNum._
+  import GenericNum.Operators._
   import Repr.repr
 
   abstract class Plus[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr] extends Proof {
@@ -253,7 +211,12 @@ object EvalNatExp {
   import Nat._
   import Repr.repr
 
-  trait Exp
+  trait Exp {
+    type Self <: Exp
+    type Result <: Exp
+    type ToNum <: Num
+    type ToEval = Eval[Self, Result]
+  }
   object Exp {
     implicit def reprN[A <: Num: Repr]: Repr[ENum[A]] = new Repr(repr[A].toString)
 
@@ -264,9 +227,19 @@ object EvalNatExp {
       new Repr(s"(${repr[E1]} + ${repr[E2]})")
   }
 
-  abstract class ENum[A <: Num: Repr] extends Exp
-  abstract class +[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp
-  abstract class *[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp
+  abstract class ENum[A <: Num: Repr] extends Exp {
+    override type Self = ENum[A]
+    override type ToNum = A
+    override type Result = ENum[A]
+  }
+  abstract class +[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp {
+    override type Self = E1 + E2
+    override type Result = ENum[E1#Result#ToNum#Plus[E2#Result#ToNum]]
+  }
+  abstract class *[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Exp {
+    override type Self = E1 * E2
+    override type Result = ENum[E1#Result#ToNum#Times[E2#Result#ToNum]]
+  }
 
   type E_0 = ENum[_0]
   type E_1 = ENum[_1]
@@ -294,6 +267,7 @@ object EvalNatExp {
       override def provenBy = "E-Plus"
       override def assumptions = Seq(ev1, ev2, ev3)
     }
+
   def `E-Times`[
     E1 <: Exp: Repr, N1 <: Num: Repr,
     E2 <: Exp: Repr, N2 <: Num: Repr,
@@ -305,4 +279,30 @@ object EvalNatExp {
       override def provenBy = "E-Times"
       override def assumptions = Seq(ev1, ev2, ev3)
     }
+
+  // : (E1 + E2) ⇓ (E1 + E2)#Result だと探索に失敗する
+  implicit def `prove-E-Plus`[E1 <: Exp: Repr, E2 <: Exp: Repr, E3 <: Exp: Repr](
+    implicit
+    ev1: E1 ⇓ ENum[E1#Result#ToNum],
+    ev2: E2 ⇓ ENum[E2#Result#ToNum],
+    ev3: Plus[E1#Result#ToNum, E2#Result#ToNum, E1#Result#ToNum#Plus[E2#Result#ToNum]],
+    reprN1: Repr[E1#Result#ToNum],
+    reprN2: Repr[E2#Result#ToNum],
+    reprN3: Repr[E1#Result#ToNum#Plus[E2#Result#ToNum]],
+    eq: (E1 + E2)#ToEval =:= ((E1 + E2) ⇓ E3)
+  ): (E1 + E2) ⇓ E3 =
+    eq(`E-Plus`(ev1, ev2, ev3))
+
+  implicit def `prove-E-Times`[E1 <: Exp: Repr, E2 <: Exp: Repr, E3 <: Exp: Repr](
+    implicit
+    ev1: E1 ⇓ ENum[E1#Result#ToNum],
+    ev2: E2 ⇓ ENum[E2#Result#ToNum],
+    ev3: Times[E1#Result#ToNum, E2#Result#ToNum, E1#Result#ToNum#Times[E2#Result#ToNum]],
+    reprN1: Repr[E1#Result#ToNum],
+    reprN2: Repr[E2#Result#ToNum],
+    reprN3: Repr[E1#Result#ToNum#Times[E2#Result#ToNum]],
+    eq: (E1 * E2)#ToEval =:= ((E1 * E2) ⇓ E3)
+  ): (E1 * E2) ⇓ E3 =
+    eq(`E-Times`(ev1, ev2, ev3))
+
 }
