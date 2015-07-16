@@ -54,6 +54,7 @@ object Main {
     }
     describe("EvalNatExp") {
       import GenericNum._
+      import GenericExp._
       import Nat._
       import EvalNatExp._
       Seq(
@@ -206,16 +207,22 @@ object CompareNat3 {
     new LessThan[N1, S[N2]] { override def provenBy = "L-SuccR"; override def assumptions = Seq(ev) }
 }
 
-object EvalNatExp {
+object GenericExp {
   import GenericNum._
   import Nat._
   import Repr.repr
+
+  type E_0 = ENum[_0]
+  type E_1 = ENum[_1]
+  type E_2 = ENum[_2]
+  type E_3 = ENum[_3]
+  type E_4 = ENum[_4]
+  type E_5 = ENum[_5]
 
   trait Exp {
     type Self <: Exp
     type Result <: Exp
     type ToNum <: Num
-    type ToEval = Eval[Self, Result]
   }
   object Exp {
     implicit def reprN[A <: Num: Repr]: Repr[ENum[A]] = new Repr(repr[A].toString)
@@ -240,18 +247,19 @@ object EvalNatExp {
     override type Self = E1 * E2
     override type Result = ENum[E1#Result#ToNum#Times[E2#Result#ToNum]]
   }
+}
 
-  type E_0 = ENum[_0]
-  type E_1 = ENum[_1]
-  type E_2 = ENum[_2]
-  type E_3 = ENum[_3]
-  type E_4 = ENum[_4]
-  type E_5 = ENum[_5]
+object EvalNatExp {
+  import GenericNum._
+  import GenericExp._
+  import Nat._
+  import Repr.repr
 
   abstract class Eval[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Proof {
     override def str = s"${repr[E1]} ⇓ ${repr[E2]}"
   }
   type ⇓[A <: Exp, B <: Exp] = Eval[A, B]
+  type ToEval[A <: Exp] = Eval[A, A#Result]
 
   implicit def `E-Const`[N <: Num: Repr]: ENum[N] ⇓ ENum[N] =
     new Eval[ENum[N], ENum[N]] { override def provenBy = "E-Const" }
@@ -289,7 +297,7 @@ object EvalNatExp {
     reprN1: Repr[E1#Result#ToNum],
     reprN2: Repr[E2#Result#ToNum],
     reprN3: Repr[E1#Result#ToNum#Plus[E2#Result#ToNum]],
-    eq: (E1 + E2)#ToEval =:= ((E1 + E2) ⇓ E3)
+    eq: ToEval[E1 + E2] =:= ((E1 + E2) ⇓ E3)
   ): (E1 + E2) ⇓ E3 =
     eq(`E-Plus`(ev1, ev2, ev3))
 
@@ -301,7 +309,7 @@ object EvalNatExp {
     reprN1: Repr[E1#Result#ToNum],
     reprN2: Repr[E2#Result#ToNum],
     reprN3: Repr[E1#Result#ToNum#Times[E2#Result#ToNum]],
-    eq: (E1 * E2)#ToEval =:= ((E1 * E2) ⇓ E3)
+    eq: ToEval[E1 * E2] =:= ((E1 * E2) ⇓ E3)
   ): (E1 * E2) ⇓ E3 =
     eq(`E-Times`(ev1, ev2, ev3))
 
