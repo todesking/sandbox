@@ -55,7 +55,6 @@ object Main {
     describe("EvalNatExp") {
       import GenericNum._
       import GenericExp._
-      import Nat._
       import EvalNatExp._
       Seq(
         prove[E_0 ⇓ E_0],
@@ -65,6 +64,34 @@ object Main {
         prove[(E_3 + (E_2 * E_1)) ⇓ E_5],
         prove[((E_2 + E_2) * E_0) ⇓ E_0],
         prove[(E_0 * (E_2 + E_2)) ⇓ E_0]
+      )
+    }
+    describe("ReduceNatExp") {
+      import GenericNum._
+      import GenericExp._
+      import ReduceNatExp._
+      Seq(
+        prove[(E_0 + E_2) -*-> E_2](`MR-One`(`R-Plus`(prove[Plus[_0, _2, _2]]))),
+        prove[((E_1 * E_1) + (E_1 * E_1)) `-d->` (E_1 + (E_1 * E_1))](
+          `DR-PlusL`(`DR-Times`(prove[Times[_1, _1, _1]]))),
+        prove[((E_1 * E_1) + (E_1 * E_1)) `--->` ((E_1 * E_1) + E_1)](
+          `R-PlusR`(`R-Times`(prove[Times[_1, _1, _1]]))),
+        prove[((E_1 * E_1) + (E_1 * E_1)) `-*->` E_2](
+          `MR-Multi`(
+            `MR-Multi`(
+              prove[((E_1 * E_1) + (E_1 * E_1)) `-*->` (E_1 + (E_1 * E_1))](
+                `MR-One`(
+                  prove[((E_1 * E_1) + (E_1 * E_1)) ---> (E_1 + (E_1 * E_1))](
+                    `R-PlusL`[(E_1 * E_1), (E_1 * E_1), E_1](`R-Times`(prove[Times[_1, _1, _1]]))))
+              ),
+              prove[(E_1 + (E_1 * E_1)) `-*->` (E_1 + E_1)](
+                `MR-One`(`R-PlusR`[E_1, E_1 * E_1, E_1](`R-Times`(prove[Times[_1, _1, _1]])))
+              )
+            ),
+            prove[(E_1 + E_1) -*-> E_2](
+              `MR-One`(`R-Plus`(prove[Plus[_1, _1, _2]])))
+          )
+        )
       )
     }
   }
@@ -135,7 +162,8 @@ object GenericNum {
   type _5 = S[_4]
 }
 
-object Nat {
+object Nat extends Nat
+trait Nat {
   import GenericNum._
   import GenericNum.Operators._
   import Repr.repr
@@ -249,10 +277,9 @@ object GenericExp {
   }
 }
 
-object EvalNatExp {
+object EvalNatExp extends Nat {
   import GenericNum._
   import GenericExp._
-  import Nat._
   import Repr.repr
 
   abstract class Eval[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Proof {
@@ -313,4 +340,68 @@ object EvalNatExp {
   ): (E1 * E2) ⇓ E3 =
     eq(`E-Times`(ev1, ev2, ev3))
 
+}
+
+object ReduceNatExp extends Nat {
+  import Nat._
+  import GenericNum._
+  import GenericExp._
+  import Repr.repr
+
+  abstract class -*->[A <: Exp: Repr, B <: Exp: Repr] extends Proof {
+    override def str = s"${repr[A]} -*-> ${repr[B]}"
+  }
+
+  abstract class --->[A <: Exp: Repr, B <: Exp: Repr] extends Proof {
+    override def str = s"${repr[A]} ---> ${repr[B]}"
+  }
+
+  abstract class `-d->`[A <: Exp: Repr, B <: Exp: Repr] extends Proof {
+    override def str = s"${repr[A]} -d-> ${repr[B]}"
+  }
+
+  def `R-Plus`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](ev1: Plus[N1, N2, N3]): (ENum[N1] + ENum[N2]) ---> ENum[N3] =
+    new --->[ENum[N1] + ENum[N2], ENum[N3]] { override def provenBy = "R-Plus"; override def assumptions = Seq(ev1) }
+
+  def `R-Times`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](ev1: Times[N1, N2, N3]): (ENum[N1] * ENum[N2]) ---> ENum[N3] =
+    new --->[ENum[N1] * ENum[N2], ENum[N3]] { override def provenBy = "R-Times"; override def assumptions = Seq(ev1) }
+
+  def `R-PlusL`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E1'` <: Exp: Repr](ev1: E1 ---> `E1'`): (E1 + E2) ---> (`E1'` + E2) =
+    new --->[E1 + E2, `E1'` + E2] { override def provenBy = "R-PlusL"; override def assumptions = Seq(ev1) }
+
+  def `R-PlusR`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E2'` <: Exp: Repr](ev1: E2 ---> `E2'`): (E1 + E2) ---> (E1 + `E2'`) =
+    new --->[E1 + E2, E1 + `E2'`] { override def provenBy = "R-PlusR"; override def assumptions = Seq(ev1) }
+
+  def `R-TimesL`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E1'` <: Exp: Repr](ev1: E1 ---> `E1'`): (E1 * E2) ---> (`E1'` * E2) =
+    new --->[E1 * E2, `E1'` * E2] { override def provenBy = "R-TimesL"; override def assumptions = Seq(ev1) }
+
+  def `R-TimesR`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E2'` <: Exp: Repr](ev1: E2 ---> `E2'`): (E1 * E2) ---> (E1 * `E2'`) =
+    new --->[E1 * E2, E1 * `E2'`] { override def provenBy = "R-TimesR"; override def assumptions = Seq(ev1) }
+
+  def `DR-Plus`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](ev1: Plus[N1, N2, N3]): (ENum[N1] + ENum[N2]) `-d->` ENum[N3] =
+    new `-d->`[ENum[N1] + ENum[N2], ENum[N3]] { override def provenBy = "DR-Plus"; override def assumptions = Seq(ev1) }
+
+  def `DR-Times`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](ev1: Times[N1, N2, N3]): (ENum[N1] * ENum[N2]) `-d->` ENum[N3] =
+    new `-d->`[ENum[N1] * ENum[N2], ENum[N3]] { override def provenBy = "DR-Times"; override def assumptions = Seq(ev1) }
+
+  def `DR-PlusL`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E1'` <: Exp: Repr](ev1: E1 `-d->` `E1'`): (E1 + E2) `-d->` (`E1'` + E2) =
+    new `-d->`[E1 + E2, `E1'` + E2] { override def provenBy = "DR-PlusL"; override def assumptions = Seq(ev1) }
+
+  def `DR-PlusR`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E2'` <: Exp: Repr](ev1: E2 `-d->` `E2'`): (E1 + E2) `-d->` (E1 + `E2'`) =
+    new `-d->`[E1 + E2, E1 + `E2'`] { override def provenBy = "DR-PlusR"; override def assumptions = Seq(ev1) }
+
+  def `DR-TimesL`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E1'` <: Exp: Repr](ev1: E1 `-d->` `E1'`): (E1 * E2) `-d->` (`E1'` * E2) =
+    new `-d->`[E1 * E2, `E1'` * E2] { override def provenBy = "DR-TimesL"; override def assumptions = Seq(ev1) }
+
+  def `DR-TimesR`[E1 <: Exp: Repr, E2 <: Exp: Repr, `E2'` <: Exp: Repr](ev1: E2 `-d->` `E2'`): (E1 * E2) `-d->` (E1 * `E2'`) =
+    new `-d->`[E1 * E2, E1 * `E2'`] { override def provenBy = "DR-TimesR"; override def assumptions = Seq(ev1) }
+
+  def `MR-Zero`[E <: Exp: Repr]: E -*-> E =
+    new -*->[E, E] { override def provenBy = "MR-Zero" }
+
+  def `MR-Multi`[E0 <: Exp: Repr, E1 <: Exp: Repr, E2 <: Exp: Repr](ev1: E0 -*-> E1, ev2: E1 -*-> E2): E0 -*-> E2 =
+    new -*->[E0, E2] { override def provenBy = "MR-Multi"; override def assumptions = Seq(ev1, ev2) }
+
+  def `MR-One`[E0 <: Exp: Repr, E1 <: Exp: Repr](ev1: E0 ---> E1) : E0 -*-> E1 =
+    new -*->[E0, E1] { override def provenBy = "MR-One"; override def assumptions = Seq(ev1) }
 }
