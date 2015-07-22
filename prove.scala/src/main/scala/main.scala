@@ -10,7 +10,6 @@ object Main {
   def main(args: Array[String]): Unit = {
     import Proof.prove
     describe("Nat") {
-      import GenericNum._
       import Nat._
       Seq(
         prove[Plus[_0, _0, _0]],
@@ -26,8 +25,6 @@ object Main {
       )
     }
     describe("CompareNat1") {
-      import GenericNum._
-      import CompareNat._
       import CompareNat1._
       Seq(
         prove[LessThan[_2, _3]],
@@ -35,8 +32,6 @@ object Main {
       )
     }
     describe("CompareNat2") {
-      import GenericNum._
-      import CompareNat._
       import CompareNat2._
       Seq(
         prove[LessThan[_2, _3]],
@@ -44,8 +39,6 @@ object Main {
       )
     }
     describe("CompareNat3") {
-      import GenericNum._
-      import CompareNat._
       import CompareNat3._
       Seq(
         prove[LessThan[_2, _3]],
@@ -53,8 +46,6 @@ object Main {
       )
     }
     describe("EvalNatExp") {
-      import GenericNum._
-      import GenericExp._
       import EvalNatExp._
       Seq(
         prove[E_0 ⇓ E_0],
@@ -67,8 +58,6 @@ object Main {
       )
     }
     describe("ReduceNatExp") {
-      import GenericNum._
-      import GenericExp._
       import ReduceNatExp._
       Seq(
         prove[(E_0 + E_2) -*-> E_2],
@@ -113,7 +102,7 @@ object Repr {
 }
 
 
-object GenericNum {
+trait GenericNum {
   trait Num {
     type Minus[A <: Num] <: Num
     type Plus[A <: Num] <: Num
@@ -138,7 +127,7 @@ object GenericNum {
     override type Succ = S[Z]
   }
 
-  object Operators {
+  object NumOperators {
     type -[A <: Num, B <: Num] = A#Minus[B]
     type +[A <: Num, B <: Num] = A#Plus[B]
   }
@@ -156,11 +145,15 @@ object GenericNum {
   type _4 = S[_3]
   type _5 = S[_4]
 }
+trait GenericBool {
+  trait Bool
+  trait True extends Bool
+  trait False extends Bool
+}
 
 object Nat extends Nat
-trait Nat {
-  import GenericNum._
-  import GenericNum.Operators._
+trait Nat extends GenericNum {
+  import NumOperators._
   import Repr.repr
 
   abstract class Plus[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr] extends Proof {
@@ -186,18 +179,14 @@ trait Nat {
     `T-Succ`(ev1, ev2)
 }
 
-object CompareNat {
-  import GenericNum._
+trait GenericCompareNat extends GenericNum {
   import Repr.repr
   abstract class LessThan[N1 <: Num: Repr, N2 <: Num: Repr] extends Proof {
     override def str = s"${repr[N1]} is less than ${repr[N2]}"
   }
 }
 
-object CompareNat1 {
-  import GenericNum._
-  import CompareNat._
-
+object CompareNat1 extends GenericCompareNat {
   implicit def `L-Succ`[N1 <: Num: Repr]: LessThan[N1, S[N1]] =
     new LessThan[N1, S[N1]] { override def provenBy = "L-Succ" }
 
@@ -210,29 +199,21 @@ object CompareNat1 {
     `L-Trans`(ev1, `L-Succ`[N3])
 }
 
-object CompareNat2 {
-  import GenericNum._
-  import CompareNat._
-
+object CompareNat2 extends GenericCompareNat {
   implicit def `L-Zero`[N <: Num: Repr]: LessThan[Z, S[N]] =
     new LessThan[Z, S[N]] { override def provenBy = "L-Zero" }
   implicit def `L-SuccSucc`[N1 <: Num: Repr, N2 <: Num: Repr](implicit ev: LessThan[N1, N2]): LessThan[S[N1], S[N2]] =
     new LessThan[S[N1], S[N2]] { override def provenBy = "L-SuccSucc"; override def assumptions = Seq(ev) }
 }
 
-object CompareNat3 {
-  import GenericNum._
-  import CompareNat._
-
+object CompareNat3 extends GenericCompareNat {
   implicit def `L-Succ`[N <: Num: Repr]: LessThan[N, S[N]] =
     new LessThan[N, S[N]] { override def provenBy = "L-Succ" }
   implicit def `L-SuccR`[N1 <: Num: Repr, N2 <: Num: Repr](implicit ev: LessThan[N1, N2]): LessThan[N1, S[N2]] =
     new LessThan[N1, S[N2]] { override def provenBy = "L-SuccR"; override def assumptions = Seq(ev) }
 }
 
-object GenericExp {
-  import GenericNum._
-  import Nat._
+trait GenericExp extends GenericNum {
   import Repr.repr
 
   type E_0 = ENum[_0]
@@ -272,9 +253,7 @@ object GenericExp {
   }
 }
 
-object EvalNatExp extends Nat {
-  import GenericNum._
-  import GenericExp._
+object EvalNatExp extends Nat with GenericExp {
   import Repr.repr
 
   abstract class Eval[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Proof {
@@ -337,10 +316,7 @@ object EvalNatExp extends Nat {
 
 }
 
-object ReduceNatExp extends Nat {
-  import Nat._
-  import GenericNum._
-  import GenericExp._
+object ReduceNatExp extends Nat with GenericExp {
   import Repr.repr
 
   abstract class -*->[A <: Exp: Repr, B <: Exp: Repr] extends Proof {
@@ -405,4 +381,5 @@ object ReduceNatExp extends Nat {
     new -*->[E0, E1] { override def provenBy = "MR-One"; override def assumptions = Seq(ev1) }
 }
 
-
+object EvalML1 extends Nat with GenericBool {
+}
