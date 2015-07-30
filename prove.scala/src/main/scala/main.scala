@@ -78,6 +78,17 @@ object Main {
         )
       )
     }
+    describe("EvalML1") {
+      import EvalML1._
+      Seq(
+        prove[E_0 ⇓ E_0],
+        prove[ETrue ⇓ ETrue],
+        prove[If[ETrue, E_0, E_1] ⇓ E_0],
+        prove[If[EFalse, E_0, E_1] ⇓ E_1],
+        prove[(E_0 + E_0) ⇓ E_0],
+        prove[((E_2 * E_3) - E_1) ⇓ E_5]
+      )
+    }
   }
 }
 
@@ -149,6 +160,10 @@ trait GenericBool {
   trait Bool
   trait True extends Bool
   trait False extends Bool
+  object Bool {
+    implicit val reprTrue: Repr[True] = new Repr("true")
+    implicit val reprFalse: Repr[False] = new Repr("false")
+  }
 }
 
 object Nat extends Nat
@@ -179,6 +194,21 @@ trait Nat extends GenericNum {
     `T-Succ`(ev1, ev2)
 }
 
+trait NatMinus extends Nat {
+  import NumOperators._
+  import Repr.repr
+
+  abstract class Minus[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr] extends Proof {
+    override def str = s"${repr[N1]} minus ${repr[N2]} is ${repr[N3]}"
+  }
+
+  implicit def `M-Zero`[N1 <: Num: Repr]: Minus[N1, Z, N1] =
+    new Minus[N1, Z, N1] { override def provenBy = "M-Zero" }
+
+  implicit def `M-Succ`[N1 <: Num: Repr, N2 <: Num: Repr, N3 <: Num: Repr](implicit ev1: Minus[N1, N2, S[N3]]): Minus[N1, S[N2], N3] =
+    new Minus[N1, S[N2], N3] { override def provenBy = "M-Succ"; override def assumptions = Seq(ev1) }
+}
+
 trait GenericCompareNat extends GenericNum {
   import Repr.repr
   abstract class LessThan[N1 <: Num: Repr, N2 <: Num: Repr] extends Proof {
@@ -186,7 +216,8 @@ trait GenericCompareNat extends GenericNum {
   }
 }
 
-object CompareNat1 extends GenericCompareNat {
+object CompareNat1 extends CompareNat1
+trait CompareNat1 extends GenericCompareNat {
   implicit def `L-Succ`[N1 <: Num: Repr]: LessThan[N1, S[N1]] =
     new LessThan[N1, S[N1]] { override def provenBy = "L-Succ" }
 
@@ -381,5 +412,124 @@ object ReduceNatExp extends Nat with GenericExp {
     new -*->[E0, E1] { override def provenBy = "MR-One"; override def assumptions = Seq(ev1) }
 }
 
-object EvalML1 extends Nat with GenericBool {
+object EvalML1 extends NatMinus with CompareNat1 with GenericBool {
+  import Repr.repr
+
+  trait Exp {
+    type EvalI = int[EvalNum]
+    type EvalNum <: Num
+    type ToNum = EvalNum
+  }
+
+  trait Value extends Exp
+  trait int[N <: Num] extends Value {
+    override type EvalNum = N
+  }
+  trait bool[B <: Bool] extends Value {
+  }
+
+  trait Op[P <: Prim, E1 <: Exp, E2 <: Exp] extends Exp {
+  }
+  trait Prim {
+    type Apply[E1 <: Exp, E2 <: Exp] <: Exp
+  }
+  trait Prim_+ extends Prim {
+    override type Apply[E1 <: Exp, E2 <: Exp] = int[E1#EvalNum#Plus[E2#EvalNum]]
+  }
+  trait Prim_- extends Prim
+  trait Prim_* extends Prim
+  trait Prim_< extends Prim
+  type +[A <: Exp, B <: Exp] = Op[Prim_+, A, B]
+  type -[A <: Exp, B <: Exp] = Op[Prim_-, A, B]
+  type *[A <: Exp, B <: Exp] = Op[Prim_*, A, B]
+  type <[A <: Exp, B <: Exp] = Op[Prim_<, A, B]
+
+  trait If[E1 <: Exp, E2 <: Exp, E3 <: Exp] extends Exp
+
+  type ETrue = bool[True]
+  type EFalse = bool[False]
+
+  object Exp {
+    implicit def reprInt[N <: Num: Repr]: Repr[int[N]] = new Repr[int[N]](repr[N].toString)
+    implicit def reprBool[B <: Bool: Repr]: Repr[bool[B]] = new Repr[bool[B]](repr[B].toString)
+    implicit def reprIf[E1 <: Exp: Repr, E2 <: Exp: Repr, E3 <: Exp: Repr]: Repr[If[E1, E2, E3]] =
+      new Repr(s"if (${repr[E1]}) then (${repr[E2]}) else (${repr[E3]})")
+    implicit def reprOp[P <: Prim: Repr, E1 <: Exp: Repr, E2 <: Exp: Repr]: Repr[Op[P, E1, E2]] =
+      new Repr(s"(${repr[E1]}) ${repr[P]} (${repr[E2]})")
+  }
+  object Prim {
+    implicit val reprPrim_+ : Repr[Prim_+] = new Repr("+")
+    implicit val reprPrim_- : Repr[Prim_-] = new Repr("-")
+    implicit val reprPrim_* : Repr[Prim_*] = new Repr("*")
+    implicit val reprPrim_< : Repr[Prim_<] = new Repr("<")
+  }
+
+  abstract class Eval[E1 <: Exp: Repr, E2 <: Exp: Repr] extends Proof {
+    override def str = s"${repr[E1]} ⇓ ${repr[E2]}"
+  }
+  type ⇓[A <: Exp, B <: Exp] = Eval[A, B]
+
+  type E_0 = int[_0]
+  type E_1 = int[_1]
+  type E_2 = int[_2]
+  type E_3 = int[_3]
+  type E_4 = int[_4]
+  type E_5 = int[_5]
+
+  implicit def `E-Int`[I <: int[_]: Repr]: I ⇓ I =
+    new Eval[I, I] { override def provenBy = "E-Int" }
+  implicit def `E-Bool`[B <: bool[_]: Repr]: B ⇓ B =
+    new Eval[B, B] { override def provenBy = "E-Bool" }
+  implicit def `E-IfT`[E1 <: Exp: Repr, E2 <: Exp: Repr, E3 <: Exp: Repr, V <: Value: Repr](implicit ev1: E1 ⇓ ETrue, ev2: E2 ⇓ V): If[E1, E2, E3] ⇓ V =
+    new Eval[If[E1, E2, E3], V] { override def provenBy = "E-IfT"; override def assumptions = Seq(ev1, ev2) }
+  implicit def `E-IfF`[E1 <: Exp: Repr, E2 <: Exp: Repr, E3 <: Exp: Repr, V <: Value: Repr](implicit ev1: E1 ⇓ EFalse, ev2: E3 ⇓ V): If[E1, E2, E3] ⇓ V =
+    new Eval[If[E1, E2, E3], V] { override def provenBy = "E-IfF"; override def assumptions = Seq(ev1, ev2) }
+
+  def `E-Plus`[E1 <: Exp: Repr, N1 <: Num, I1 <: int[N1], E2 <: Exp: Repr, N2 <: Num, I2 <: int[N2], N3 <: Num, I3 <: int[N3]: Repr](
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: Plus[I1#ToNum, I2#ToNum, I3#ToNum]
+  ): (E1 + E2) ⇓ I3 =
+    new Eval[E1 + E2, I3] { override def provenBy = "E-Plus"; override def assumptions = Seq(ev1, ev2, ev3) }
+
+  implicit def `prove-E-Plus`[E1 <: Exp: Repr, E2 <: Exp: Repr, N3 <: Num, I3 <: int[N3]: Repr](
+    implicit
+    ev1: E1 ⇓ E1#EvalI,
+    ev2: E2 ⇓ E2#EvalI,
+    ev3: Plus[E1#EvalI#ToNum, E2#EvalI#ToNum, N3]
+  ): (E1 + E2) ⇓  I3 =
+    `E-Plus`[E1, E1#EvalI#ToNum, int[E1#EvalI#ToNum], E2, E2#EvalI#ToNum, int[E2#EvalI#ToNum], N3, I3](ev1, ev2, ev3)
+
+  def `E-Times`[E1 <: Exp: Repr, I1 <: int[_ <: Num], E2 <: Exp: Repr, I2 <: int[_ <: Num], I3 <: int[_ <: Num]: Repr](
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: Times[I1#ToNum, I2#ToNum, I3#ToNum]
+  ): (E1 * E2) ⇓ I3 =
+    new Eval[E1 * E2, I3] { override def provenBy = "E-Times"; override def assumptions = Seq(ev1, ev2, ev3) }
+  implicit def `E-Minus`[E1 <: Exp: Repr, I1 <: int[_ <: Num], E2 <: Exp: Repr, I2 <: int[_ <: Num], I3 <: int[_ <: Num]: Repr](
+    implicit
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: Minus[I1#ToNum, I2#ToNum, I3#ToNum]
+  ): (E1 - E2) ⇓ I3 =
+    new Eval[E1 - E2, I3] { override def provenBy = "E-Plus"; override def assumptions = Seq(ev1, ev2, ev3) }
+  implicit def `E-LT`[E1 <: Exp: Repr, I1 <: int[_ <: Num], E2 <: Exp: Repr, I2 <: int[_ <: Num]](
+    implicit
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: LessThan[I1#ToNum, I2#ToNum]
+  ): (E1 < E2) ⇓ ETrue =
+    new Eval[E1 < E2, ETrue] { override def provenBy = "E-LT"; override def assumptions = Seq(ev1, ev2, ev3) }
+  def `E-LT-GT`[E1 <: Exp: Repr, I1 <: int[_ <: Num], E2 <: Exp: Repr, I2 <: int[_ <: Num]](
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: LessThan[I2#ToNum, I1#ToNum]
+  ): (E1 < E2) ⇓ EFalse =
+    new Eval[E1 < E2, EFalse] { override def provenBy = "E-LT-GT"; override def assumptions = Seq(ev1, ev2, ev3) }
+  def `E-LT-EQ`[E1 <: Exp: Repr, I1 <: int[_ <: Num], E2 <: Exp: Repr, I2 <: int[_ <: Num]](
+    ev1: E1 ⇓ I1,
+    ev2: E2 ⇓ I2,
+    ev3: I1 =:= I2
+  ): (E1 < E2) ⇓ EFalse =
+    new Eval[E1 < E2, EFalse] { override def provenBy = "E-LT-GT"; override def assumptions = Seq(ev1, ev2) }
 }
