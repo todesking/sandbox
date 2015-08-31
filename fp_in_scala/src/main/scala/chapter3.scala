@@ -82,7 +82,7 @@ object Main {
     }
 
     def foldLeft[A, B](l: List[A], z: B)(f: (A, B) => B): B = l match {
-      case Cons(h, t) => foldRight(t, f(h, z))(f)
+      case Cons(h, t) => foldLeft(t, f(h, z))(f)
       case Nil => z
     }
     { // 3.10
@@ -91,7 +91,9 @@ object Main {
     }
 
     { // 3.11
-      // omit
+      def sum(ints: List[Int]): Int = foldLeft(ints, 0) { _ + _ }
+      def product(l: List[Double]): Double = foldLeft(l, 1.0) { _ * _ }
+      def length(l: List[_]): Int = foldLeft(l, 0) { (_, len) => len + 1 }
     }
 
     def reverse[A](l: List[A]): List[A] =
@@ -104,43 +106,25 @@ object Main {
     { // 3.13
       def foldRight[A, B](l: List[A], z: B)(f: (A, B) => B): B =
         foldLeft(foldLeft(l, Nil: List[A])(Cons(_, _)), z)(f)
+      assert(foldRight(List(1, 2, 3), Nil: List[Int])(Cons(_, _)) == List(1, 2, 3))
     }
 
     { // 3.14
-      // omit
+      def appendR[A](l1: List[A], l2: List[A]): List[A] =
+        foldRight(l1, l2) { (x, a) => Cons(x, a) }
     }
 
     { // 3.15
-      def flatten[A](l: List[List[A]]): List[A] =
-        ???
-    }
+      def append[A](l1: List[A], l2: List[A]): List[A] =
+        foldRight(l1, l2) { (x, a) => Cons(x, a) }
 
-    def fib(n: Int): Int = {
-      def f(n: Int, n1: Int, n2: Int): Int =
-        if(n == 0) n1 + n2
-        else f(n - 1, n2, n1 + n2)
-      n match {
-        case 0 => 0
-        case 1 => 1
-        case _ => f(n - 2, 0, 1)
-      }
+      def flatten[A](l: List[List[A]]): List[A] =
+        foldRight(l, Nil: List[A]) { (a, x) => append(a, x) }
+
+      println(flatten(List(List(1), List(2, 3), List(4))))
+      assert(flatten(List(List(1), List(2, 3), List(4))) == List(1, 2, 3, 4))
     }
-      println(fib(0))
-      println(fib(1))
-      println(fib(2))
-      println(fib(3))
-      println(fib(4))
   }
-    def fib(n: Int): Int = {
-      def f(n: Int, n1: Int, n2: Int): Int =
-        if(n == 0) n1 + n2
-        else f(n - 1, n2, n1 + n2)
-      n match {
-        case 0 => 0
-        case 1 => 1
-        case _ => f(n - 2, 0, 1)
-      }
-    }
 }
 
 sealed abstract class List[+A]
