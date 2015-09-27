@@ -1,2 +1,4 @@
 target
 java.hprof.txt
+.ensime
+.ensime_cache
