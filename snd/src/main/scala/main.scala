@@ -3,18 +3,38 @@ import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
 
+object Foo {
+  def main(args: Array[String]): Unit = {
+    import javax.sound.sampled._
+
+    val format = new AudioFormat(44100, 8, 1, true, true)
+    val line = AudioSystem.getSourceDataLine(format)
+    line.open(format, 44100)
+    line.start()
+
+    val buf = new Array[Byte](44100).map(_ => 127.toByte)
+
+    while (true) {
+      line.write(buf, 0, buf.length)
+    }
+
+    line.drain();
+    line.close();
+  }
+}
+
 trait Simplify[+A, -B] {
-  def build(b: B): A
+  def bloat(b: B): A
 }
 
 object Simplify {
   implicit val evUnit0: Simplify[Unit, Unit] = new Simplify[Unit, Unit] {
-    override def build(u: Unit): Unit = u
+    override def bloat(u: Unit): Unit = u
   }
 
   implicit def evUnitTuple2[A, B](implicit ev1: Simplify[A, Unit], ev2: Simplify[B, Unit]): Simplify[(A, B), Unit] =
     new Simplify[(A, B), Unit] {
-      override def build(u: Unit): (A, B) = (ev1.build(u) -> ev2.build(u))
+      override def bloat(u: Unit): (A, B) = (ev1.bloat(u) -> ev2.bloat(u))
     }
 }
 
@@ -22,7 +42,7 @@ sealed trait SignalFunction[-A, +B] {
   def buildProc(): A => B
 
   def shrink()(implicit ev: Simplify[A, Unit]): SignalFunction[Unit, B] =
-    SignalFunction.const(()).mapsnd { u => ev.build(u) } >>> this
+    SignalFunction.const(()).mapsnd { u => ev.bloat(u) } >>> this
 
   def merge[C, D, E](rhs: SignalFunction[C, D])(f: (B, D) => E): SignalFunction[(A, C), E] =
     (this *** rhs).mapsnd(f.tupled)
@@ -82,29 +102,33 @@ object SignalFunction {
   implicit def sndInt2Double[A](sf: SignalFunction[A, Int]): SignalFunction[A, Double] =
     sf >>> SignalFunction(_.toDouble)
 
-  def apply[A, B](f: A => B): FunctionSF[A, B] =
+  def apply[A, B](f: A => B): SignalFunction[A, B] =
     FunctionSF[A, B](f)
 
-  def stateful[A, B, @specialized(Int, Double) C](init: C)(f: (A, C) => (B, C)): StatefulSF[A, B, C] =
+  def stateful[A, B, @specialized(Int, Long, Double) C](init: C)(f: (A, C) => (B, C)): StatefulSF[A, B, C] =
     StatefulSF(FunctionSF[(A, C), (B, C)](_ match { case (a, c) => f(a, c) }), init)
+
+  def stateOut[A, @specialized(Int, Long, Double) B](init: B)(f: (A, B) => B): StatefulSF[A, B, B] =
+    stateful[A, B, B](init) {
+      case (a, b) =>
+        val b_ = f(a, b)
+        (b_ -> b_)
+    }
 
   val unit: ConstSF[Unit] = ConstSF(())
 
   def const[A](value: A): ConstSF[A] = ConstSF(value)
-}
 
-sealed trait MidiEvent
-case class MidiShortMessage(command: Int, channel: Int, data1: Int, data2: Int) extends MidiEvent
+  def ignore[A]: SignalFunction[A, Unit] =
+    SignalFunction { _ => () }
+}
 
 case class SamplingRate(value: Int) extends AnyVal
 
 object Primitive {
   // NOTE: phase is normalized(0.0 to 1.0)
   def freqToPhase(implicit sr: SamplingRate): SignalFunction[Double, Double] =
-    SignalFunction.stateful[Double, Double, Double](0.0) { (freq, state) =>
-      val phase = (state + freq / sr.value)
-      (phase -> phase)
-    }
+    SignalFunction.stateOut[Double, Double](0.0) { (freq, state) => (state + freq / sr.value) % 1.0 }
 }
 
 object VCO {
@@ -117,30 +141,72 @@ object VCO {
     freqToPhase >>> SignalFunction { phase => math.sin(phase * 2 * math.Pi) }
 }
 
-class World(samplingRate: SamplingRate) {
-  def runUnit[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit simplify: Simplify[A, Unit]): Unit = {
-    val sf = genSF(samplingRate)
-    println(s"Running ${sf}...")
-    run[Unit]((), SignalFunction.unit >>> SignalFunction(simplify.build) >>> sf)
+trait RealtimeEvent
+
+sealed trait MidiEvent extends RealtimeEvent
+case class MidiShortMessageEvent(command: Int, channel: Int, data1: Int, data2: Int) extends MidiEvent
+
+class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
+  private[this] var lastEventTimestamp: Long = System.nanoTime()
+  private[this] var events = scala.collection.immutable.Queue.empty[(RealtimeEvent, Long)]
+
+  def sendEvent(e: RealtimeEvent): Unit = {
+    val ts = math.max(System.nanoTime() + delayNanos, lastEventTimestamp)
+    synchronized {
+      this.events = events.enqueue(e -> ts)
+      this.lastEventTimestamp = ts
+    }
   }
 
-  private[this] def run[A](init: A, sf: SignalFunction[A, Double]): Unit = {
-    val proc = sf.buildProc()
-    val (line, bufSize) = JavaSound.openLine(samplingRate.value, 100)
-    val buffer = new Array[Byte](bufSize)
+  private[this] def pollEvent(t0: Long, samples: Long): Seq[RealtimeEvent] = {
+    return Seq.empty
+    val clockNanos = (samples.toDouble / (samplingRate.value * 1000L * 1000L * 1000L)).toLong
+    val targetNanos = t0 + clockNanos - delayNanos
 
-    while (true) {
-      for (i <- 0 until bufSize) {
-        buffer(i) = (proc(init) * 255 - 128).toByte
+    while (System.nanoTime() < targetNanos)
+      Thread.sleep(0)
+
+    val fired =
+      synchronized {
+        val es = this.events.takeWhile(_._2 <= targetNanos)
+        this.events = this.events.drop(es.size)
+        es
       }
-      line.write(buffer, 0, bufSize)
+    fired.map(_._1)
+  }
+
+  def runRealtime[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit simplify: Simplify[A, Seq[RealtimeEvent]]): Unit =
+    run(SignalFunction(simplify.bloat) >>> genSF(samplingRate))
+
+  def runUnit[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit simplify: Simplify[A, Unit]): Unit =
+    run(SignalFunction.ignore[Seq[RealtimeEvent]] >>> SignalFunction(simplify.bloat) >>> genSF(samplingRate))
+
+  private[this] def run(sf: SignalFunction[Seq[RealtimeEvent], Double]): Unit = {
+    println(s"Running ${sf}...")
+    val proc = sf.buildProc()
+    val (line, bufSize) = JavaSound.openLine(samplingRate.value, 20000)
+    val buffer = new Array[Byte](samplingRate.value * 10)
+
+    try {
+      val t0 = System.nanoTime()
+      var clock: Long = 0L
+      while (true) {
+        for (i <- 0 until buffer.size) {
+          // val firedEvents = pollEvent(t0, clock)
+          val out = 0.0 // proc(firedEvents)
+          buffer(i) = (out * 127).toByte
+          clock += 1
+        }
+        line.write(buffer, 0, buffer.size)
+        println(s"${line.available()}/${line.getBufferSize}")
+      }
+    } finally {
+      line.close()
     }
   }
 }
 
 object World {
-  def create(sr: SamplingRate): World =
-    new World(sr)
 }
 
 object JavaSound {
@@ -154,8 +220,7 @@ object JavaSound {
     val signed = true
     val bigEndian = false
 
-    val bufferSizeMS = 50
-    val bufferSizeByte = (samplingRate * sampleSize * bufferSizeMS / 1000.0).toInt
+    val bufferSizeByte = (samplingRate * sampleSize * (bufferSizeMS / 1000.0)).toInt
 
     val format = new AudioFormat(samplingRate.toFloat, sampleSize * 8, channels, signed, bigEndian)
 
@@ -172,24 +237,104 @@ object JavaSound {
       .map { MidiSystem.getMidiDevice(_) }
   }
 
-  def findNanoKontrol(): Option[(MidiDevice, MidiDevice)] = {
+  def findNanoKontrol2(): Option[NanoKontrol2] = {
     val korg = "KORG INC."
     for {
       in <- findMidiDevice("SLIDER/KNOB", korg)
       out <- findMidiDevice("CTRL", korg)
-    } yield (in -> out)
+    } yield NanoKontrol2(in, out)
   }
+}
+
+case class NanoKontrol2(in: javax.sound.midi.MidiDevice, out: javax.sound.midi.MidiDevice) {
+  import javax.sound.midi.{ MidiMessage, ShortMessage, Receiver, Transmitter }
+  def onMessage(f: MidiMessage => Unit): Unit = {
+    in.getTransmitter.setReceiver(new Receiver {
+      override def send(message: MidiMessage, timestamp: Long): Unit = f(message)
+      override def close(): Unit = ()
+    })
+  }
+
+  def open(): Unit = {
+    in.open()
+    out.open()
+  }
+
+  def close(): Unit = {
+    in.close()
+    out.close()
+  }
+}
+
+object NanoKontrol2 {
+  import javax.sound.midi.ShortMessage
+  class Button(cc: Int) {
+    def unapply(m: ShortMessage): Option[Boolean] = ???
+  }
+  class Volume(cc: Int) {
+    def unapply(m: ShortMessage): Option[Int] = ???
+  }
+
+  object transport {
+    object track {
+      val rew = new Button(58)
+      val ff = new Button(59)
+    }
+
+    val cycle = new Button(46)
+
+    object marker {
+      val set = new Button(60)
+      val prev = new Button(61)
+      val ff = new Button(62)
+    }
+
+    val rew = new Button(43)
+    val ff = new Button(44)
+    val stop = new Button(42)
+    val play = new Button(41)
+    val rec = new Button(45)
+  }
+
+  class Group(knobId: Int, sliderId: Int, soloId: Int, muteId: Int, recId: Int) {
+    val knob = new Volume(knobId)
+    val slider = new Volume(sliderId)
+    val solo = new Button(soloId)
+    val mute = new Button(muteId)
+    val rec = new Button(recId)
+  }
+
+  val group1 = new Group(16, 0, 32, 48, 64)
+  val group2 = new Group(17, 1, 33, 49, 65)
+  val group3 = new Group(18, 2, 34, 50, 66)
+  val group4 = new Group(19, 3, 35, 51, 67)
+  val group5 = new Group(20, 4, 36, 52, 68)
+  val group6 = new Group(21, 5, 37, 53, 69)
+  val group7 = new Group(22, 6, 38, 54, 70)
+  val group8 = new Group(23, 7, 39, 55, 71)
 }
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val w = World.create(SamplingRate(44100))
-    // val Some((in, out)) = JavaSound.findNanoKontrol()
+    val w = new World(SamplingRate(44100), 100L * 1000 * 1000, 100L * 1000 * 1000)
+    // val Some(nano) = JavaSound.findNanoKontrol2()
+
+    // nano.onMessage {
+    //   case sm: javax.sound.midi.ShortMessage =>
+    //     w.sendEvent(MidiShortMessageEvent(sm.getCommand, sm.getChannel, sm.getData1, sm.getData2))
+    //   case m =>
+    // }
 
     import SignalFunction.{ const }
 
-    w.runUnit { implicit sr =>
-      (const(440.0) + (const(2.0) >>> VCO.sin) * const(20.0)) >>> VCO.saw
+    try {
+      // nano.open()
+      val eventSink = w.runUnit { implicit sr =>
+        // (const(440.0) + (const(2.0) >>> VCO.sin) * const(20.0)) >>> VCO.saw
+        const(440.0) >>> VCO.sin
+      }
+    } finally {
+      // nano.close()
     }
   }
 }

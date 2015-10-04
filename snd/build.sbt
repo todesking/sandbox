@@ -12,3 +12,5 @@ libraryDependencies ++= Seq(
 scalariformSettings
 
 fork in run := true
+
+javaOptions in run ++= Seq("-verbose:gc", "-Xloggc:gc.log", "-XX:+PrintGCDetails")
