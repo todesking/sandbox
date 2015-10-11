@@ -3,46 +3,95 @@ import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
 
-object Foo {
-  def main(args: Array[String]): Unit = {
-    import javax.sound.sampled._
+trait RealtimeEvent
 
-    val format = new AudioFormat(44100, 8, 1, true, true)
-    val line = AudioSystem.getSourceDataLine(format)
-    line.open(format, 44100)
-    line.start()
-
-    val buf = new Array[Byte](44100).map(_ => 127.toByte)
-
-    while (true) {
-      line.write(buf, 0, buf.length)
-    }
-
-    line.drain();
-    line.close();
-  }
+object hack {
+  type RealtimeEvents = Seq[RealtimeEvent]
 }
+import hack._
 
-trait Simplify[+A, -B] {
-  def bloat(b: B): A
-}
 
-object Simplify {
-  implicit val evUnit0: Simplify[Unit, Unit] = new Simplify[Unit, Unit] {
-    override def bloat(u: Unit): Unit = u
+object ArrowSyntax {
+  implicit class ArrowExt[F[_, _]: Arrow, A, B](self: F[A, B]) {
+    def -<[C](s: Signal[F, A]): ArrowBuilder[F, C, A, B] =
+      ArrowBuilder.Bind[F, C, A, B](self, s)
   }
 
-  implicit def evUnitTuple2[A, B](implicit ev1: Simplify[A, Unit], ev2: Simplify[B, Unit]): Simplify[(A, B), Unit] =
-    new Simplify[(A, B), Unit] {
-      override def bloat(u: Unit): (A, B) = (ev1.bloat(u) -> ev2.bloat(u))
-    }
+  implicit def buildArrow[F[_, _], A, B](ab: ArrowBuilder[F, A, A, B]): F[A, B] =
+    ab.build()
+}
+
+// A: root of arrow
+// B: start point of arrow that currently building
+// C: destination of arrow
+trait ArrowBuilder[F[_, _], A, +B, C] {
+  final val dest: Signal[F, C] =
+    Signal.Dest(this)
+
+  def map[D](f: Signal[F, C] => Signal[F, D]): ArrowBuilder[F, A, B, D] =
+    ArrowBuilder.Map[F, A, B, C, D](this, f)
+
+  def flatMap[D, E](f: Signal[F, C] => ArrowBuilder[F, A, D, E]): ArrowBuilder[F, A, D, E] =
+    ArrowBuilder.FlatMap[F, A, B, C, D, E](this, f)
+
+  def build(): F[A, C] = ???
+}
+
+object ArrowBuilder {
+  def build[F[_, _], A, B](f: Signal[F, A] => ArrowBuilder[F, A, Any, B]): F[A, B] =
+    Start[F, A]().flatMap(f).build()
+
+  case class Start[F[_, _], A]() extends ArrowBuilder[F, A, A, A]
+  case class Map[F[_, _], A, B, C, D](ab: ArrowBuilder[F, A, B, C], f: Signal[F, C] => Signal[F, D]) extends ArrowBuilder[F, A, B, D]
+  case class FlatMap[F[_, _], A, B, C, D, E](ab: ArrowBuilder[F, A, B, C], f: Signal[F, C] => ArrowBuilder[F, A, D, E]) extends ArrowBuilder[F, A, D, E]
+  case class Bind[F[_, _], A, B, C](ab: F[B, C], s: Signal[F, B]) extends ArrowBuilder[F, A, B, C]
+}
+
+trait Signal[F[_, _], A] {
+  def map[B](f: A => B): Signal[F, B] =
+    Signal.Map[F, A, B](this, f)
+
+  def zip[B](b: Signal[F, B]): Signal[F, (A, B)] =
+    Signal.Zip[F, A, B](this, b)
+}
+
+object Signal {
+  case class Dest[F[_, _], A](ab: ArrowBuilder[F, _, _, A]) extends Signal[F, A]
+  case class Map[F[_, _], A, B](s: Signal[F, A], f: A => B) extends Signal[F, B]
+  case class Zip[F[_, _], A, B](a: Signal[F, A], b: Signal[F, B]) extends Signal[F, (A, B)]
+}
+
+trait Compat[A, B] {
+  def bloat(a: A): B
+  def shrink(b: B): A
+}
+
+class Not[A, B]
+
+object Not {
+  implicit def ev[A, B] = new Not[A, B]
+  implicit def evAmb[A, B](implicit e: A =:= B): Not[A, B] = sys.error("aaagghh")
+}
+
+object Compat {
+  private[this] def gen[A, B](f: A => B)(g: B => A): Compat[A, B] =
+    new Compat[A, B] { override def bloat(a: A): B = f(a); override def shrink(b: B): A = g(b) }
+
+  implicit def evId[A]: Compat[A, A] =
+    gen[A, A](identity)(identity)
+
+  implicit def evTuple2Unit: Compat[Unit, (Unit, Unit)] =
+    gen[Unit, (Unit, Unit)] { u => (() -> ()) } { case (_, _) => () }
+
+  implicit def evTuple2R[A, B](implicit ev1: Compat[A, B], nu: Not[B, Unit]): Compat[A, (Unit, B)] =
+    gen[A, (Unit, B)] { a => (() -> ev1.bloat(a)) } { case (u, b) => ev1.shrink(b) }
+
+  implicit def evTuple2L[A, B](implicit ev1: Compat[A, B], nu: Not[B, Unit]): Compat[A, (B, Unit)] =
+    gen[A, (B, Unit)] { a => (ev1.bloat(a), ()) } { case (b, u) => ev1.shrink(b) }
 }
 
 sealed trait SignalFunction[-A, +B] {
   def buildProc(): A => B
-
-  def shrink()(implicit ev: Simplify[A, Unit]): SignalFunction[Unit, B] =
-    SignalFunction.const(()).mapsnd { u => ev.bloat(u) } >>> this
 
   def merge[C, D, E](rhs: SignalFunction[C, D])(f: (B, D) => E): SignalFunction[(A, C), E] =
     (this *** rhs).mapsnd(f.tupled)
@@ -52,6 +101,12 @@ sealed trait SignalFunction[-A, +B] {
 
   def *[C, D](rhs: SignalFunction[C, D])(implicit num: Numeric[D], evB: B <:< D): SignalFunction[(A, C), D] =
     this.merge(rhs) { (d1, d2) => num.times(evB(d1), d2) }
+
+  def >>>~<[C, D](rhs: SignalFunction[C, D])(implicit ev: Compat[_ >: B, C]): SignalFunction[A, D] =
+    this >>> SignalFunction(ev.bloat) >>> rhs
+
+  def >>>~>[C, D](rhs: SignalFunction[C, D])(implicit ev: Compat[C, _ >: B]): SignalFunction[A, D] =
+    this >>> SignalFunction(ev.shrink) >>> rhs
 }
 
 case class FunctionSF[A, B](f: A => B) extends SignalFunction[A, B] {
@@ -99,8 +154,11 @@ object SignalFunction {
       ComposeSF[A, B, C](sf1, sf2)
   }
 
-  implicit def sndInt2Double[A](sf: SignalFunction[A, Int]): SignalFunction[A, Double] =
-    sf >>> SignalFunction(_.toDouble)
+  implicit def fit[A, B, C, D](sf: SignalFunction[A, B])(implicit evFst: Compat[C, A], evSnd: Compat[D, B]): SignalFunction[C, D] =
+    id[C] >>>~< sf >>>~> id[D]
+
+  implicit def autoConst[A](a: A): SignalFunction[Unit, A] =
+    const(a)
 
   def apply[A, B](f: A => B): SignalFunction[A, B] =
     FunctionSF[A, B](f)
@@ -115,12 +173,29 @@ object SignalFunction {
         (b_ -> b_)
     }
 
+  def id[A]: SignalFunction[A, A] = IdSF[A]
+
   val unit: ConstSF[Unit] = ConstSF(())
 
   def const[A](value: A): ConstSF[A] = ConstSF(value)
 
   def ignore[A]: SignalFunction[A, Unit] =
     SignalFunction { _ => () }
+
+  def extractEvent[A](pf: PartialFunction[RealtimeEvent, A]): SignalFunction[RealtimeEvents, Seq[A]] =
+    SignalFunction(_.collect(pf))
+
+  def expscale(max: Double): SignalFunction[Double, Double] =
+    SignalFunction { v => math.pow(max, v) }
+
+  def zeroone[A]: SignalFunction[Seq[A], Option[A]] =
+    SignalFunction(_.headOption)
+
+  def continuous[A](init: A): SignalFunction[Option[A], A] =
+    stateOut(init) {
+      case (Some(ev), st) => ev
+      case (None, st) => st
+    }
 }
 
 case class SamplingRate(value: Int) extends AnyVal
@@ -141,10 +216,11 @@ object VCO {
     freqToPhase >>> SignalFunction { phase => math.sin(phase * 2 * math.Pi) }
 }
 
-trait RealtimeEvent
-
 sealed trait MidiEvent extends RealtimeEvent
 case class MidiShortMessageEvent(command: Int, channel: Int, data1: Int, data2: Int) extends MidiEvent
+
+object MidiEvent {
+}
 
 class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
   private[this] var lastEventTimestamp: Long = System.nanoTime()
@@ -158,7 +234,7 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
     }
   }
 
-  private[this] def pollEvent(t0: Long, samples: Long): Seq[RealtimeEvent] = {
+  private[this] def pollEvent(t0: Long, samples: Long): RealtimeEvents = {
     return Seq.empty
     val clockNanos = (samples.toDouble / (samplingRate.value * 1000L * 1000L * 1000L)).toLong
     val targetNanos = t0 + clockNanos - delayNanos
@@ -175,13 +251,13 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
     fired.map(_._1)
   }
 
-  def runRealtime[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit simplify: Simplify[A, Seq[RealtimeEvent]]): Unit =
-    run(SignalFunction(simplify.bloat) >>> genSF(samplingRate))
+  def runRealtime[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit ev: Compat[RealtimeEvents, A]): Unit =
+    run(SignalFunction(ev.bloat) >>> genSF(samplingRate))
 
-  def runUnit[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit simplify: Simplify[A, Unit]): Unit =
-    run(SignalFunction.ignore[Seq[RealtimeEvent]] >>> SignalFunction(simplify.bloat) >>> genSF(samplingRate))
+  def runUnit[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit ev: Compat[Unit, A]): Unit =
+    run(SignalFunction.ignore[RealtimeEvents] >>> SignalFunction(ev.bloat) >>> genSF(samplingRate))
 
-  private[this] def run(sf: SignalFunction[Seq[RealtimeEvent], Double]): Unit = {
+  private[this] def run(sf: SignalFunction[RealtimeEvents, Double]): Unit = {
     println(s"Running ${sf}...")
     val proc = sf.buildProc()
     val (line, bufSize) = JavaSound.openLine(samplingRate.value, 20000)
@@ -192,8 +268,8 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
       var clock: Long = 0L
       while (true) {
         for (i <- 0 until buffer.size) {
-          // val firedEvents = pollEvent(t0, clock)
-          val out = 0.0 // proc(firedEvents)
+          val firedEvents = pollEvent(t0, clock)
+          val out = proc(firedEvents)
           buffer(i) = (out * 127).toByte
           clock += 1
         }
@@ -267,12 +343,17 @@ case class NanoKontrol2(in: javax.sound.midi.MidiDevice, out: javax.sound.midi.M
 }
 
 object NanoKontrol2 {
-  import javax.sound.midi.ShortMessage
-  class Button(cc: Int) {
-    def unapply(m: ShortMessage): Option[Boolean] = ???
+  class Button(val cc: Int) {
+    def toPF: PartialFunction[RealtimeEvent, Boolean] = {
+      case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
+        d2 == 127
+    }
   }
-  class Volume(cc: Int) {
-    def unapply(m: ShortMessage): Option[Int] = ???
+  class Volume(val cc: Int) {
+    def toPF: PartialFunction[RealtimeEvent, Double] = {
+      case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
+        math.min(math.max(d2, 0), 127) / 127.0
+    }
   }
 
   object transport {
@@ -317,24 +398,50 @@ object NanoKontrol2 {
 object Main {
   def main(args: Array[String]): Unit = {
     val w = new World(SamplingRate(44100), 100L * 1000 * 1000, 100L * 1000 * 1000)
-    // val Some(nano) = JavaSound.findNanoKontrol2()
 
-    // nano.onMessage {
-    //   case sm: javax.sound.midi.ShortMessage =>
-    //     w.sendEvent(MidiShortMessageEvent(sm.getCommand, sm.getChannel, sm.getData1, sm.getData2))
-    //   case m =>
-    // }
+    val nano = JavaSound.findNanoKontrol2()
+    nano foreach {
+      _.onMessage {
+        case sm: javax.sound.midi.ShortMessage =>
+          w.sendEvent(MidiShortMessageEvent(sm.getCommand, sm.getChannel, sm.getData1, sm.getData2))
+        case m =>
+      }
+    }
 
-    import SignalFunction.{ const }
-
+    import SignalFunction.{ const, ignore, extractEvent, id, continuous, zeroone, expscale }
+    import ArrowSyntax._
+    type SF[A, B] = SignalFunction[A, B]
     try {
-      // nano.open()
-      val eventSink = w.runUnit { implicit sr =>
-        // (const(440.0) + (const(2.0) >>> VCO.sin) * const(20.0)) >>> VCO.saw
-        const(440.0) >>> VCO.sin
+      nano foreach { _.open() }
+      val eventSink = w.runRealtime { implicit sr =>
+        val nk = NanoKontrol2
+
+        def readVolume(
+          extract: PartialFunction[RealtimeEvent, Double],
+          max: Double
+        ): SF[RealtimeEvents, Double] =
+          extractEvent(extract) >>>
+          zeroone[Double] >>>
+          continuous(0.0) >>>
+          SignalFunction(_ * max)
+
+        def readVolumeExp(
+          extract: PartialFunction[RealtimeEvent, Double],
+          max: Double
+        ): SF[RealtimeEvents, Double] =
+          readVolume(extract, 1.0) >>> expscale(max)
+
+        val ab = ArrowBuilder
+        ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
+          for {
+            s1 <- readVolumeExp(nk.group1.slider.toPF, 10000) -< in
+            k1 <- readVolumeExp(nk.group1.knob.toPF, 1.0) -< in
+            w <- VCO.sin -< k1
+          } yield w.zip(s1).map { case (a, b) => a * b }
+        }
       }
     } finally {
-      // nano.close()
+      nano.foreach { _.close() }
     }
   }
 }

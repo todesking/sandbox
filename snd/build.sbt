@@ -9,6 +9,8 @@ libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.1.4"
 libraryDependencies ++= Seq(
 )
 
+scalacOptions in compile ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlint")
+
 scalariformSettings
 
 fork in run := true
