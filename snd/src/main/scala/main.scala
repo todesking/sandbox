@@ -324,8 +324,7 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
   }
 
   private[this] def pollEvent(t0: Long, samples: Long): RealtimeEvents = {
-    return Seq.empty
-    val clockNanos = (samples.toDouble / (samplingRate.value * 1000L * 1000L * 1000L)).toLong
+    val clockNanos = (samples.toDouble / samplingRate.value * 1000 * 1000 * 1000).toLong
     val targetNanos = t0 + clockNanos - delayNanos
 
     while (System.nanoTime() < targetNanos)
@@ -353,25 +352,51 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
     val buffer = new Array[Byte](bufSize)
     val zero = new Array[Byte](bufSize)
 
-    try {
-      val t0 = System.nanoTime()
-      var clock: Long = 0L
-      while (true) {
-        for (i <- 0 until buffer.size) {
-          val firedEvents = pollEvent(t0, clock)
-          val out = proc(firedEvents)
-          buffer(i) = (out * 127).toByte
-          clock += 1
-        }
-        if (clock < bufSize * 10)
-          line.write(zero, 0, zero.size)
-        else
-          line.write(buffer, 0, buffer.size)
-        println(s"${line.available()}/${line.getBufferSize}")
+    @volatile var shut = false
+
+    val hook = new Thread {
+      override def run(): Unit = {
+        // TODO: not works, I know...
+        shut = true
       }
-    } finally {
-      line.close()
     }
+
+    Runtime.getRuntime.addShutdownHook(hook)
+
+    val thread = new Thread {
+      override def run(): Unit = {
+        try {
+          val t0 = System.nanoTime()
+          var clock: Long = 0L
+          while (!shut) {
+            for (i <- 0 until buffer.size) {
+              val firedEvents = pollEvent(t0, clock)
+              val out = proc(firedEvents)
+              buffer(i) = (out * 127).toByte
+              clock += 1
+            }
+            if (clock < bufSize * 10)
+              line.write(zero, 0, zero.size)
+            else
+              line.write(buffer, 0, buffer.size)
+            // println(s"${line.available()}/${line.getBufferSize}")
+          }
+          val shutBuf = new Array[Byte]((samplingRate.value * 0.2).toInt)
+          for (i <- 0 until shutBuf.size) {
+            shutBuf(i) = (buffer.last / i).toByte
+          }
+          line.write(shutBuf, 0, shutBuf.size)
+        } finally {
+          println("closing")
+          line.flush()
+          line.stop()
+          line.close()
+        }
+      }
+    }
+
+    thread.run()
+    thread.join()
   }
 }
 
@@ -390,12 +415,13 @@ object JavaSound {
     val bigEndian = false
 
     val bufferSizeByte = (samplingRate * sampleSize * (bufferSizeMS / 1000.0)).toInt
+    val lineBufferSize = bufferSizeByte * 10
 
     val format = new AudioFormat(samplingRate.toFloat, sampleSize * 8, channels, signed, bigEndian)
 
-    val info = new DataLine.Info(classOf[SourceDataLine], format, bufferSizeByte)
+    val info = new DataLine.Info(classOf[SourceDataLine], format, lineBufferSize)
     val line = AudioSystem.getLine(info).asInstanceOf[SourceDataLine]
-    line.open(format, bufferSizeByte)
+    line.open(format, lineBufferSize)
     line.start()
     (line, bufferSizeByte)
   }
@@ -445,7 +471,6 @@ object NanoKontrol2 {
   class Volume(val cc: Int) {
     def toPF: PartialFunction[RealtimeEvent, Double] = {
       case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
-        println(d1 -> d2)
         math.min(math.max(d2, 0), 127) / 127.0
     }
   }
@@ -491,7 +516,7 @@ object NanoKontrol2 {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val w = new World(SamplingRate(44100), 100L * 1000 * 1000, 100L * 1000 * 1000)
+    val w = new World(SamplingRate(44100), 5L * 1000 * 1000, 10L * 1000 * 1000)
 
     val nano = JavaSound.findNanoKontrol2()
     nano foreach {
@@ -528,8 +553,8 @@ object Main {
 
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
-            s1 <- readVolumeExp(nk.group1.slider.toPF, 10000) -< in
-            k1 <- readVolumeExp(nk.group1.knob.toPF, 1.0) -< in
+            s1 <- readVolumeExp(nk.group1.knob.toPF, 1.0) -< in
+            k1 <- readVolumeExp(nk.group1.slider.toPF, 100000) -< in
             w <- VCO.sin -< k1
           } yield w.zip(s1).map { case (a, b) => a * b }
         }
