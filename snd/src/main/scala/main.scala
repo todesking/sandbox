@@ -3,6 +3,10 @@ import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
 
+import scala.language.higherKinds
+import scala.language.implicitConversions
+import scala.language.existentials
+
 trait RealtimeEvent
 
 object hack {
@@ -10,55 +14,89 @@ object hack {
 }
 import hack._
 
-
 object ArrowSyntax {
   implicit class ArrowExt[F[_, _]: Arrow, A, B](self: F[A, B]) {
-    def -<[C](s: Signal[F, A]): ArrowBuilder[F, C, A, B] =
-      ArrowBuilder.Bind[F, C, A, B](self, s)
+    def -<[C](s: Signal[F, C, A]): ArrowBuilder[F, C, B] =
+      ArrowBuilder.Bind(self, s)
   }
 
-  implicit def buildArrow[F[_, _], A, B](ab: ArrowBuilder[F, A, A, B]): F[A, B] =
+  implicit def buildArrow[F[_, _]: Arrow, A, B](ab: ArrowBuilder[F, A, B]): F[A, B] =
     ab.build()
 }
 
 // A: root of arrow
-// B: start point of arrow that currently building
-// C: destination of arrow
-trait ArrowBuilder[F[_, _], A, +B, C] {
-  final val dest: Signal[F, C] =
-    Signal.Dest(this)
+// B: destination of arrow
+sealed trait ArrowBuilder[F[_, _], A, B] {
+  def dest: Signal[F, A, B]
 
-  def map[D](f: Signal[F, C] => Signal[F, D]): ArrowBuilder[F, A, B, D] =
-    ArrowBuilder.Map[F, A, B, C, D](this, f)
+  def map[C](f: Signal[F, A, B] => Signal[F, A, C]): ArrowBuilder[F, A, C] =
+    f(this.dest).arrowBuilder
 
-  def flatMap[D, E](f: Signal[F, C] => ArrowBuilder[F, A, D, E]): ArrowBuilder[F, A, D, E] =
-    ArrowBuilder.FlatMap[F, A, B, C, D, E](this, f)
+  def flatMap[C](f: Signal[F, A, B] => ArrowBuilder[F, A, C]): ArrowBuilder[F, A, C] =
+    f(this.dest)
 
-  def build(): F[A, C] = ???
+  def build()(implicit a: Arrow[F]): F[A, B]
 }
 
 object ArrowBuilder {
-  def build[F[_, _], A, B](f: Signal[F, A] => ArrowBuilder[F, A, Any, B]): F[A, B] =
+  def build[F[_, _]: Arrow, A, B](f: Signal[F, A, A] => ArrowBuilder[F, A, B]): F[A, B] =
     Start[F, A]().flatMap(f).build()
 
-  case class Start[F[_, _], A]() extends ArrowBuilder[F, A, A, A]
-  case class Map[F[_, _], A, B, C, D](ab: ArrowBuilder[F, A, B, C], f: Signal[F, C] => Signal[F, D]) extends ArrowBuilder[F, A, B, D]
-  case class FlatMap[F[_, _], A, B, C, D, E](ab: ArrowBuilder[F, A, B, C], f: Signal[F, C] => ArrowBuilder[F, A, D, E]) extends ArrowBuilder[F, A, D, E]
-  case class Bind[F[_, _], A, B, C](ab: F[B, C], s: Signal[F, B]) extends ArrowBuilder[F, A, B, C]
+  case class Start[F[_, _], A]() extends ArrowBuilder[F, A, A] {
+    override val dest = Signal.Dest(this)
+
+    override def build()(implicit a: Arrow[F]): F[A, A] = a.id
+  }
+  case class Bind[F[_, _], A, B, C](arrow: F[B, C], src: Signal[F, A, B]) extends ArrowBuilder[F, A, C] {
+    override def dest = Signal.Dest(this)
+
+    override def build()(implicit a: Arrow[F]): F[A, C] =
+      ???
+  }
+  case class SigMap[F[_, _], A, B, C](ab: ArrowBuilder[F, A, B], f: B => C) extends ArrowBuilder[F, A, C] {
+    override def dest = Signal.Dest(this)
+
+    override def build()(implicit a: Arrow[F]): F[A, C] =
+      ab.build() >>> a.arr(f)
+  }
+  case class Zip[F[_, _], A, B, C](fst: ArrowBuilder[F, A, B], snd: ArrowBuilder[F, A, C]) extends ArrowBuilder[F, A, (B, C)] {
+    override def dest = Signal.Dest(this)
+
+    override def build()(implicit a: Arrow[F]): F[A, (B, C)] = {
+      def aux[X](l: ArrowBuilder[F, A, B], r: ArrowBuilder[F, A, C]): F[A, (B, C)] = {
+          val (c, l, r) = analyze[B, C, X](fst, snd)
+          c.build() >>> a.combine(l.build(), r.build())
+      }
+      aux(fst, snd)
+    }
+
+    private[this] def analyze[X, Y, Z](l: ArrowBuilder[F, A, X], r: ArrowBuilder[F, A, Y]): (ArrowBuilder[F, A, Z], ArrowBuilder[F, Z, X], ArrowBuilder[F, Z, Y]) = {
+      ???
+    }
+  }
 }
 
-trait Signal[F[_, _], A] {
-  def map[B](f: A => B): Signal[F, B] =
-    Signal.Map[F, A, B](this, f)
+sealed trait Signal[F[_, _], A, B] {
+  def map[C](f: B => C): Signal[F, A, C] =
+    Signal.Map(this, f)
 
-  def zip[B](b: Signal[F, B]): Signal[F, (A, B)] =
-    Signal.Zip[F, A, B](this, b)
+  def zip[C](rhs: Signal[F, A, C]): Signal[F, A, (B, C)] =
+    Signal.Zip(this, rhs)
+
+  def arrowBuilder: ArrowBuilder[F, A, B]
 }
 
 object Signal {
-  case class Dest[F[_, _], A](ab: ArrowBuilder[F, _, _, A]) extends Signal[F, A]
-  case class Map[F[_, _], A, B](s: Signal[F, A], f: A => B) extends Signal[F, B]
-  case class Zip[F[_, _], A, B](a: Signal[F, A], b: Signal[F, B]) extends Signal[F, (A, B)]
+  case class Start[F[_, _], A](override val arrowBuilder: ArrowBuilder[F, A, A]) extends Signal[F, A, A] {
+  }
+  case class Dest[F[_, _], A, B](override val arrowBuilder: ArrowBuilder[F, A, B]) extends Signal[F, A, B] {
+  }
+  case class Map[F[_, _], A, B, C](s: Signal[F, A, B], f: B => C) extends Signal[F, A, C] {
+    override val arrowBuilder = ArrowBuilder.SigMap(s.arrowBuilder, f)
+  }
+  case class Zip[F[_, _], A, B, C](fst: Signal[F, A, B], snd: Signal[F, A, C]) extends Signal[F, A, (B, C)] {
+    override val arrowBuilder = ArrowBuilder.Zip(fst.arrowBuilder, snd.arrowBuilder)
+  }
 }
 
 trait Compat[A, B] {
@@ -81,7 +119,7 @@ object Compat {
     gen[A, A](identity)(identity)
 
   implicit def evTuple2Unit: Compat[Unit, (Unit, Unit)] =
-    gen[Unit, (Unit, Unit)] { u => (() -> ()) } { case (_, _) => () }
+    gen[Unit, (Unit, Unit)] { u => (u -> u) } { case (_, _) => () }
 
   implicit def evTuple2R[A, B](implicit ev1: Compat[A, B], nu: Not[B, Unit]): Compat[A, (Unit, B)] =
     gen[A, (Unit, B)] { a => (() -> ev1.bloat(a)) } { case (u, b) => ev1.shrink(b) }
@@ -144,14 +182,17 @@ case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction
 
 object SignalFunction {
   implicit def arrowInstance[A, B]: Arrow[SignalFunction] = new Arrow[SignalFunction] {
-    override def arr[A, B](f: A => B): SignalFunction[A, B] =
+    override def arr[C, D](f: C => D): SignalFunction[C, D] =
       FunctionSF(f)
-    override def id[A]: SignalFunction[A, A] =
-      IdSF[A]()
-    override def first[A, B, C](sf: SignalFunction[A, B]): SignalFunction[(A, C), (B, C)] =
-      BypassSF[A, B, C](sf)
-    override def compose[A, B, C](sf1: SignalFunction[B, C], sf2: SignalFunction[A, B]): SignalFunction[A, C] =
-      ComposeSF[A, B, C](sf1, sf2)
+
+    override def id[C]: SignalFunction[C, C] =
+      IdSF[C]()
+
+    override def first[C, D, E](sf: SignalFunction[C, D]): SignalFunction[(C, E), (D, E)] =
+      BypassSF[C, D, E](sf)
+
+    override def compose[C, D, E](sf1: SignalFunction[D, E], sf2: SignalFunction[C, D]): SignalFunction[C, E] =
+      ComposeSF[C, D, E](sf1, sf2)
   }
 
   implicit def fit[A, B, C, D](sf: SignalFunction[A, B])(implicit evFst: Compat[C, A], evSnd: Compat[D, B]): SignalFunction[C, D] =
@@ -421,9 +462,9 @@ object Main {
           max: Double
         ): SF[RealtimeEvents, Double] =
           extractEvent(extract) >>>
-          zeroone[Double] >>>
-          continuous(0.0) >>>
-          SignalFunction(_ * max)
+            zeroone[Double] >>>
+            continuous(0.0) >>>
+            SignalFunction(_ * max)
 
         def readVolumeExp(
           extract: PartialFunction[RealtimeEvent, Double],
