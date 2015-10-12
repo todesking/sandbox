@@ -19,9 +19,6 @@ object ArrowSyntax {
     def -<[C](s: Signal[F, C, A]): ArrowBuilder[F, C, B] =
       ArrowBuilder.Bind(self, s)
   }
-
-  implicit def buildArrow[F[_, _]: Arrow, A, B](ab: ArrowBuilder[F, A, B]): F[A, B] =
-    ab.build()
 }
 
 // A: root of arrow
@@ -132,6 +129,12 @@ sealed trait Signal[F[_, _], A, B] {
 
   def depth: Int =
     arrowBuilder.depth
+
+  def +(rhs: Signal[F, A, B])(implicit num: Numeric[B]): Signal[F, A, B] =
+    zip(rhs).map { case (a, b) => num.plus(a, b) }
+
+  def *(rhs: Signal[F, A, B])(implicit num: Numeric[B]): Signal[F, A, B] =
+    zip(rhs).map { case (a, b) => num.times(a, b) }
 }
 
 object Signal {
@@ -496,6 +499,16 @@ object NanoKontrol2 {
       case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
         math.min(math.max(d2, 0), 127) / 127.0
     }
+    def range(min: Double, max: Double): SignalFunction[RealtimeEvents, Double] =
+      SignalFunction.extractEvent(toPF) >>>
+        SignalFunction.zeroone[Double] >>>
+        SignalFunction.continuous(min) >>>
+        SignalFunction { v => min + v * (max - min) }
+
+    def rangeExp(min: Double, max: Double): SignalFunction[RealtimeEvents, Double] =
+      range(0.0, 1.0) >>>
+        SignalFunction { v => min + math.pow(max - min, v) }
+
   }
 
   object transport {
@@ -539,7 +552,7 @@ object NanoKontrol2 {
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val w = new World(SamplingRate(44100), 5L * 1000 * 1000, 10L * 1000 * 1000)
+    val w = new World(SamplingRate(44100), 10L * 1000 * 1000, 20L * 1000 * 1000)
 
     val nano = JavaSound.findNanoKontrol2()
     nano foreach {
@@ -559,29 +572,15 @@ object Main {
       val eventSink = w.runRealtime { implicit sr =>
         val nk = NanoKontrol2
 
-        def readVolume(
-          extract: PartialFunction[RealtimeEvent, Double],
-          max: Double
-        ): SF[RealtimeEvents, Double] =
-          extractEvent(extract) >>>
-            zeroone[Double] >>>
-            continuous(0.0) >>>
-            SignalFunction(_ * max)
-
-        def readVolumeExp(
-          extract: PartialFunction[RealtimeEvent, Double],
-          max: Double
-        ): SF[RealtimeEvents, Double] =
-          readVolume(extract, 1.0) >>> expscale(max * 100) >>> SignalFunction { _ / 100.0 }
-
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
-            s1 <- readVolume(nk.group1.slider.toPF, 1.0) -< in
-            k1 <- readVolumeExp(nk.group1.knob.toPF, 100000) -< in
-            w <- VCO.sin -< k1
-            out <- id -< w.zip(s1).map { case (a, b) => a * b }
-            out2 <- id -< out
-          } yield out2
+            s1 <- nk.group1.slider.range(0.0, 1.0) -< in
+            k1 <- nk.group1.knob.rangeExp(200, 10000) -< in
+            s2 <- nk.group2.slider.range(0.0, 1000.0) -< in
+            k2 <- nk.group2.knob.rangeExp(0.5, 50) -< in
+            lfo1 <- VCO.sin -< k2
+            vco1 <- VCO.sin -< { k1 + lfo1 * s2 }
+          } yield vco1 * s1
         }
       }
     } finally {
