@@ -36,6 +36,12 @@ sealed trait ArrowBuilder[F[_, _], A, B] {
     f(this.dest)
 
   def build()(implicit a: Arrow[F]): F[A, B]
+
+  def buildPartial[X](sig: Signal[F, A, X])(implicit a: Arrow[F]): F[X, B]
+
+  def depth: Int
+
+  def signals: Seq[Signal[F, A, _]]
 }
 
 object ArrowBuilder {
@@ -45,33 +51,72 @@ object ArrowBuilder {
   case class Start[F[_, _], A]() extends ArrowBuilder[F, A, A] {
     override val dest = Signal.Dest(this)
 
+    override val depth = 0
+
+    override val signals = Seq(dest)
+
     override def build()(implicit a: Arrow[F]): F[A, A] = a.id
+
+    override def buildPartial[X](sig: Signal[F, A, X])(implicit a: Arrow[F]): F[X, A] =
+      if (sig == dest) a.id[A].asInstanceOf[F[X, A]]
+      else throw new IllegalArgumentException()
   }
+
   case class Bind[F[_, _], A, B, C](arrow: F[B, C], src: Signal[F, A, B]) extends ArrowBuilder[F, A, C] {
-    override def dest = Signal.Dest(this)
+    override val dest = Signal.Dest(this)
+
+    override val depth = src.arrowBuilder.depth + 1
+
+    override val signals = dest +: src.arrowBuilder.signals
 
     override def build()(implicit a: Arrow[F]): F[A, C] =
-      ???
+      src.arrowBuilder.build() >>> arrow
+
+    override def buildPartial[X](sig: Signal[F, A, X])(implicit a: Arrow[F]): F[X, C] =
+      if (sig == dest) a.id[A].asInstanceOf[F[X, C]]
+      else src.arrowBuilder.buildPartial(sig) >>> arrow
   }
   case class SigMap[F[_, _], A, B, C](ab: ArrowBuilder[F, A, B], f: B => C) extends ArrowBuilder[F, A, C] {
-    override def dest = Signal.Dest(this)
+    override val dest = Signal.Dest(this)
+
+    override val depth = ab.depth + 1
+
+    override def signals = dest +: ab.signals
 
     override def build()(implicit a: Arrow[F]): F[A, C] =
       ab.build() >>> a.arr(f)
+
+    override def buildPartial[X](sig: Signal[F, A, X])(implicit a: Arrow[F]): F[X, C] =
+      if (sig == dest) a.id[A].asInstanceOf[F[X, C]]
+      else ab.buildPartial(sig) >>> a.arr(f)
   }
   case class Zip[F[_, _], A, B, C](fst: ArrowBuilder[F, A, B], snd: ArrowBuilder[F, A, C]) extends ArrowBuilder[F, A, (B, C)] {
-    override def dest = Signal.Dest(this)
+    protected type CommonSignalType
+
+    override val dest = Signal.Dest(this)
+
+    override val depth = math.max(fst.depth, snd.depth)
+
+    override val signals = (fst.signals ++ snd.signals).distinct
 
     override def build()(implicit a: Arrow[F]): F[A, (B, C)] = {
-      def aux[X](l: ArrowBuilder[F, A, B], r: ArrowBuilder[F, A, C]): F[A, (B, C)] = {
-          val (c, l, r) = analyze[B, C, X](fst, snd)
-          c.build() >>> a.combine(l.build(), r.build())
+      def aux[X](): F[A, (B, C)] = {
+        val common = commonSignal
+        common.arrowBuilder.build() >>> (fst.buildPartial(common) &&& snd.buildPartial(common))
       }
-      aux(fst, snd)
+      aux()
     }
 
-    private[this] def analyze[X, Y, Z](l: ArrowBuilder[F, A, X], r: ArrowBuilder[F, A, Y]): (ArrowBuilder[F, A, Z], ArrowBuilder[F, Z, X], ArrowBuilder[F, Z, Y]) = {
-      ???
+    override def buildPartial[X](sig: Signal[F, A, X])(implicit a: Arrow[F]): F[X, (B, C)] =
+      if (sig == dest) a.id[A].asInstanceOf[F[X, (B, C)]]
+      else fst.buildPartial(sig) &&& snd.buildPartial(sig)
+
+    private[this] def commonSignal: Signal[F, A, CommonSignalType] = {
+      fst.signals.sortBy(_.depth).zip(snd.signals.sortBy(_.depth))
+        .takeWhile { case (a, b) => a == b }
+        .headOption
+        .map(_._1.asInstanceOf[Signal[F, A, CommonSignalType]])
+        .getOrElse { throw new IllegalArgumentException() }
     }
   }
 }
@@ -84,6 +129,9 @@ sealed trait Signal[F[_, _], A, B] {
     Signal.Zip(this, rhs)
 
   def arrowBuilder: ArrowBuilder[F, A, B]
+
+  def depth: Int =
+    arrowBuilder.depth
 }
 
 object Signal {
@@ -301,8 +349,9 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
   private[this] def run(sf: SignalFunction[RealtimeEvents, Double]): Unit = {
     println(s"Running ${sf}...")
     val proc = sf.buildProc()
-    val (line, bufSize) = JavaSound.openLine(samplingRate.value, 20000)
-    val buffer = new Array[Byte](samplingRate.value * 10)
+    val (line, bufSize) = JavaSound.openLine(samplingRate.value, (bufferNanos / 1000 / 1000).toInt)
+    val buffer = new Array[Byte](bufSize)
+    val zero = new Array[Byte](bufSize)
 
     try {
       val t0 = System.nanoTime()
@@ -314,7 +363,10 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
           buffer(i) = (out * 127).toByte
           clock += 1
         }
-        line.write(buffer, 0, buffer.size)
+        if (clock < bufSize * 10)
+          line.write(zero, 0, zero.size)
+        else
+          line.write(buffer, 0, buffer.size)
         println(s"${line.available()}/${line.getBufferSize}")
       }
     } finally {
@@ -393,6 +445,7 @@ object NanoKontrol2 {
   class Volume(val cc: Int) {
     def toPF: PartialFunction[RealtimeEvent, Double] = {
       case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
+        println(d1 -> d2)
         math.min(math.max(d2, 0), 127) / 127.0
     }
   }
@@ -444,7 +497,8 @@ object Main {
     nano foreach {
       _.onMessage {
         case sm: javax.sound.midi.ShortMessage =>
-          w.sendEvent(MidiShortMessageEvent(sm.getCommand, sm.getChannel, sm.getData1, sm.getData2))
+          val message = MidiShortMessageEvent(sm.getCommand, sm.getChannel, sm.getData1, sm.getData2)
+          w.sendEvent(message)
         case m =>
       }
     }
@@ -472,7 +526,6 @@ object Main {
         ): SF[RealtimeEvents, Double] =
           readVolume(extract, 1.0) >>> expscale(max)
 
-        val ab = ArrowBuilder
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
             s1 <- readVolumeExp(nk.group1.slider.toPF, 10000) -< in
