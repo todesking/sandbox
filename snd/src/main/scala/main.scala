@@ -193,23 +193,42 @@ sealed trait SignalFunction[-A, +B] {
 
   def >>>~>[C, D](rhs: SignalFunction[C, D])(implicit ev: Compat[C, _ >: B]): SignalFunction[A, D] =
     this >>> SignalFunction(ev.shrink) >>> rhs
+
+  def name(n: String): SignalFunction[A, B] =
+    NamedSF(n, this)
+}
+
+case class NamedSF[A, B](name: String, sf: SignalFunction[A, B]) extends SignalFunction[A, B] {
+  override def buildProc() = sf.buildProc()
+  override def toString() =
+    s"[${name}]"
 }
 
 case class FunctionSF[A, B](f: A => B) extends SignalFunction[A, B] {
   override def buildProc(): A => B = f
+  override def toString =
+    "[function]"
 }
 case class IdSF[A]() extends SignalFunction[A, A] {
   override def buildProc(): A => A = identity
+  override def toString =
+    "[id]"
 }
 case class BypassSF[A, B, C](sf: SignalFunction[A, B]) extends SignalFunction[(A, C), (B, C)] {
   override def buildProc(): ((A, C)) => (B, C) = {
     val proc = sf.buildProc()
     ac: (A, C) => (proc(ac._1) -> ac._2)
   }
+
+  override def toString =
+    s"(${sf}) *** [bypass]"
 }
 case class ComposeSF[A, B, C](sfBC: SignalFunction[B, C], sfAB: SignalFunction[A, B]) extends SignalFunction[A, C] {
   override def buildProc(): A => C =
     sfAB.buildProc() andThen sfBC.buildProc()
+
+  override def toString =
+    s"(${sfAB}) >>> (${sfBC})"
 }
 case class StatefulSF[A, B, C](sf: SignalFunction[(A, C), (B, C)], init: C) extends SignalFunction[A, B] {
   override def buildProc(): A => B = {
@@ -222,10 +241,14 @@ case class StatefulSF[A, B, C](sf: SignalFunction[(A, C), (B, C)], init: C) exte
       b
     }
   }
+  override def toString =
+    s"[stateful(${init})](${sf})"
 }
 case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction[Unit, A] {
   override def buildProc(): Unit => A =
     _ => value
+  override def toString =
+    s"[consst(${value}]"
 }
 
 object SignalFunction {
@@ -269,22 +292,22 @@ object SignalFunction {
   def const[A](value: A): ConstSF[A] = ConstSF(value)
 
   def ignore[A]: SignalFunction[A, Unit] =
-    SignalFunction { _ => () }
+    SignalFunction[A, Unit] { _ => () }.name("ignore")
 
   def extractEvent[A](pf: PartialFunction[RealtimeEvent, A]): SignalFunction[RealtimeEvents, Seq[A]] =
-    SignalFunction(_.collect(pf))
+    SignalFunction[RealtimeEvents, Seq[A]](_.collect(pf)).name("extractEvent")
 
   def expscale(max: Double): SignalFunction[Double, Double] =
-    SignalFunction { v => math.pow(max, v) }
+    SignalFunction[Double, Double] { v => math.pow(max, v) }.name(s"expscale(${max})")
 
   def zeroone[A]: SignalFunction[Seq[A], Option[A]] =
-    SignalFunction(_.headOption)
+    SignalFunction[Seq[A], Option[A]](_.headOption).name("zeroone")
 
   def continuous[A](init: A): SignalFunction[Option[A], A] =
-    stateOut(init) {
+    stateOut[Option[A], A](init) {
       case (Some(ev), st) => ev
       case (None, st) => st
-    }
+    }.name("continuous")
 }
 
 case class SamplingRate(value: Int) extends AnyVal
@@ -346,7 +369,7 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
     run(SignalFunction.ignore[RealtimeEvents] >>> SignalFunction(ev.bloat) >>> genSF(samplingRate))
 
   private[this] def run(sf: SignalFunction[RealtimeEvents, Double]): Unit = {
-    println(s"Running ${sf}...")
+    println(s"Running ${sf.toString}...")
     val proc = sf.buildProc()
     val (line, bufSize) = JavaSound.openLine(samplingRate.value, (bufferNanos / 1000 / 1000).toInt)
     val buffer = new Array[Byte](bufSize)
@@ -549,14 +572,16 @@ object Main {
           extract: PartialFunction[RealtimeEvent, Double],
           max: Double
         ): SF[RealtimeEvents, Double] =
-          readVolume(extract, 1.0) >>> expscale(max)
+          readVolume(extract, 1.0) >>> expscale(max * 100) >>> SignalFunction { _ / 100.0 }
 
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
-            s1 <- readVolumeExp(nk.group1.knob.toPF, 1.0) -< in
-            k1 <- readVolumeExp(nk.group1.slider.toPF, 100000) -< in
+            s1 <- readVolume(nk.group1.slider.toPF, 1.0) -< in
+            k1 <- readVolumeExp(nk.group1.knob.toPF, 100000) -< in
             w <- VCO.sin -< k1
-          } yield w.zip(s1).map { case (a, b) => a * b }
+            out <- id -< w.zip(s1).map { case (a, b) => a * b }
+            out2 <- id -< out
+          } yield out2
         }
       }
     } finally {
