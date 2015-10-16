@@ -9,6 +9,10 @@ object ArrowSyntax {
   implicit class ArrowExt[F[_, _]: Arrow, A, B](self: F[A, B]) {
     def -<[C](s: Signal[F, C, A]): ArrowBuilder[F, C, B] =
       ArrowBuilder.Bind(self, s)
+
+    def -<[C, D, E](s: (Signal[F, C, D], Signal[F, C, E]))(implicit ev: Signal[F, C, (D, E)] =:= Signal[F, C, A]): ArrowBuilder[F, C, B] = s match {
+      case (s1, s2) => self -< s1.zip(s2)
+    }
   }
 }
 

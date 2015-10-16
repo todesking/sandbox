@@ -3,6 +3,10 @@ import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
 
+import scala.language.higherKinds
+import scala.language.implicitConversions
+import scala.language.existentials
+
 trait RealtimeEvent
 
 object hack {
@@ -225,11 +229,11 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
     fired.map(_._1)
   }
 
-  def runRealtime[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit ev: Compat[RealtimeEvents, A]): Unit =
-    run(SignalFunction(ev.bloat) >>> genSF(samplingRate))
+  def runRealtime(genSF: SamplingRate => SignalFunction[RealtimeEvents, Double]): Unit =
+    run(genSF(samplingRate))
 
-  def runUnit[A](genSF: SamplingRate => SignalFunction[A, Double])(implicit ev: Compat[Unit, A]): Unit =
-    run(SignalFunction.ignore[RealtimeEvents] >>> SignalFunction(ev.bloat) >>> genSF(samplingRate))
+  def runUnit(genSF: SamplingRate => SignalFunction[Unit, Double]): Unit =
+    run(SignalFunction.ignore[RealtimeEvents] >>> genSF(samplingRate))
 
   private[this] def run(sf: SignalFunction[RealtimeEvents, Double]): Unit = {
     println(s"Running ${sf.toString}...")
@@ -353,6 +357,14 @@ object NanoKontrol2 {
       case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
         d2 == 127
     }
+
+    def event: SignalFunction[RealtimeEvents, Option[Boolean]] =
+      SignalFunction.extractEvent(toPF) >>>
+        SignalFunction.zeroone[Boolean]
+
+    def onPush: SignalFunction[RealtimeEvents, Option[Unit]] =
+      event >>>
+        SignalFunction(_.filter(identity).map { _ => () })
   }
   class Volume(val cc: Int) {
     def toPF: PartialFunction[RealtimeEvent, Double] = {
@@ -432,15 +444,52 @@ object Main {
       val eventSink = w.runRealtime { implicit sr =>
         val nk = NanoKontrol2
 
+        def index[F[_, _], A, B](ins: Signal[F, A, B]*)(f: B => Boolean)(implicit a: Arrow[F]): ArrowBuilder[F, A, Option[Int]] =
+          ins.zipWithIndex.map {
+            case (in, i) =>
+              a.arr[B, Option[Int]] { v => if (f(v)) Some(i) else None } -< in
+          }.reduceLeft { (l, r) =>
+            for {
+              sigA <- r
+              sigB <- l
+              ret <- a.id -< sigA.zip(sigB).map { case (va, vb) => va.orElse(vb) }
+            } yield ret
+          }
+
+        def selectArrow[F[_, _], A, B](
+          arr0: F[A, B],
+          arrs: F[A, B]*
+        )(implicit Arr: Arrow[F]): F[(Int, A), B] =
+          arrs.zipWithIndex.foldLeft[F[(Int, A), B]](
+            Arr.arr[(Int, A), A](_._2) >>> arr0
+          ) {
+              case (arr, (a, i)) =>
+                (arr &&& Arr.second[A, B, Int](a)) >>> Arr.arr[(B, (Int, B)), B] {
+                  case (a1, (n, a2)) =>
+                    if (n == i) a2 else a1
+                }
+            }
+
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
             s1 <- nk.group1.slider.range(0.0, 1.0) -< in
             k1 <- nk.group1.knob.rangeExp(200, 10000) -< in
             s2 <- nk.group2.slider.range(0.0, 1000.0) -< in
             k2 <- nk.group2.knob.rangeExp(0.1, 100) -< in
+            masterVol <- nk.group8.slider.range(0.0, 1.0) -< in
+            selector <- for {
+              b0 <- nk.transport.rew.onPush -< in
+              b1 <- nk.transport.ff.onPush -< in
+              b2 <- nk.transport.stop.onPush -< in
+              b3 <- nk.transport.play.onPush -< in
+              b4 <- nk.transport.rec.onPush -< in
+              num <- index(b0, b1, b2, b3, b4)(_.nonEmpty)
+              ret <- continuous(0) -< num
+            } yield ret
             lfo1 <- VCO.sin -< k2
-            vco1 <- VCO.sin -< { k1 + lfo1 * s2 }
-          } yield vco1 * s1
+            vco1 <- selectArrow(VCO.sin, VCO.saw) -< (selector -> (k1 + lfo1 * s2))
+            master <- id -< vco1
+          } yield { master * masterVol }
         }
       }
     } finally {
