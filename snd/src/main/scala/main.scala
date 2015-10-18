@@ -14,117 +14,15 @@ object hack {
 }
 import hack._
 
-sealed trait SignalFunction[-A, +B] {
-  def buildProc(): A => B
+case class SamplingRate(value: Int) extends AnyVal
 
-  def merge[C, D, E](rhs: SignalFunction[C, D])(f: (B, D) => E): SignalFunction[(A, C), E] =
-    (this *** rhs).mapsnd(f.tupled)
+object Primitive {
+  // NOTE: phase is normalized(0.0 to 1.0)
+  def freqToPhase(implicit sr: SamplingRate): SignalFunction[Double, Double] =
+    SignalFunction.stateOut[Double, Double](0.0) { (freq, state) => (state + freq / sr.value) % 1.0 }
 
-  def +[C, D](rhs: SignalFunction[C, D])(implicit num: Numeric[D], evB: B <:< D): SignalFunction[(A, C), D] =
-    this.merge(rhs) { (d1, d2) => num.plus(evB(d1), d2) }
-
-  def *[C, D](rhs: SignalFunction[C, D])(implicit num: Numeric[D], evB: B <:< D): SignalFunction[(A, C), D] =
-    this.merge(rhs) { (d1, d2) => num.times(evB(d1), d2) }
-
-  def name(n: String): SignalFunction[A, B] =
-    NamedSF(n, this)
-}
-
-case class NamedSF[A, B](name: String, sf: SignalFunction[A, B]) extends SignalFunction[A, B] {
-  override def buildProc() = sf.buildProc()
-  override def toString() =
-    s"[${name}]"
-}
-
-case class FunctionSF[@specialized(Double, Int) A, @specialized(Double, Int) B](f: A => B) extends SignalFunction[A, B] {
-  override def buildProc(): A => B = f
-  override def toString =
-    "[function]"
-}
-case class IdSF[A]() extends SignalFunction[A, A] {
-  override def buildProc(): A => A = identity
-  override def toString =
-    "[id]"
-}
-case class BypassSF[A, B, C](sf: SignalFunction[A, B]) extends SignalFunction[(A, C), (B, C)] {
-  override def buildProc(): ((A, C)) => (B, C) = {
-    val proc = sf.buildProc()
-    ac: (A, C) => (proc(ac._1) -> ac._2)
-  }
-
-  override def toString =
-    s"(${sf}) *** [bypass]"
-}
-case class ComposeSF[A, B, C](sfBC: SignalFunction[B, C], sfAB: SignalFunction[A, B]) extends SignalFunction[A, C] {
-  override def buildProc(): A => C =
-    sfAB.buildProc() andThen sfBC.buildProc()
-
-  override def toString =
-    s"(${sfAB}) >>> (${sfBC})"
-}
-case class StatefulSF[A, B, C](sf: SignalFunction[(A, C), (B, C)], init: C) extends SignalFunction[A, B] {
-  override def buildProc(): A => B = {
-    val proc = sf.buildProc()
-    var i = init
-
-    a => {
-      val (b, ii) = proc(a -> i)
-      i = ii
-      b
-    }
-  }
-  override def toString =
-    s"[stateful(${init})](${sf})"
-}
-case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction[Unit, A] {
-  override def buildProc(): Unit => A =
-    _ => value
-  override def toString =
-    s"[consst(${value}]"
-}
-
-object SignalFunction {
-  implicit def arrowInstance: ArrowDelayLoop[SignalFunction] = new ArrowDelayLoop[SignalFunction] {
-    override def arr[C, D](f: C => D): SignalFunction[C, D] =
-      FunctionSF(f)
-
-    override def id[C]: SignalFunction[C, C] =
-      IdSF[C]()
-
-    override def first[C, D, E](sf: SignalFunction[C, D]): SignalFunction[(C, E), (D, E)] =
-      BypassSF[C, D, E](sf)
-
-    override def compose[C, D, E](sf1: SignalFunction[D, E], sf2: SignalFunction[C, D]): SignalFunction[C, E] =
-      ComposeSF[C, D, E](sf1, sf2)
-
-    override def delayLoop[A, B, C](init: C, a: SignalFunction[(A, C), (B, C)]): SignalFunction[A, B] =
-      StatefulSF(a, init)
-  }
-
-  implicit def autoConst[A](a: A): SignalFunction[Unit, A] =
-    const(a)
-
-  def apply[A, B](f: A => B): SignalFunction[A, B] =
-    FunctionSF[A, B](f)
-
-  def stateful[A, B, @specialized(Int, Long, Double) C](init: C)(f: (A, C) => (B, C)): StatefulSF[A, B, C] =
-    StatefulSF(FunctionSF[(A, C), (B, C)](_ match { case (a, c) => f(a, c) }), init)
-
-  def stateOut[A, @specialized(Int, Long, Double) B](init: B)(f: (A, B) => B): StatefulSF[A, B, B] =
-    stateful[A, B, B](init) {
-      case (a, b) =>
-        val b_ = f(a, b)
-        (b_ -> b_)
-    }
-
-  def id[A]: SignalFunction[A, A] = IdSF[A]
-
-  val unit: ConstSF[Unit] = ConstSF(())
-
-  def const[A](value: A): ConstSF[A] = ConstSF(value)
-
-  def ignore[A]: SignalFunction[A, Unit] =
-    SignalFunction[A, Unit] { _ => () }.name("ignore")
+  def clip[@specialized(Int, Double) A](min: A, max: A)(implicit num: Numeric[A]): SignalFunction[A, A] =
+    SignalFunction { v => num.max(num.min(v, max), min) }
 
   def extractEvent[A](pf: PartialFunction[RealtimeEvent, A]): SignalFunction[RealtimeEvents, Seq[A]] =
     SignalFunction[RealtimeEvents, Seq[A]](_.collect(pf)).name("extractEvent")
@@ -136,24 +34,11 @@ object SignalFunction {
     SignalFunction[Seq[A], Option[A]](_.headOption).name("zeroone")
 
   def continuous[A](init: A): SignalFunction[Option[A], A] =
-    stateOut[Option[A], A](init) {
+    SignalFunction.stateOut[Option[A], A](init) {
       case (Some(ev), st) => ev
       case (None, st) => st
     }.name("continuous")
 
-  def delay[A](init: A): SignalFunction[A, A] =
-    stateOut[A, A](init) { case (a, s) => a }
-}
-
-case class SamplingRate(value: Int) extends AnyVal
-
-object Primitive {
-  // NOTE: phase is normalized(0.0 to 1.0)
-  def freqToPhase(implicit sr: SamplingRate): SignalFunction[Double, Double] =
-    SignalFunction.stateOut[Double, Double](0.0) { (freq, state) => (state + freq / sr.value) % 1.0 }
-
-  def clip[@specialized(Int, Double) A](min: A, max: A)(implicit num: Numeric[A]): SignalFunction[A, A] =
-    SignalFunction { v => num.max(num.min(v, max), min) }
 }
 
 object VCO {
@@ -323,6 +208,8 @@ case class NanoKontrol2(in: javax.sound.midi.MidiDevice, out: javax.sound.midi.M
 }
 
 object NanoKontrol2 {
+  import Primitive.{extractEvent, zeroone, continuous}
+
   class Button(val cc: Int) {
     def toPF: PartialFunction[RealtimeEvent, Boolean] = {
       case MidiShortMessageEvent(cmd, ch, d1, d2) if cc == d1 =>
@@ -330,8 +217,8 @@ object NanoKontrol2 {
     }
 
     def event: SignalFunction[RealtimeEvents, Option[Boolean]] =
-      SignalFunction.extractEvent(toPF) >>>
-        SignalFunction.zeroone[Boolean]
+      extractEvent(toPF) >>>
+        zeroone[Boolean]
 
     def onPush: SignalFunction[RealtimeEvents, Option[Unit]] =
       event >>>
@@ -343,9 +230,9 @@ object NanoKontrol2 {
         math.min(math.max(d2, 0), 127) / 127.0
     }
     def range(min: Double, max: Double): SignalFunction[RealtimeEvents, Double] =
-      SignalFunction.extractEvent(toPF) >>>
-        SignalFunction.zeroone[Double] >>>
-        SignalFunction.continuous(min) >>>
+      extractEvent(toPF) >>>
+        zeroone[Double] >>>
+        continuous(min) >>>
         SignalFunction { v => min + v * (max - min) }
 
     def rangeExp(min: Double, max: Double): SignalFunction[RealtimeEvents, Double] =
@@ -406,9 +293,10 @@ object Main {
       }
     }
 
-    import SignalFunction.{ const, ignore, extractEvent, id, continuous, zeroone, expscale, delay }
-    import Primitive.clip
+    import SignalFunction.{ const, ignore,  id,  delay }
+    import Primitive.{clip, extractEvent, continuous, zeroone, expscale}
     import ArrowSyntax._
+
     type SF[A, B] = SignalFunction[A, B]
     try {
       nano foreach { _.open() }
