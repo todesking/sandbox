@@ -14,35 +14,6 @@ object hack {
 }
 import hack._
 
-trait Compat[A, B] {
-  def bloat(a: A): B
-  def shrink(b: B): A
-}
-
-class Not[A, B]
-
-object Not {
-  implicit def ev[A, B] = new Not[A, B]
-  implicit def evAmb[A, B](implicit e: A =:= B): Not[A, B] = sys.error("aaagghh")
-}
-
-object Compat {
-  private[this] def gen[A, B](f: A => B)(g: B => A): Compat[A, B] =
-    new Compat[A, B] { override def bloat(a: A): B = f(a); override def shrink(b: B): A = g(b) }
-
-  implicit def evId[A]: Compat[A, A] =
-    gen[A, A](identity)(identity)
-
-  implicit def evTuple2Unit: Compat[Unit, (Unit, Unit)] =
-    gen[Unit, (Unit, Unit)] { u => (u -> u) } { case (_, _) => () }
-
-  implicit def evTuple2R[A, B](implicit ev1: Compat[A, B], nu: Not[B, Unit]): Compat[A, (Unit, B)] =
-    gen[A, (Unit, B)] { a => (() -> ev1.bloat(a)) } { case (u, b) => ev1.shrink(b) }
-
-  implicit def evTuple2L[A, B](implicit ev1: Compat[A, B], nu: Not[B, Unit]): Compat[A, (B, Unit)] =
-    gen[A, (B, Unit)] { a => (ev1.bloat(a), ()) } { case (b, u) => ev1.shrink(b) }
-}
-
 sealed trait SignalFunction[-A, +B] {
   def buildProc(): A => B
 
@@ -54,12 +25,6 @@ sealed trait SignalFunction[-A, +B] {
 
   def *[C, D](rhs: SignalFunction[C, D])(implicit num: Numeric[D], evB: B <:< D): SignalFunction[(A, C), D] =
     this.merge(rhs) { (d1, d2) => num.times(evB(d1), d2) }
-
-  def >>>~<[C, D](rhs: SignalFunction[C, D])(implicit ev: Compat[_ >: B, C]): SignalFunction[A, D] =
-    this >>> SignalFunction(ev.bloat) >>> rhs
-
-  def >>>~>[C, D](rhs: SignalFunction[C, D])(implicit ev: Compat[C, _ >: B]): SignalFunction[A, D] =
-    this >>> SignalFunction(ev.shrink) >>> rhs
 
   def name(n: String): SignalFunction[A, B] =
     NamedSF(n, this)
@@ -135,9 +100,6 @@ object SignalFunction {
     override def delayLoop[A, B, C](init: C, a: SignalFunction[(A, C), (B, C)]): SignalFunction[A, B] =
       StatefulSF(a, init)
   }
-
-  implicit def fit[A, B, C, D](sf: SignalFunction[A, B])(implicit evFst: Compat[C, A], evSnd: Compat[D, B]): SignalFunction[C, D] =
-    id[C] >>>~< sf >>>~> id[D]
 
   implicit def autoConst[A](a: A): SignalFunction[Unit, A] =
     const(a)
