@@ -5,6 +5,10 @@ import scala.language.higherKinds
 import scala.language.implicitConversions
 import scala.language.existentials
 
+trait ArrowDelayLoop[F[_, _]] extends Arrow[F] {
+  def delayLoop[A, B, C](init: C, a: F[(A, C), (B, C)]): F[A, B]
+}
+
 object ArrowSyntax {
   implicit class ArrowExt[F[_, _]: Arrow, A, B](self: F[A, B]) {
     def -<[C](s: Signal[F, C, A]): ArrowBuilder[F, C, B] =
@@ -39,6 +43,9 @@ sealed trait ArrowBuilder[F[_, _], A, B] {
 object ArrowBuilder {
   def build[F[_, _]: Arrow, A, B](f: Signal[F, A, A] => ArrowBuilder[F, A, B]): F[A, B] =
     Start[F, A]().flatMap(f).build()
+
+  def delayLoop[F[_, _]: ArrowDelayLoop, A, B, C](init: C)(f: Signal[F, (A, C), (A, C)] => ArrowBuilder[F, (A, C), (B, C)]): F[A, B] =
+    implicitly[ArrowDelayLoop[F]].delayLoop(init, build(f))
 
   case class Start[F[_, _], A]() extends ArrowBuilder[F, A, A] {
     override val dest = Signal.Dest(this)

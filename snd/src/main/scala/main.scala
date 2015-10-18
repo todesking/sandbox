@@ -71,7 +71,7 @@ case class NamedSF[A, B](name: String, sf: SignalFunction[A, B]) extends SignalF
     s"[${name}]"
 }
 
-case class FunctionSF[A, B](f: A => B) extends SignalFunction[A, B] {
+case class FunctionSF[@specialized(Double, Int) A, @specialized(Double, Int) B](f: A => B) extends SignalFunction[A, B] {
   override def buildProc(): A => B = f
   override def toString =
     "[function]"
@@ -119,7 +119,7 @@ case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction
 }
 
 object SignalFunction {
-  implicit def arrowInstance[A, B]: Arrow[SignalFunction] = new Arrow[SignalFunction] {
+  implicit def arrowInstance: ArrowDelayLoop[SignalFunction] = new ArrowDelayLoop[SignalFunction] {
     override def arr[C, D](f: C => D): SignalFunction[C, D] =
       FunctionSF(f)
 
@@ -131,6 +131,9 @@ object SignalFunction {
 
     override def compose[C, D, E](sf1: SignalFunction[D, E], sf2: SignalFunction[C, D]): SignalFunction[C, E] =
       ComposeSF[C, D, E](sf1, sf2)
+
+    override def delayLoop[A, B, C](init: C, a: SignalFunction[(A, C), (B, C)]): SignalFunction[A, B] =
+      StatefulSF(a, init)
   }
 
   implicit def fit[A, B, C, D](sf: SignalFunction[A, B])(implicit evFst: Compat[C, A], evSnd: Compat[D, B]): SignalFunction[C, D] =
@@ -175,6 +178,9 @@ object SignalFunction {
       case (Some(ev), st) => ev
       case (None, st) => st
     }.name("continuous")
+
+  def delay[A](init: A): SignalFunction[A, A] =
+    stateOut[A, A](init) { case (a, s) => a }
 }
 
 case class SamplingRate(value: Int) extends AnyVal
@@ -183,6 +189,9 @@ object Primitive {
   // NOTE: phase is normalized(0.0 to 1.0)
   def freqToPhase(implicit sr: SamplingRate): SignalFunction[Double, Double] =
     SignalFunction.stateOut[Double, Double](0.0) { (freq, state) => (state + freq / sr.value) % 1.0 }
+
+  def clip[@specialized(Int, Double) A](min: A, max: A)(implicit num: Numeric[A]): SignalFunction[A, A] =
+    SignalFunction { v => num.max(num.min(v, max), min) }
 }
 
 object VCO {
@@ -425,7 +434,6 @@ object NanoKontrol2 {
 object Main {
   def main(args: Array[String]): Unit = {
     val w = new World(SamplingRate(44100), 10L * 1000 * 1000, 20L * 1000 * 1000)
-
     val nano = JavaSound.findNanoKontrol2()
     nano foreach {
       _.onMessage {
@@ -436,7 +444,8 @@ object Main {
       }
     }
 
-    import SignalFunction.{ const, ignore, extractEvent, id, continuous, zeroone, expscale }
+    import SignalFunction.{ const, ignore, extractEvent, id, continuous, zeroone, expscale, delay }
+    import Primitive.clip
     import ArrowSyntax._
     type SF[A, B] = SignalFunction[A, B]
     try {
@@ -470,12 +479,55 @@ object Main {
                 }
             }
 
+        def lfo(f0: Double)(implicit sr: SamplingRate): SF[(Double, (Double, Double)), Double] = {
+          val vt = 40000.0
+          val moogAux: SignalFunction[(Double, Double), Double] =
+            ArrowBuilder.delayLoop[SignalFunction, (Double, Double), Double, Double](0.0) { in =>
+              val x = in.map(_._1._1)
+              val g = in.map(_._1._2)
+              val ym1 = in.map(_._2)
+              for {
+                y <- ym1.zip(x).zip(g).map { case ((ym1, x), g) => ym1 + vt * g * (math.tanh(x / vt) - math.tanh(ym1 / vt)) }.arrowBuilder
+              } yield y.zip(y)
+            }
+          ArrowBuilder.build[SignalFunction, (Double, (Double, Double)), Double] { in =>
+            val freq = in.map(_._1)
+            val resonance = in.map(_._2._1)
+            val value = in.map(_._2._2)
+            for {
+              f <- freq.map { freq => f0 + freq }.arrowBuilder
+              g <- f.map { f => 1.0 - math.exp(-2.0 * math.Pi * f / sr.value) }.arrowBuilder
+              y <- ArrowBuilder.delayLoop[SignalFunction, (Double, (Double, Double)), Double, Double](0.0) { in =>
+                val x = in.map(_._1._1)
+                val g = in.map(_._1._2._1)
+                val r = in.map(_._1._2._2)
+                val y = in.map(_._2)
+                for {
+                  ya <- {
+                    moogAux <<<
+                      SignalFunction[((Double, (Double, Double)), Double), (Double, Double)] {
+                        case ((x, (g, r)), y) => ((x - 4 * r * y) -> g)
+                      }
+                  } -< in
+                  yb <- moogAux -< (ya -> g)
+                  yc <- moogAux -< (yb -> g)
+                  yd <- moogAux -< (yc -> g)
+                  ye <- delay(0.0) -< yd
+                  yout <- ye.zip(yd).map { case (ye, yd) => (ye + yd) / 2 }.arrowBuilder
+                } yield yout.zip(yout)
+              } -< value.zip(g.zip(resonance))
+            } yield y
+          }
+        }
+
         ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
           for {
             s1 <- nk.group1.slider.range(0.0, 1.0) -< in
             k1 <- nk.group1.knob.rangeExp(200, 10000) -< in
             s2 <- nk.group2.slider.range(0.0, 1000.0) -< in
             k2 <- nk.group2.knob.rangeExp(0.1, 100) -< in
+            k3 <- nk.group3.knob.range(0.0, 10000.0) -< in
+            s3 <- nk.group3.slider.range(0.0, 1.0) -< in
             masterVol <- nk.group8.slider.range(0.0, 1.0) -< in
             selector <- for {
               b0 <- nk.transport.rew.onPush -< in
@@ -488,8 +540,10 @@ object Main {
             } yield ret
             lfo1 <- VCO.sin -< k2
             vco1 <- selectArrow(VCO.sin, VCO.saw) -< (selector -> (k1 + lfo1 * s2))
-            master <- id -< vco1
-          } yield { master * masterVol }
+            vcf1 <- lfo(100) -< k3.zip(s3.zip(vco1))
+            master <- vcf1.arrowBuilder
+            out <- clip(-1.0, 1.0) -< master * masterVol
+          } yield out
         }
       }
     } finally {
