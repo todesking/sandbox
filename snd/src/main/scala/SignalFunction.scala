@@ -28,17 +28,28 @@ case class NamedSF[A, B](name: String, sf: SignalFunction[A, B]) extends SignalF
     s"[${name}]"
 }
 
-case class FunctionSF[@specialized(Double, Int) A, @specialized(Double, Int) B](f: A => B) extends SignalFunction[A, B] {
+case class FunctionSF[A, B](f: A => B) extends SignalFunction[A, B] {
   override def buildProc(): A => B = f
   override def toString =
     "[function]"
 }
+
+case class FunctionsSF[A, B](fs: Seq[Function1[Any, Any]]) extends SignalFunction[A, B] {
+  override def buildProc(): A => B = (fs match {
+    case Seq(f1) => f1
+    case Seq(f1, f2) => { x: Any => f2(f1(x)) }
+    case Seq(f1, f2, f3) => { x: Any => f3(f2(f1(x))) }
+    case Seq(f1, f2, f3, f4) => { x: Any => f4(f3(f2(f1(x)))) }
+    case _ => fs.foldLeft(identity[Any] _)(_ andThen _)
+  }).asInstanceOf[A => B]
+}
+
 case class IdSF[A]() extends SignalFunction[A, A] {
   override def buildProc(): A => A = identity
   override def toString =
     "[id]"
 }
-case class BypassSF[A, B, C](sf: SignalFunction[A, B]) extends SignalFunction[(A, C), (B, C)] {
+case class BypassSF[@specialized(Double, Int) A, @specialized(Double, Int) B, @specialized(Double, Int) C](sf: SignalFunction[A, B]) extends SignalFunction[(A, C), (B, C)] {
   override def buildProc(): ((A, C)) => (B, C) = {
     val proc = sf.buildProc()
     ac: (A, C) => (proc(ac._1) -> ac._2)
@@ -54,7 +65,7 @@ case class ComposeSF[A, B, C](sfBC: SignalFunction[B, C], sfAB: SignalFunction[A
   override def toString =
     s"(${sfAB}) >>> (${sfBC})"
 }
-case class StatefulSF[A, B, C](sf: SignalFunction[(A, C), (B, C)], init: C) extends SignalFunction[A, B] {
+case class StatefulSF[@specialized(Double) A, @specialized(Double) B, @specialized(Double) C](sf: SignalFunction[(A, C), (B, C)], init: C) extends SignalFunction[A, B] {
   override def buildProc(): A => B = {
     val proc = sf.buildProc()
     var i = init
@@ -87,9 +98,28 @@ object SignalFunction {
       BypassSF[C, D, E](sf)
 
     override def compose[C, D, E](sf1: SignalFunction[D, E], sf2: SignalFunction[C, D]): SignalFunction[C, E] =
-      ComposeSF[C, D, E](sf1, sf2)
+      (sf1, sf2) match {
+        case (NamedSF(_, s1), s2) => compose(s1, s2)
+        case (s1, NamedSF(_, s2)) => compose(s1, s2)
+        case (IdSF(), s) => s.asInstanceOf[SignalFunction[C, E]]
+        case (s, IdSF()) => s.asInstanceOf[SignalFunction[C, E]]
+        case (BypassSF(sf1), BypassSF(sf2)) =>
+          // Ugh
+          BypassSF(
+            compose(
+              sf1.asInstanceOf[SignalFunction[Any, Any]],
+              sf2.asInstanceOf[SignalFunction[Any, Any]]
+            )
+          ).asInstanceOf[SignalFunction[C, E]]
+        case (FunctionSF(f1), FunctionSF(f2)) =>
+          FunctionsSF(Seq(f1, f2).asInstanceOf[Seq[Any => Any]]).asInstanceOf[SignalFunction[C, E]]
+        case (FunctionsSF(fs), FunctionSF(f2)) =>
+          FunctionsSF(fs :+ f2.asInstanceOf[Any => Any]).asInstanceOf[SignalFunction[C, E]]
+        case _ =>
+          ComposeSF[C, D, E](sf1, sf2)
+      }
 
-    override def delayLoop[A, B, C](init: C, a: SignalFunction[(A, C), (B, C)]): SignalFunction[A, B] =
+    override def delayLoop[A, B, @specialized(Double) C](init: C, a: SignalFunction[(A, C), (B, C)]): SignalFunction[A, B] =
       StatefulSF(a, init)
   }
 
@@ -102,7 +132,7 @@ object SignalFunction {
   def stateful[A, B, @specialized(Int, Long, Double) C](init: C)(f: (A, C) => (B, C)): StatefulSF[A, B, C] =
     StatefulSF(FunctionSF[(A, C), (B, C)](_ match { case (a, c) => f(a, c) }), init)
 
-  def stateOut[A, @specialized(Int, Long, Double) B](init: B)(f: (A, B) => B): StatefulSF[A, B, B] =
+  def stateOut[@specialized(Double) A, @specialized(Int, Long, Double) B](init: B)(f: (A, B) => B): StatefulSF[A, B, B] =
     stateful[A, B, B](init) {
       case (a, b) =>
         val b_ = f(a, b)
@@ -113,12 +143,12 @@ object SignalFunction {
 
   val unit: ConstSF[Unit] = ConstSF(())
 
-  def const[A](value: A): ConstSF[A] = ConstSF(value)
+  def const[@specialized(Int, Double) A](value: A): ConstSF[A] = ConstSF(value)
 
   def ignore[A]: SignalFunction[A, Unit] =
     SignalFunction[A, Unit] { _ => () }.name("ignore")
 
-  def delay[A](init: A): SignalFunction[A, A] =
+  def delay[@specialized(Int, Double) A](init: A): SignalFunction[A, A] =
     stateOut[A, A](init) { case (a, s) => a }
 }
 

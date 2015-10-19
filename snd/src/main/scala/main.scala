@@ -208,7 +208,7 @@ case class NanoKontrol2(in: javax.sound.midi.MidiDevice, out: javax.sound.midi.M
 }
 
 object NanoKontrol2 {
-  import Primitive.{extractEvent, zeroone, continuous}
+  import Primitive.{ extractEvent, zeroone, continuous }
 
   class Button(val cc: Int) {
     def toPF: PartialFunction[RealtimeEvent, Boolean] = {
@@ -281,6 +281,13 @@ object NanoKontrol2 {
 }
 
 object Main {
+  // http://math.stackexchange.com/questions/107292/rapid-approximation-of-tanhx
+  def tanh(xx: Double): Double = {
+    val x = math.abs(xx)
+    math.signum(xx) *
+      (-.67436811832e-5 + (.2468149110712040 + (.583691066395175e-1 + .3357335044280075e-1 * x) * x) * x) / (.2464845986383725 + (.609347197060491e-1 + (.1086202599228572 + .2874707922475963e-1 * x) * x) * x)
+  }
+
   def main(args: Array[String]): Unit = {
     val w = new World(SamplingRate(44100), 10L * 1000 * 1000, 20L * 1000 * 1000)
     val nano = JavaSound.findNanoKontrol2()
@@ -293,8 +300,8 @@ object Main {
       }
     }
 
-    import SignalFunction.{ const, ignore,  id,  delay }
-    import Primitive.{clip, extractEvent, continuous, zeroone, expscale}
+    import SignalFunction.{ const, ignore, id, delay }
+    import Primitive.{ clip, extractEvent, continuous, zeroone, expscale }
     import ArrowSyntax._
 
     type SF[A, B] = SignalFunction[A, B]
@@ -337,7 +344,7 @@ object Main {
               val g = in.map(_._1._2)
               val ym1 = in.map(_._2)
               for {
-                y <- ym1.zip(x).zip(g).map { case ((ym1, x), g) => ym1 + vt * g * (math.tanh(x / vt) - math.tanh(ym1 / vt)) }.arrowBuilder
+                y <- ym1.zip(x).zip(g).map { case ((ym1, x), g) => ym1 + vt * g * (tanh(x / vt) - tanh(ym1 / vt)) }.arrowBuilder
               } yield y.zip(y)
             }
           ArrowBuilder.build[SignalFunction, (Double, (Double, Double)), Double] { in =>

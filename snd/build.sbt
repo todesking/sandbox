@@ -15,4 +15,4 @@ scalariformSettings
 
 fork in run := true
 
-javaOptions in run ++= Seq("-server", "-verbose:gc", "-Xloggc:gc.log", "-XX:+PrintGCDetails")
+javaOptions in run ++= Seq("-server", "-verbose:gc", "-Xloggc:gc.log", "-XX:+PrintGCDetails", "-agentlib:hprof=cpu=samples")
