@@ -1,7 +1,6 @@
 scalaVersion := "2.11.7"
 
-libraryDependencies ++= Seq(
-)
+libraryDependencies += "org.javassist" % "javassist" % "3.20.0-GA"
 
 scalariformSettings
 
