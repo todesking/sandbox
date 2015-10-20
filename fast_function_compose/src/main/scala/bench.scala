@@ -28,44 +28,34 @@ object FastCompose {
   }
 }
 
-case class FastCompose1[A, B](f: A => B) extends FastCompose[A, B] {
+final case class FastCompose1[A, B](f: A => B) extends FastCompose[A, B] {
   override def build() = f
   override def andThen0[X](x: B => X): FastCompose[A, X] = FastCompose2(f, x)
+  override def toString = "[fc]"
 }
 
-case class FastCompose2[A, B, C](f: A => B, g: B => C) extends FastCompose[A, C] {
-  override def build() = f andThen g
+final case class FastCompose2[A, B, C](f: A => B, g: B => C) extends FastCompose[A, C] {
+  override def build() = { x: A => g(f(x)) }
   override def andThen0[X](x: C => X): FastCompose[A, X] = FastCompose3(f, g, x)
+  override def toString = s"(${f}, ${g})"
 }
 
-case class FastCompose3[A, B, C, D](f: A => B, g: B => C, h: C => D) extends FastCompose[A, D] {
+final case class FastCompose3[A, B, C, D](f: A => B, g: B => C, h: C => D) extends FastCompose[A, D] {
   override def build() = { x: A => h(g(f(x))) }
   override def andThen0[X](x: D => X): FastCompose[A, X] = FastCompose4(f, g, h, x)
+  override def toString = s"(${f}, ${g}, ${h})"
 }
 
-case class FastCompose4[A, B, C, D, E](f: A => B, g: B => C, h: C => D, i: D => E) extends FastCompose[A, E] {
+final case class FastCompose4[A, B, C, D, E](f: A => B, g: B => C, h: C => D, i: D => E) extends FastCompose[A, E] {
   override def build() = { x: A => i(h(g(f(x)))) }
   override def andThen0[X](x: E => X): FastCompose[A, X] = FastCompose5(f, g, h, i, x)
+  override def toString = s"(${f}, ${g}, ${h})"
 }
 
-case class FastCompose5[A, B, C, D, E, F](f: A => B, g: B => C, h: C => D, i: D => E, j: E => F) extends FastCompose[A, F] {
+final case class FastCompose5[A, B, C, D, E, F](f: A => B, g: B => C, h: C => D, i: D => E, j: E => F) extends FastCompose[A, F] {
   override def build() = { x: A => j(i(h(g(f(x))))) }
-  override def andThen0[X](x: F => X): FastCompose[A, X] = FastCompose6(f, g, h, i, j, x)
-}
-
-case class FastCompose6[A, B, C, D, E, F, G](f: A => B, g: B => C, h: C => D, i: D => E, j: E => F, k: F => G) extends FastCompose[A, G] {
-  override def build() = { x: A => k(j(i(h(g(f(x)))))) }
-  override def andThen0[X](x: G => X): FastCompose[A, X] = FastCompose7(f, g, h, i, j, k, x)
-}
-
-case class FastCompose7[A, B, C, D, E, F, G, H](f: A => B, g: B => C, h: C => D, i: D => E, j: E => F, k: F => G, l: G => H) extends FastCompose[A, H] {
-  override def build() = { x: A => l(k(j(i(h(g(f(x))))))) }
-  override def andThen0[X](x: H => X): FastCompose[A, X] = FastCompose8(f, g, h, i, j, k, l, x)
-}
-
-case class FastCompose8[A, B, C, D, E, F, G, H, I](f: A => B, g: B => C, h: C => D, i: D => E, j: E => F, k: F => G, l: G => H, m: H => I) extends FastCompose[A, I] {
-  override def build() = { x: A => m(l(k(j(i(h(g(f(x)))))))) }
-  override def andThen0[X](x: I => X): FastCompose[A, X] = FastCompose2(this, x)
+  override def andThen0[X](x: F => X): FastCompose[A, X] = FastCompose1(this).andThen(x) // FastCompose6(f, g, h, i, j, x)
+  override def toString = s"(${f}, ${g}, ${h}, ${i})"
 }
 
 object Bench {
@@ -79,17 +69,23 @@ object Bench {
   val f8: Int => Int = { x => x + 10 }
 
   val standardF = {
-    val F = f1 andThen f2 andThen f3 andThen f4 andThen f5 andThen f6 andThen f7 andThen f8
+    def F = f1 andThen f2 andThen f3 andThen f4 andThen f5 andThen f6 andThen f7 andThen f8
     F andThen F andThen F andThen F
   }
   val fastF = {
-    val F = FastCompose(f1) andThen f2 andThen f3 andThen f4 andThen f5 andThen f6 andThen f7 andThen f8
+    def F = FastCompose(f1) andThen f2 andThen f3 andThen f4 andThen f5 andThen f6 andThen f7 andThen f8
     F andThen F andThen F andThen F
+  }
+
+  val baseline = {
+    def F(x: Int) = f8(f7(f6(f5(f4(f3(f2(f1(x))))))))
+    x: Int => F(F(F(F(x))))
   }
 }
 
 object Main {
   def main(args: Array[String]): Unit = {
+    println(Bench.fastF)
     (0 until 10) foreach { i =>
       println(Bench.standardF(i) -> Bench.fastF(i))
     }
@@ -98,12 +94,20 @@ object Main {
 
 /*
 [info] # VM version: JDK 1.8.0_60, VM 25.60-b23
-[info] Benchmark        Mode  Cnt     Score     Error  Units
-[info] Bench.fast      thrpt  200  9098.848 ± 568.496  ops/s
-[info] Bench.standard  thrpt  200  4362.272 ±  58.180  ops/s
+[info] Benchmark        Mode  Cnt      Score      Error  Units
+[info] Bench.baseline  thrpt   10  19838.660 ± 2798.280  ops/s
+[info] Bench.fast      thrpt   10   5143.457 ±  644.086  ops/s
+[info] Bench.standard  thrpt   10   4166.748 ±  489.675  ops/s
 */
 
 class Bench {
+  @Benchmark
+  def baseline(): Any = {
+    var x = 0
+    (0 until 1000).foreach { i => x += Bench.baseline(i) }
+    x
+  }
+
   @Benchmark
   def standard(): Any = {
     var x = 0
