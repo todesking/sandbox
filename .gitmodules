@@ -1,0 +1,3 @@
+[submodule "snd/fast_functions"]
+	path = snd/fast_functions
+	url = git@github.com:todesking/fast_function_composer.scala.git
