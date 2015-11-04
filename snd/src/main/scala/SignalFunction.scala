@@ -100,6 +100,9 @@ object SignalFunction {
     override def first[C, D, E](sf: SignalFunction[C, D]): SignalFunction[(C, E), (D, E)] =
       BypassSF[C, D, E](sf)
 
+    // TODO: second
+    // TODO: combine
+
     override def compose[C, D, E](sf1: SignalFunction[D, E], sf2: SignalFunction[C, D]): SignalFunction[C, E] =
       (sf1, sf2) match {
         case (NamedSF(_, s1), s2) => compose(s1, s2)
