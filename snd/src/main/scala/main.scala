@@ -338,7 +338,7 @@ object Main {
         def lfo(f0: Double)(implicit sr: SamplingRate): SF[(Double, (Double, Double)), Double] = {
           val vt = 40000.0
           val moogAux: SignalFunction[(Double, Double), Double] =
-            ArrowBuilder.delayLoop[SignalFunction, (Double, Double), Double, Double](0.0) { in =>
+            SignalFunction.delayLoop[(Double, Double), Double, Double](0.0) { in =>
               val x = in.map(_._1._1)
               val g = in.map(_._1._2)
               val ym1 = in.map(_._2)
@@ -346,14 +346,14 @@ object Main {
                 y <- ym1.zip(x).zip(g).map { case ((ym1, x), g) => ym1 + vt * g * (tanh(x / vt) - tanh(ym1 / vt)) }.arrowBuilder
               } yield y.zip(y)
             }
-          ArrowBuilder.build[SignalFunction, (Double, (Double, Double)), Double] { in =>
+          SignalFunction.build[(Double, (Double, Double)), Double] { in =>
             val freq = in.map(_._1)
             val resonance = in.map(_._2._1)
             val value = in.map(_._2._2)
             for {
               f <- freq.map { freq => f0 + freq }.arrowBuilder
               g <- f.map { f => 1.0 - math.exp(-2.0 * math.Pi * f / sr.value) }.arrowBuilder
-              y <- ArrowBuilder.delayLoop[SignalFunction, (Double, (Double, Double)), Double, Double](0.0) { in =>
+              y <- SignalFunction.delayLoop[(Double, (Double, Double)), Double, Double](0.0) { in =>
                 val x = in.map(_._1._1)
                 val g = in.map(_._1._2._1)
                 val r = in.map(_._1._2._2)
@@ -376,7 +376,7 @@ object Main {
           }
         }
 
-        ArrowBuilder.build[SignalFunction, RealtimeEvents, Double] { in =>
+        SignalFunction.build[RealtimeEvents, Double] { in =>
           for {
             s1 <- nk.group1.slider.range(0.0, 1.0) -< in
             k1 <- nk.group1.knob.rangeExp(200, 10000) -< in

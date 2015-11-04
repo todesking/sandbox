@@ -84,6 +84,12 @@ case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction
 }
 
 object SignalFunction {
+  def build[A, B](f: Signal[SignalFunction, A, A] => ArrowBuilder[SignalFunction, A, B]): SignalFunction[A, B] =
+    ArrowBuilder.build[SignalFunction, A, B](f)
+
+  def delayLoop[A, B, C](init: C)(f: Signal[SignalFunction, (A, C), (A, C)] => ArrowBuilder[SignalFunction, (A, C), (B, C)]): SignalFunction[A, B] =
+    ArrowBuilder.delayLoop(init)(f)
+
   implicit def arrowInstance: ArrowDelayLoop[SignalFunction] = new ArrowDelayLoop[SignalFunction] {
     override def arr[C, D](f: C => D): SignalFunction[C, D] =
       FunctionSF(f)
