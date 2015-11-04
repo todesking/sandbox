@@ -121,11 +121,7 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
               buffer(i) = (out * 127).toByte
               clock += 1
             }
-            if (clock < bufSize * 10)
-              line.write(zero, 0, zero.size)
-            else
-              line.write(buffer, 0, buffer.size)
-            // println(s"${line.available()}/${line.getBufferSize}")
+            line.write(buffer, 0, buffer.size)
           }
           val shutBuf = new Array[Byte]((samplingRate.value * 0.2).toInt)
           for (i <- 0 until shutBuf.size) {
@@ -291,6 +287,9 @@ object Main {
   def main(args: Array[String]): Unit = {
     val w = new World(SamplingRate(44100), 10L * 1000 * 1000, 20L * 1000 * 1000)
     val nano = JavaSound.findNanoKontrol2()
+    nano foreach { _ =>
+      println("NanoKontrol2 detected")
+    }
     nano foreach {
       _.onMessage {
         case sm: javax.sound.midi.ShortMessage =>
@@ -398,8 +397,8 @@ object Main {
             lfo1 <- VCO.sin -< k2
             vco1 <- selectArrow(VCO.sin, VCO.saw) -< (selector -> (k1 + lfo1 * s2))
             vcf1 <- lfo(100) -< k3.zip(s3.zip(vco1))
-            master <- vcf1.arrowBuilder
-            out <- clip(-1.0, 1.0) -< master * masterVol
+            master <- vco1.arrowBuilder
+            out <- clip(-1.0, 1.0) -< master
           } yield out
         }
       }

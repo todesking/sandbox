@@ -1,13 +1,19 @@
 import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
+import com.todesking.fast_function_composer.FastComposable
+import FastComposable.noHint
 
 import scala.language.higherKinds
 import scala.language.implicitConversions
 import scala.language.existentials
 
 sealed trait SignalFunction[-A, +B] {
-  def buildProc(): A => B
+  final def buildProc(): A => B =
+    FastComposable.compile(buildProc0(), true)
+
+  // unoptimized version
+  def buildProc0(): A => B
 
   def merge[C, D, E](rhs: SignalFunction[C, D])(f: (B, D) => E): SignalFunction[(A, C), E] =
     (this *** rhs).mapsnd(f.tupled)
@@ -23,34 +29,25 @@ sealed trait SignalFunction[-A, +B] {
 }
 
 case class NamedSF[A, B](name: String, sf: SignalFunction[A, B]) extends SignalFunction[A, B] {
-  override def buildProc() = sf.buildProc()
+  override def buildProc0() = sf.buildProc0()
   override def toString() =
     s"[${name}]"
 }
 
 case class FunctionSF[A, B](f: A => B) extends SignalFunction[A, B] {
-  override def buildProc(): A => B = f
+  override def buildProc0(): A => B = f
   override def toString =
     "[function]"
 }
 
-case class FunctionsSF[A, B](fs: Seq[Function1[Any, Any]]) extends SignalFunction[A, B] {
-  override def buildProc(): A => B = (fs match {
-    case Seq(f1) => f1
-    case Seq(f1, f2) => { x: Any => f2(f1(x)) }
-    case Seq(f1, f2, f3) => { x: Any => f3(f2(f1(x))) }
-    case Seq(f1, f2, f3, f4) => { x: Any => f4(f3(f2(f1(x)))) }
-    case _ => fs.foldLeft(identity[Any] _)(_ andThen _)
-  }).asInstanceOf[A => B]
-}
-
 case class IdSF[A]() extends SignalFunction[A, A] {
-  override def buildProc(): A => A = identity
+  override def buildProc0(): A => A = identity
   override def toString =
     "[id]"
 }
+
 case class BypassSF[@specialized(Double, Int) A, @specialized(Double, Int) B, @specialized(Double, Int) C](sf: SignalFunction[A, B]) extends SignalFunction[(A, C), (B, C)] {
-  override def buildProc(): ((A, C)) => (B, C) = {
+  override def buildProc0(): ((A, C)) => (B, C) = {
     val proc = sf.buildProc()
     ac: (A, C) => (proc(ac._1) -> ac._2)
   }
@@ -59,14 +56,14 @@ case class BypassSF[@specialized(Double, Int) A, @specialized(Double, Int) B, @s
     s"(${sf}) *** [bypass]"
 }
 case class ComposeSF[A, B, C](sfBC: SignalFunction[B, C], sfAB: SignalFunction[A, B]) extends SignalFunction[A, C] {
-  override def buildProc(): A => C =
-    sfAB.buildProc() andThen sfBC.buildProc()
+  override def buildProc0(): A => C =
+    noHint(sfAB.buildProc0()) andThen sfBC.buildProc0()
 
   override def toString =
     s"(${sfAB}) >>> (${sfBC})"
 }
 case class StatefulSF[@specialized(Double) A, @specialized(Double) B, @specialized(Double) C](sf: SignalFunction[(A, C), (B, C)], init: C) extends SignalFunction[A, B] {
-  override def buildProc(): A => B = {
+  override def buildProc0(): A => B = {
     val proc = sf.buildProc()
     var i = init
 
@@ -80,7 +77,7 @@ case class StatefulSF[@specialized(Double) A, @specialized(Double) B, @specializ
     s"[stateful(${init})](${sf})"
 }
 case class ConstSF[@specialized(Int, Double) A](value: A) extends SignalFunction[Unit, A] {
-  override def buildProc(): Unit => A =
+  override def buildProc0(): Unit => A =
     _ => value
   override def toString =
     s"[consst(${value}]"
@@ -111,10 +108,6 @@ object SignalFunction {
               sf2.asInstanceOf[SignalFunction[Any, Any]]
             )
           ).asInstanceOf[SignalFunction[C, E]]
-        case (FunctionSF(f1), FunctionSF(f2)) =>
-          FunctionsSF(Seq(f1, f2).asInstanceOf[Seq[Any => Any]]).asInstanceOf[SignalFunction[C, E]]
-        case (FunctionsSF(fs), FunctionSF(f2)) =>
-          FunctionsSF(fs :+ f2.asInstanceOf[Any => Any]).asInstanceOf[SignalFunction[C, E]]
         case _ =>
           ComposeSF[C, D, E](sf1, sf2)
       }
