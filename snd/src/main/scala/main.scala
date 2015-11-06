@@ -345,7 +345,7 @@ object Main {
               for {
                 y <- ym1.zip(x).zip(g).map { case ((ym1, x), g) => ym1 + vt * g * (tanh(x / vt) - tanh(ym1 / vt)) }.arrowBuilder
               } yield y.zip(y)
-            }
+            }.name("moogAux")
           SignalFunction.build[(Double, (Double, Double)), Double] { in =>
             val freq = in.map(_._1)
             val resonance = in.map(_._2._1)
@@ -373,10 +373,10 @@ object Main {
                 } yield yout.zip(yout)
               } -< value.zip(g.zip(resonance))
             } yield y
-          }
+          }.name("Moog LFO")
         }
 
-        SignalFunction.build[RealtimeEvents, Double] { in =>
+        val all = SignalFunction.build[RealtimeEvents, Double] { in =>
           for {
             s1 <- nk.group1.slider.range(0.0, 1.0) -< in
             k1 <- nk.group1.knob.rangeExp(200, 10000) -< in
@@ -395,12 +395,18 @@ object Main {
               ret <- continuous(0) -< num
             } yield ret
             lfo1 <- VCO.sin -< k2
-            vco1 <- selectArrow(VCO.sin, VCO.saw) -< (selector -> (k1 + lfo1 * s2))
-            vcf1 <- lfo(100) -< k3.zip(s3.zip(vco1))
-            master <- vco1.arrowBuilder
+            vco1 <- selectArrow(VCO.sin, VCO.saw).name("vco1") -< (selector -> (k1 + lfo1 * s2))
+            vcf1 <- lfo(100).name("vcf1") -< k3.zip(s3.zip(vco1))
+            master <- vcf1.arrowBuilder
             out <- clip(-1.0, 1.0) -< master
           } yield out
         }
+        val opt = SignalFunction.optimize(all); {
+          import java.nio.file.{ Files, Paths }
+          Files.write(Paths.get("./sf.dot"), Dot.toSource(Dot.compile(all, new Dot.IdGen)).getBytes)
+          Files.write(Paths.get("./sf.opt.dot"), Dot.toSource(Dot.compile(opt, new Dot.IdGen)).getBytes)
+        }
+        opt
       }
     } finally {
       nano.foreach { _.close() }

@@ -38,6 +38,12 @@ sealed trait ArrowBuilder[F[_, _], A, B] {
   def depth: Int
 
   def signals: Seq[Signal[F, A, _]]
+
+  override def equals(rhs: Any) =
+    rhs match {
+      case a: AnyRef => this eq a
+      case _ => false
+    }
 }
 
 object ArrowBuilder {
@@ -94,7 +100,7 @@ object ArrowBuilder {
 
     override val dest = Signal.Dest(this)
 
-    override val depth = math.max(fst.depth, snd.depth)
+    override val depth = math.max(fst.depth, snd.depth) + 1
 
     override val signals = (fst.signals ++ snd.signals).distinct
 
@@ -113,7 +119,7 @@ object ArrowBuilder {
     private[this] def commonSignal: Signal[F, A, CommonSignalType] = {
       fst.signals.sortBy(_.depth).zip(snd.signals.sortBy(_.depth))
         .takeWhile { case (a, b) => a == b }
-        .headOption
+        .lastOption
         .map(_._1.asInstanceOf[Signal[F, A, CommonSignalType]])
         .getOrElse { throw new IllegalArgumentException() }
     }
@@ -137,6 +143,15 @@ sealed trait Signal[F[_, _], A, B] {
 
   def *(rhs: Signal[F, A, B])(implicit num: Numeric[B]): Signal[F, A, B] =
     zip(rhs).map { case (a, b) => num.times(a, b) }
+
+  override def equals(rhs: Any) =
+    rhs match {
+      case rhs: Signal[_, _, _] => this.arrowBuilder == rhs.arrowBuilder
+      case _ => false
+    }
+
+  override def hashCode =
+    arrowBuilder.hashCode
 }
 
 object Signal {
