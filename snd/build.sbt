@@ -9,7 +9,7 @@ libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.1.4"
 libraryDependencies ++= Seq(
 )
 
-lazy val fastFunctions = project in file("./fast_functions")
+lazy val fastFunctions = project in file("./fast_functions/core")
 
 lazy val root = project.in(file(".")).dependsOn(fastFunctions)
 
