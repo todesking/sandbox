@@ -3,6 +3,7 @@ import scalaz.syntax.arrow._
 import scala.specialized
 import com.todesking.fast_function_composer.FastComposable
 import FastComposable.noHint
+import com.todesking.arrow_builder.{ ArrowDelayLoop, Signal, ArrowBuilder }
 
 import scala.language.higherKinds
 import scala.language.implicitConversions

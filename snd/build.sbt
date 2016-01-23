@@ -11,7 +11,9 @@ libraryDependencies ++= Seq(
 
 lazy val fastFunctions = project in file("./fast_functions/core")
 
-lazy val root = project.in(file(".")).dependsOn(fastFunctions)
+lazy val arrowBuilder = project in file("./arrow_builder")
+
+lazy val root = project.in(file(".")).dependsOn(fastFunctions, arrowBuilder)
 
 
 scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked", "-Xlint")

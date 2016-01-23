@@ -2,6 +2,7 @@ import com.todesking.scalapp.syntax._
 import scalaz.Arrow
 import scalaz.syntax.arrow._
 import scala.specialized
+import com.todesking.arrow_builder.{ ArrowBuilder, Signal }
 
 import scala.language.higherKinds
 import scala.language.implicitConversions
@@ -114,7 +115,10 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
         try {
           val t0 = System.nanoTime()
           var clock: Long = 0L
+          var lineTime = line.getMicrosecondPosition()
+          var calcTime = System.nanoTime() / 1000
           while (!shut) {
+            Thread.sleep(1000)
             for (i <- 0 until buffer.size) {
               val firedEvents = pollEvent(t0, clock)
               val out = proc(firedEvents)
@@ -122,6 +126,11 @@ class World(samplingRate: SamplingRate, bufferNanos: Long, delayNanos: Long) {
               clock += 1
             }
             line.write(buffer, 0, buffer.size)
+            val newLineTime = line.getMicrosecondPosition()
+            val newCalcTime = System.nanoTime() / 1000
+            println(s"LINE: +${newLineTime - lineTime}, CALC: ${newCalcTime - calcTime}")
+            lineTime = newLineTime
+            calcTime = newCalcTime
           }
           val shutBuf = new Array[Byte]((samplingRate.value * 0.2).toInt)
           for (i <- 0 until shutBuf.size) {
@@ -163,6 +172,11 @@ object JavaSound {
 
     val info = new DataLine.Info(classOf[SourceDataLine], format, lineBufferSize)
     val line = AudioSystem.getLine(info).asInstanceOf[SourceDataLine]
+    line.addLineListener(new javax.sound.sampled.LineListener {
+      override def update(event: javax.sound.sampled.LineEvent): Unit = {
+        println(s"EVENT: ${event}")
+      }
+    })
     line.open(format, lineBufferSize)
     line.start()
     (line, bufferSizeByte)
@@ -301,7 +315,7 @@ object Main {
 
     import SignalFunction.{ const, ignore, id, delay }
     import Primitive.{ clip, extractEvent, continuous, zeroone, expscale }
-    import ArrowSyntax._
+    import com.todesking.arrow_builder.ArrowSyntax._
 
     type SF[A, B] = SignalFunction[A, B]
     try {
@@ -335,7 +349,7 @@ object Main {
                 }
             }
 
-        def lfo(f0: Double)(implicit sr: SamplingRate): SF[(Double, (Double, Double)), Double] = {
+        def vcf(f0: Double)(implicit sr: SamplingRate): SF[(Double, (Double, Double)), Double] = {
           val vt = 40000.0
           val moogAux: SignalFunction[(Double, Double), Double] =
             SignalFunction.delayLoop[(Double, Double), Double, Double](0.0) { in =>
@@ -373,7 +387,7 @@ object Main {
                 } yield yout.zip(yout)
               } -< value.zip(g.zip(resonance))
             } yield y
-          }.name("Moog LFO")
+          }.name("Moog VCF")
         }
 
         val all = SignalFunction.build[RealtimeEvents, Double] { in =>
@@ -396,8 +410,8 @@ object Main {
             } yield ret
             lfo1 <- VCO.sin -< k2
             vco1 <- selectArrow(VCO.sin, VCO.saw).name("vco1") -< (selector -> (k1 + lfo1 * s2))
-            vcf1 <- lfo(100).name("vcf1") -< k3.zip(s3.zip(vco1))
-            master <- vcf1.arrowBuilder
+            vcf1 <- vcf(100).name("vcf1") -< k3.zip(s3.zip(vco1))
+            master <- id -< vcf1 * masterVol
             out <- clip(-1.0, 1.0) -< master
           } yield out
         }
