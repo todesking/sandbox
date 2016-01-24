@@ -10,5 +10,7 @@ libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.6" % "test"
 
 libraryDependencies += "com.todesking" %% "scala-pp" % "0.0.4"
 
+scalacOptions ++= Seq("-feature", "-deprecation")
+
 
 scalariformSettings
