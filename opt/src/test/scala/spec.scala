@@ -22,7 +22,17 @@ class Spec extends FunSpec with Matchers {
     it("class") {
       val obj = new Test.Const
       val i = Instance.Native(obj)
-      i.klass.method("foo", "()I").map(_.nameAndTypeString) should be(Some("foo()I"))
+      i.hasMethod("foo", "()I") should be(true)
+
+      val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
+      val fooBody = i.methodBody(foo).get
+      fooBody.initialFrame.stack should be('empty)
+      fooBody.initialFrame.locals.size should be(1)
+      fooBody.data(fooBody.initialFrame.local(0)) should be(Data(TypeRef.This, Some(obj)))
+      fooBody.returns.size should be(1)
+      val ret = fooBody.returns(0)
+      fooBody.data(ret.retVal) should be(Data(TypeRef.Int, Some(1)))
+      fooBody.dataSource(ret.retVal) should be(Some(Instruction.Const(1, TypeRef.Int)))
     }
   }
 }
