@@ -81,7 +81,7 @@ object Instance {
     methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
     override def methods = base.methods
-    override def methodBody(ref: LocalMethodRef) = base.methodBody(ref)
+    override def methodBody(ref: LocalMethodRef) = methodBodies.get(ref) orElse base.methodBody(ref)
     override def instance() = {
       // create newClass < class[A]
       // for each public/protected methods of A
@@ -254,7 +254,7 @@ case class MethodBody(
       isStatic,
       descriptor,
       initialFrame,
-      if(firstInstruction == target) target
+      if(firstInstruction == target) replace.label
       else firstInstruction,
       newDataFlow,
       instructions.filterNot(_.label == target) :+ replace
@@ -380,8 +380,8 @@ sealed abstract class Instruction {
 object Instruction {
   case class Return() extends Instruction {
     val retVal: DataLabel.In = DataLabel.in()
-    override def output = None
     override def inputs = Seq(retVal)
+    override def output = None
     override def nextFrame(frame: Frame) =
       FrameUpdate(Frame.empty, Seq(frame.stack(0) -> retVal))
   }
@@ -413,6 +413,11 @@ abstract class AbstractLabel extends AnyRef {
 final class InstructionLabel private() extends AbstractLabel
 object InstructionLabel {
   def fresh(): InstructionLabel = new InstructionLabel
+}
+
+final class JumpTarget private() extends AbstractLabel
+object JumpTarget {
+  def fresh(): JumpTarget = new JumpTarget
 }
 
 sealed abstract class DataLabel private() extends AbstractLabel

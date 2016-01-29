@@ -43,8 +43,12 @@ class Spec extends FunSpec with Matchers {
 
 
       val iconst1 = intBody.dataSource(intBody.returns(0).retVal).get
-      val rewritten = i.replaceInstruction(intMethod, iconst1.label, Instruction.Const(TypeRef.Int, Some(2)))
-      rewritten.instance().intMethod() should be(2)
+      val rewritten = i.replaceInstruction(intMethod, iconst1.label, Instruction.Const(TypeRef.Int, 2))
+
+      rewritten.methodBody(intMethod).get.data(rewritten.methodBody(intMethod).get.returns(0).retVal) should be(Data(TypeRef.Int, Some(2)))
+
+      // TODO
+      // rewritten.instance().intMethod() should be(2)
     }
   }
 }
