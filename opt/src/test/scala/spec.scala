@@ -47,8 +47,7 @@ class Spec extends FunSpec with Matchers {
 
       rewritten.methodBody(intMethod).get.data(rewritten.methodBody(intMethod).get.returns(0).retVal) should be(Data(TypeRef.Int, Some(2)))
 
-      // TODO
-      // rewritten.instance().intMethod() should be(2)
+      rewritten.instance().intMethod() should be(2)
     }
   }
 }

@@ -41,6 +41,8 @@ sealed abstract class Instance[A <: AnyRef : ClassTag] {
 
   def methodBody(ref: LocalMethodRef): Option[MethodBody]
 
+  def methodModified(ref: LocalMethodRef): Boolean
+
   def instance(): A
 
   def replaceInstruction(ref: LocalMethodRef, target: InstructionLabel, instruction: Instruction): Instance[A] = {
@@ -74,6 +76,8 @@ object Instance {
     override def instance(): A =
       value
 
+    override def methodModified(ref: LocalMethodRef) = false
+
   }
 
   case class Rewritten[A <: AnyRef : ClassTag](
@@ -81,8 +85,63 @@ object Instance {
     methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
     override def methods = base.methods
-    override def methodBody(ref: LocalMethodRef) = methodBodies.get(ref) orElse base.methodBody(ref)
+    override def methodBody(ref: LocalMethodRef) =
+      methodBodies.get(ref) orElse base.methodBody(ref)
+    override def methodModified(ref: LocalMethodRef) =
+      methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
     override def instance() = {
+      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod}
+      import javassist.bytecode.{Bytecode, MethodInfo}
+
+      val jClass = classTag[A].runtimeClass
+
+      val classPool = new ClassPool(null)
+      classPool.appendClassPath(new ClassClassPath(jClass))
+
+      val baseClass = classPool.get(jClass.getName)
+      // TODO make name unique
+      val klass = classPool.makeClass(jClass.getName + "_rewritten", baseClass)
+      val constPool = klass.getClassFile.getConstPool
+
+      def ctClass(tr: TypeRef): CtClass = {
+        tr match {
+          case TypeRef.Int => CtClass.intType
+          case unk => throw new NotImplementedError(s"${unk}")
+        }
+      }
+
+      methods.filter(methodModified) foreach { ref =>
+        methodBody(ref) foreach { body =>
+          val locals = new LocalAllocator(body)
+          var maxStack = 0
+          val bc = new Bytecode(constPool, 0, 0)
+          InstructionSerializer.serialize(body) foreach { insn =>
+            insn match {
+              case i @ Instruction.Return() =>
+                val tr = body.data(i.retVal).typeRef
+                if(tr == TypeRef.Int) {
+                  bc.addIload(locals(i.retVal))
+                } else {
+                  throw new NotImplementedError(tr.toString)
+                }
+                bc.addReturn(ctClass(tr))
+                maxStack = Math.max(maxStack, 1)
+              case i @ Instruction.Const(typeRef, value) =>
+                if(typeRef == TypeRef.Int) {
+                  bc.addIconst(value.asInstanceOf[Int])
+                  bc.addIstore(locals(i.valueLabel))
+                } else throw new NotImplementedError(typeRef.toString)
+                maxStack = Math.max(maxStack, 1)
+            }
+          }
+          bc.setMaxLocals(locals.size)
+          bc.setMaxStack(maxStack)
+          val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
+          minfo.setCodeAttribute(bc.toCodeAttribute)
+          klass.getClassFile.addMethod(minfo)
+        }
+      }
+
       // create newClass < class[A]
       // for each public/protected methods of A
       //   if the method has no body(i.e native/abstract) => do nothing
@@ -94,9 +153,44 @@ object Instance {
       //     add the referenced method, and do recursively
       // TODO: fields
       // return new instance
-      ???
+
+      klass.toClass(jClass.getClassLoader, null).newInstance().asInstanceOf[A]
     }
   }
+}
+
+object InstructionSerializer {
+  def serialize(body: MethodBody): Seq[Instruction] = {
+    tsort(body.instructions.map { b => (b.label -> body.dependentInstructions(b.label)) }, Set.empty, Seq.empty).map(_._1).map(body.instruction)
+  }
+
+  private[this] def tsort[A](in: Seq[(A, Set[A])], deps: Set[A], heads: Seq[(A, Set[A])]): Seq[(A, Set[A])] = {
+    if(in.isEmpty) {
+      heads
+    } else {
+      val (nodep, dep) = in.partition { case (a, b) => b.forall(deps.contains(_)) }
+      tsort(dep, deps ++ nodep.map(_._1), heads ++ nodep)
+    }
+  }
+}
+
+class LocalAllocator(body: MethodBody) {
+  private[this] val allocated = mutable.HashMap.empty[DataLabel, Int]
+  private[this] var nextLocal = body.initialFrame.locals.size
+
+  body.initialFrame.locals.zipWithIndex foreach { case (l, i) =>
+    body.dataAliases(l).foreach { a => allocated(a) = i }
+  }
+
+  def size: Int = nextLocal
+  def apply(l: DataLabel): Int =
+    allocated.get(l) getOrElse {
+      val local = nextLocal
+      body.dataAliases(l).foreach { a => allocated(a) = local }
+      // TODO: support 2word
+      nextLocal += 1
+      local
+    }
 }
 
 sealed abstract class TypeRef 
@@ -195,8 +289,8 @@ case class MethodBody(
           m += (in -> d)
         }
       }
-      dependerInstructions(insn.label) foreach { d =>
-        tasks += (d.label -> update.newFrame)
+      dependerInstructions(insn.label) foreach { l =>
+        tasks += (l -> update.newFrame)
       }
     }
     m.toMap
@@ -211,13 +305,27 @@ case class MethodBody(
   private[this] lazy val outData2InData: Map[DataLabel.Out, Set[DataLabel.In]] =
     dataFlow.groupBy(_._1).map { case (o, ois) => (o -> ois.map(_._2).toSet) }.toMap
 
-  private[this] def instruction(label: InstructionLabel): Instruction =
+  private[this] lazy val outData2Insn =
+    instructions.flatMap { i => i.output.map { out => (out -> i) } }.toMap
+
+  def dataAliases(l: DataLabel): Set[DataLabel] =
+    l match {
+      case l: DataLabel.In => dataFlow.filter(_._2 == l).map(_._1).toSet + l
+      case l: DataLabel.Out => dataFlow.filter(_._1 == l).map(_._2).toSet + l
+    }
+
+  def instruction(label: InstructionLabel): Instruction =
     label2Insn.get(label) getOrElse { throw new IllegalArgumentException(s"Instruction ${label} not found") }
 
-  def dependerInstructions(label: InstructionLabel): Seq[Instruction] =
+  def dependerInstructions(label: InstructionLabel): Set[InstructionLabel] =
     instruction(label).output.toSeq.flatMap { o =>
-      dataFlow.filter(_._1 == o).map(_._2).map(inData2Insn)
-    }
+      dataFlow.filter(_._1 == o).map(_._2).map(inData2Insn).map(_.label)
+    }.toSet
+
+  def dependentInstructions(label: InstructionLabel): Set[InstructionLabel] =
+    instruction(label).inputs.flatMap { in =>
+      dataFlow.filter(_._2 == in).map(_._1).map(outData2Insn).map(_.label)
+    }.toSet
 
   lazy val returns: Seq[Instruction.Return] = instructions.collect { case r @ Instruction.Return() => r }
 
@@ -277,6 +385,8 @@ object MethodBody {
     val ctMethod = ctClass.getMethod(mRef.name, mRef.descriptor.str)
 
     if(ctMethod.isEmpty) { // "abstract or native"(from CtClass doc)
+      None
+    } else if(ctMethod.getMethodInfo2.getCodeAttribute == null) { // ??? but it happens
       None
     } else {
       val isStatic = (ctMethod.getMethodInfo2.getAccessFlags & 0x08) == 0x08
