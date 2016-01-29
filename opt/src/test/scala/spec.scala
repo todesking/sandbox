@@ -9,6 +9,11 @@ object Test {
     def intMethod(): Int = 1
     def longMethod(): Long = 0L
   }
+
+  class InvokeVirtual {
+    def foo(): Int = bar()
+    def bar(): Int = 1
+  }
 }
 
 class Spec extends FunSpec with Matchers {
@@ -48,6 +53,17 @@ class Spec extends FunSpec with Matchers {
       rewritten.methodBody(intMethod).get.data(rewritten.methodBody(intMethod).get.returns(0).retVal) should be(Data(TypeRef.Int, Some(2)))
 
       rewritten.instance().intMethod() should be(2)
+    }
+    it("invokeVirtual") {
+      val d = new Test.InvokeVirtual
+      d.foo() should be(1)
+
+      val i = Instance.Native(d)
+      val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
+
+      val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
+
+      ri.instance.foo() should be(1)
     }
   }
 }

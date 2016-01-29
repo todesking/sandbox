@@ -12,5 +12,6 @@ libraryDependencies += "com.todesking" %% "scala-pp" % "0.0.4"
 
 scalacOptions ++= Seq("-feature", "-deprecation")
 
+testOptions in Test += Tests.Argument("-oF")
 
 scalariformSettings

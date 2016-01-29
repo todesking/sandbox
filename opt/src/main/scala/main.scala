@@ -113,7 +113,8 @@ object Instance {
       methods.filter(methodModified) foreach { ref =>
         methodBody(ref) foreach { body =>
           val locals = new LocalAllocator(body)
-          var maxStack = 0
+          var stackDepth = 0
+          var maxStackDepth = 0
           val bc = new Bytecode(constPool, 0, 0)
           InstructionSerializer.serialize(body) foreach { insn =>
             insn match {
@@ -125,17 +126,23 @@ object Instance {
                   throw new NotImplementedError(tr.toString)
                 }
                 bc.addReturn(ctClass(tr))
-                maxStack = Math.max(maxStack, 1)
               case i @ Instruction.Const(typeRef, value) =>
                 if(typeRef == TypeRef.Int) {
                   bc.addIconst(value.asInstanceOf[Int])
                   bc.addIstore(locals(i.valueLabel))
                 } else throw new NotImplementedError(typeRef.toString)
-                maxStack = Math.max(maxStack, 1)
+                stackDepth += 1
+              case i @ Instruction.InvokeVirtual(className, methodRef) =>
+                bc.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
+                stackDepth -= methodRef.descriptor.args.size + 1
+                if(methodRef.descriptor.ret != TypeRef.Void) {
+                  stackDepth += 1
+                }
             }
+            maxStackDepth = Math.max(stackDepth, maxStackDepth)
           }
           bc.setMaxLocals(locals.size)
-          bc.setMaxStack(maxStack)
+          bc.setMaxStack(maxStackDepth)
           val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
           minfo.setCodeAttribute(bc.toCodeAttribute)
           klass.getClassFile.addMethod(minfo)
@@ -395,43 +402,91 @@ object MethodBody {
         if(isStatic) Frame(argLabels, List.empty)
         else Frame(DataLabel.out() +: argLabels, List.empty)
       val insns = mutable.ArrayBuffer.empty[Instruction]
-      val exchanges = mutable.HashMap.empty[InstructionLabel, Frame => Frame]
       val index2ILabel = mutable.HashMap.empty[Int, InstructionLabel]
       val dataFlow = mutable.ArrayBuffer.empty[(DataLabel.Out, DataLabel.In)]
       val dataSources = mutable.HashMap.empty[DataLabel.Out, Instruction]
+
+      val exchanges = mutable.HashMap.empty[JumpTarget, Frame => Frame]
+      val pendingJumpTargets = mutable.ArrayBuffer.empty[JumpTarget]
+      val jumpTargets = mutable.HashMap.empty[JumpTarget, InstructionLabel]
+      val jumpChains = mutable.HashMap.empty[JumpTarget, JumpTarget]
+
+      val addr2jumpTargets = mutable.HashMap.empty[Int, JumpTarget]
+      def jumpTargetFromAddr(addr: Int): JumpTarget =
+        addr2jumpTargets.get(addr).getOrElse {
+          val j = JumpTarget.fresh()
+          addr2jumpTargets(addr) = j
+          j
+        }
+
+      def onExchange(addr: Int)(f: Frame => Frame): Unit = {
+        val jt = jumpTargetFromAddr(addr)
+        exchanges(jt) = f
+        if(pendingJumpTargets.nonEmpty) {
+          jumpChains(pendingJumpTargets.last) = jt
+        }
+        pendingJumpTargets += jt
+      }
+
+      def onInstruction(addr: Int, i: Instruction): Unit = {
+        insns += i
+        val jt = jumpTargetFromAddr(addr)
+        jumpTargets(jt) = i.label
+        if(pendingJumpTargets.nonEmpty) {
+          jumpChains(pendingJumpTargets.last) = jt
+        }
+        pendingJumpTargets.foreach { jt =>
+          jumpTargets(jt) = i.label
+        }
+        pendingJumpTargets.clear()
+      }
+
 
       // TODO: supprot 2 word data
 
       // 2 is read-only version of getMethodInfo
       val it = ctMethod.getMethodInfo2.getCodeAttribute.iterator
+      val cpool = ctClass.getClassFile2().getConstPool()
       it.begin()
       while(it.hasNext) {
         val index = it.next()
         it.byteAt(index) match {
           case 0x00 => // nop
           case 0x01 => // aconst_null
-            insns += Instruction.Const(null, TypeRef.Null)
+            onInstruction(index, Instruction.Const(null, TypeRef.Null))
           // TODO
           case 0x03 => // iconst_0
-            insns += Instruction.Const(TypeRef.Int, 0)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 0))
           case 0x04 => // iconst_1
-            insns += Instruction.Const(TypeRef.Int, 1)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 1))
           case 0x05 => // iconst_2
-            insns += Instruction.Const(TypeRef.Int, 2)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 2))
           case 0x06 => // iconst_3
-            insns += Instruction.Const(TypeRef.Int, 3)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 3))
           case 0x07 => // iconst_4
-            insns += Instruction.Const(TypeRef.Int, 4)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 4))
           case 0x08 => // iconst_5
-            insns += Instruction.Const(TypeRef.Int, 5)
+            onInstruction(index, Instruction.Const(TypeRef.Int, 5))
           case 0x09 => // lconst_0
-            insns += Instruction.Const(TypeRef.Long, 0L)
+            onInstruction(index, Instruction.Const(TypeRef.Long, 0L))
           // TODO
+          case 0x2A => // aload_0
+            onExchange(index) { frame =>
+              frame.pushStack(frame.locals(0))
+            }
+            // TODO
           case 0xAC => // ireturn
-            insns += Instruction.Return()
+            onInstruction(index, Instruction.Return())
           // TODO
           case 0xAD => // lreturn
-            insns += Instruction.Return()
+            onInstruction(index, Instruction.Return())
+          // TODO
+          case 0xB6 => // invokevirtual
+            val constIndex = it.u16bitAt(index+1)
+            val className = cpool.getMethodrefClassName(constIndex)
+            val methodName = cpool.getMethodrefName(constIndex)
+            val methodType = cpool.getMethodrefType(constIndex)
+            onInstruction(index, Instruction.InvokeVirtual(ClassName(className), LocalMethodRef(methodName, MethodDescriptor.parse(methodType))))
           case unk => throw new UnsupportedOpcodeException(unk)
         }
       }
@@ -444,6 +499,10 @@ object MethodBody {
 
       var currentFrame = initialFrame
       insns foreach { insn =>
+        currentFrame = jumpTargets.find(_._2 == insn.label).flatMap { case (jt, _) =>
+          exchanges.get(jt).map(_.apply(currentFrame))
+        } getOrElse currentFrame
+
         val update = insn.nextFrame(currentFrame)
         update.dataIn foreach { dataFlow += _ }
         currentFrame = update.newFrame
@@ -504,6 +563,21 @@ object Instruction {
       FrameUpdate(
         frame.pushStack(valueLabel),
         dataValues = Seq(valueLabel -> Data(tpe, Some(value))))
+  }
+
+  case class InvokeVirtual(className: ClassName, methodRef: LocalMethodRef) extends Instruction {
+    override val inputs = (0 to methodRef.descriptor.args.size).map { _ => DataLabel.in() }
+    override val output = if(methodRef.descriptor.ret == TypeRef.Void) None else Some(DataLabel.out())
+    override def nextFrame(frame: Frame) =
+      FrameUpdate(
+        output.map { o =>
+          frame.dropStack(methodRef.descriptor.args.size + 1).pushStack(o)
+        } getOrElse {
+          frame.dropStack(methodRef.descriptor.args.size + 1)
+        },
+        dataIn = frame.stack.take(methodRef.descriptor.args.size + 1).reverse.zip(inputs),
+        dataValues = output.toSeq.flatMap { o => Seq(o -> Data(methodRef.descriptor.ret, None)) }
+      )
   }
 }
 
