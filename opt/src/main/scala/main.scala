@@ -133,10 +133,24 @@ object Instance {
                 } else throw new NotImplementedError(typeRef.toString)
                 stackDepth += 1
               case i @ Instruction.InvokeVirtual(className, methodRef) =>
+                i.inputs.foreach { in =>
+                  body.data(in).typeRef match {
+                    case TypeRef.This =>
+                      bc.addAload(0)
+                      stackDepth += 1
+                    case unk => throw new NotImplementedError(unk.toString)
+                  }
+                }
+                maxStackDepth = Math.max(stackDepth, maxStackDepth)
                 bc.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
                 stackDepth -= methodRef.descriptor.args.size + 1
                 if(methodRef.descriptor.ret != TypeRef.Void) {
                   stackDepth += 1
+                  if(methodRef.descriptor.ret == TypeRef.Int) {
+                    bc.addIstore(locals(i.output.get))
+                  } else {
+                    throw new NotImplementedError(methodRef.descriptor.ret.toString)
+                  }
                 }
             }
             maxStackDepth = Math.max(stackDepth, maxStackDepth)
@@ -148,18 +162,7 @@ object Instance {
           klass.getClassFile.addMethod(minfo)
         }
       }
-
-      // create newClass < class[A]
-      // for each public/protected methods of A
-      //   if the method has no body(i.e native/abstract) => do nothing
-      //   if the method is rewritten
-      //     add the method to newClass
-      //   if the method is overriden
-      //     add the method to newClass
-      //   if the method is added and it references other method in original instance, and it is declared in subclass of A
-      //     add the referenced method, and do recursively
       // TODO: fields
-      // return new instance
 
       klass.toClass(jClass.getClassLoader, null).newInstance().asInstanceOf[A]
     }
@@ -283,6 +286,13 @@ case class MethodBody(
       m += (initialFrame.locals(0) -> Data(TypeRef.This, None))
       descriptor.args.zip(initialFrame.locals.tail) foreach { case (tpe, l) => m += (l -> Data(tpe, None)) }
     }
+    initialFrame.locals foreach { l =>
+      outData2InData.get(l) foreach { ins =>
+        ins foreach { in =>
+          m += (in -> m(l))
+        }
+      }
+    }
     while(tasks.nonEmpty) {
       val (i, f) = tasks.head
       tasks -= (i -> f)
@@ -290,9 +300,7 @@ case class MethodBody(
       val update = insn.nextFrame(f)
       update.dataValues foreach { case (out, d) =>
         m += (out -> d)
-        (out -> d).pp()
         outData2InData(out) foreach { in =>
-          (in -> d).pp()
           m += (in -> d)
         }
       }
@@ -300,6 +308,7 @@ case class MethodBody(
         tasks += (l -> update.newFrame)
       }
     }
+    println(m)
     m.toMap
   }
 
@@ -331,14 +340,14 @@ case class MethodBody(
 
   def dependentInstructions(label: InstructionLabel): Set[InstructionLabel] =
     instruction(label).inputs.flatMap { in =>
-      dataFlow.filter(_._2 == in).map(_._1).map(outData2Insn).map(_.label)
+      dataFlow.filter(_._2 == in).map(_._1).map(outData2Insn.get).flatten.map(_.label)
     }.toSet
 
   lazy val returns: Seq[Instruction.Return] = instructions.collect { case r @ Instruction.Return() => r }
 
   def data(label: DataLabel): Data =
     dataValues.get(label) getOrElse {
-      throw new IllegalArgumentException(s"data not found: ${label}") }
+      throw new IllegalArgumentException(s"data not found: ${label}, registered=${dataFlow.flatMap { case (a, b) => Seq(a, b) }}") }
 
   def dataSource(l: DataLabel): Option[Instruction] = l match {
     case l: DataLabel.In =>
@@ -348,7 +357,6 @@ case class MethodBody(
   }
 
   def replace(target: InstructionLabel, replace: Instruction): MethodBody = {
-    instructions.map(_.label).pp()
     val targetInstruction = instructions.find(_.label == target).getOrElse {
       throw new IllegalArgumentException(s"Replace target instruction not found: ${target}")
     }
@@ -374,6 +382,41 @@ case class MethodBody(
       newDataFlow,
       instructions.filterNot(_.label == target) :+ replace
     )
+  }
+
+  def toDot(): String = {
+    val dataNames = new AbstractLabel.Namer[DataLabel]("data_", "data #")
+    val insnNames = new AbstractLabel.Namer[InstructionLabel]("insn_", "#")
+    s"""digraph {
+${
+  instructions.map { insn =>
+    s"""${insnNames.id(insn.label)}[label="${insn}"];"""
+  }.mkString("\n")
+}
+${
+  instructions.flatMap { insn =>
+    (insn.inputs ++ insn.output).map { i =>
+      s"""${dataNames.id(i)}[label="${try { data(i) } catch { case e => "BUG: Not found" }}"];"""
+    }
+  }.mkString("\n")
+}
+
+${
+  instructions.flatMap { insn =>
+    insn.inputs.map { in =>
+      s"${insnNames.id(insn.label)} -> ${dataNames.id(in)};"
+    } ++ insn.output.map { out =>
+      s"${dataNames.id(out)} -> ${insnNames.id(insn.label)};"
+    }
+  }.mkString("\n")
+}
+
+${
+  dataFlow.map { case (out, in) =>
+    s"${dataNames.id(in)} -> ${dataNames.id(out)};"
+  }.mkString("\n")
+}
+}"""
   }
 }
 object MethodBody {
@@ -592,6 +635,21 @@ abstract class AbstractLabel extends AnyRef {
     super.equals(other)
   override def hashCode: Int =
     super.hashCode()
+}
+object AbstractLabel {
+  class Namer[A <: AbstractLabel](idPrefix: String, namePrefix: String) {
+    private[this] val ids = mutable.HashMap.empty[A, Int]
+    private[this] var nextId = 0
+
+    def num(l: A): Int =
+      ids.get(l) getOrElse {
+        ids(l) = nextId
+        nextId += 1
+        ids(l)
+      }
+    def id(l: A): String = s"${idPrefix}${num(l)}"
+    def name(l: A): String = s"${namePrefix}${num(l)}"
+  }
 }
 
 final class InstructionLabel private() extends AbstractLabel

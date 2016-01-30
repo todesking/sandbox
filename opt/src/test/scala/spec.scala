@@ -62,6 +62,7 @@ class Spec extends FunSpec with Matchers {
       val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
 
       val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
+      println(ri.methodBody(foo).get.toDot)
 
       ri.instance.foo() should be(1)
     }
