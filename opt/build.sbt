@@ -4,6 +4,8 @@ resolvers += "com.todesking" at "http://todesking.github.io/mvn/"
 
 libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
 
+libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
+
 libraryDependencies += "org.javassist" % "javassist" % "3.20.0-GA"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.6" % "test"

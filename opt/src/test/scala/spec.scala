@@ -10,9 +10,13 @@ object Test {
     def longMethod(): Long = 0L
   }
 
-  class InvokeVirtual {
+  class InvokeVirtual0 {
     def foo(): Int = bar()
     def bar(): Int = 1
+  }
+  class InvokeVirtual1 {
+    def foo(): Int = bar(1)
+    def bar(n: Int): Int = n
   }
 }
 
@@ -54,8 +58,19 @@ class Spec extends FunSpec with Matchers {
 
       rewritten.instance().intMethod() should be(2)
     }
-    it("invokeVirtual") {
-      val d = new Test.InvokeVirtual
+    it("invokeVirtual0") {
+      val d = new Test.InvokeVirtual0
+      d.foo() should be(1)
+
+      val i = Instance.Native(d)
+      val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
+
+      val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
+
+      ri.instance.foo() should be(1)
+    }
+    it("invokeVirtual1") {
+      val d = new Test.InvokeVirtual1
       d.foo() should be(1)
 
       val i = Instance.Native(d)
