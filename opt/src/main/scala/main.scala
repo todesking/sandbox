@@ -315,16 +315,10 @@ case class MethodBody(
         }
       }
     }
-    var frame = initialFrame
+    val in2out = dataFlow.map { case (a, b) => (b -> a) }.toMap
     InstructionSerializer.serialize(this) foreach { insn =>
-      val update = insn.nextFrame(frame)
-      update.dataValues foreach { case (out, d) =>
-        m += (out -> d)
-        outData2InData(out) foreach { in =>
-          m += (in -> d)
-        }
-      }
-      frame = update.newFrame
+      insn.inputs foreach { in => m(in) = m(in2out(in)) }
+      insn.updateValues(m) foreach { case (k, v) => m(k) = v }
     }
     m.toMap
   }
@@ -601,6 +595,7 @@ object Data {
 sealed abstract class Instruction {
   final val label = InstructionLabel.fresh()
   def nextFrame(frame: Frame): FrameUpdate
+  def updateValues(f: DataLabel.In => Data): Map[DataLabel.Out, Data]
   def output: Option[DataLabel.Out]
   def inputs: Seq[DataLabel.In]
 }
@@ -611,6 +606,7 @@ object Instruction {
     override def output = None
     override def nextFrame(frame: Frame) =
       FrameUpdate(Frame.empty, Seq(frame.stack(0) -> retVal))
+    override def updateValues(f: DataLabel.In => Data) = Map.empty
   }
 
   case class Const(tpe: TypeRef, value: Any) extends Instruction {
@@ -621,6 +617,8 @@ object Instruction {
       FrameUpdate(
         frame.pushStack(valueLabel),
         dataValues = Seq(valueLabel -> Data(tpe, Some(value))))
+    override def updateValues(f: DataLabel.In => Data) =
+      Map(valueLabel -> Data(tpe, Some(value)))
   }
 
   case class InvokeVirtual(className: ClassName, methodRef: LocalMethodRef) extends Instruction {
@@ -636,6 +634,8 @@ object Instruction {
         dataIn = frame.takeStack(methodRef.descriptor.args.size + 1).reverse.zip(inputs),
         dataValues = output.toSeq.flatMap { o => Seq(o -> Data(methodRef.descriptor.ret, None)) }
       )
+    override def updateValues(f: DataLabel.In => Data) =
+      output.map(_ -> Data(methodRef.descriptor.ret, None)).toMap
   }
 }
 
