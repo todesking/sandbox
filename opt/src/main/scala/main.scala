@@ -315,6 +315,7 @@ case class MethodBody(
         }
       }
     }
+    dataFlow.pp()
     val in2out = dataFlow.map { case (a, b) => (b -> a) }.toMap
     InstructionSerializer.serialize(this) foreach { insn =>
       insn.inputs foreach { in => m(in) = m(in2out(in)) }
@@ -407,13 +408,13 @@ ${
 ${
   instructions.flatMap { insn =>
     (insn.inputs ++ insn.output).map { i =>
-      s"""${dataNames.id(i)}[label="${i.name}: ${try { data(i) } catch { case e => "BUG: Not found" }}"];"""
+      s"""${dataNames.id(i)}[label="${i.name}: ${try { data(i) } catch { case e: IllegalArgumentException => "BUG: Not found" }}"];"""
     }
   }.mkString("\n")
 }
 ${
   initialFrame.locals.distinct.map { o =>
-    s"""${dataNames.id(o)}[label="${o.name}: ${try { data(o) } catch { case e => "BUG: Not found" }}"];"""
+    s"""${dataNames.id(o)}[label="${o.name}: ${try { data(o) } catch { case e : IllegalArgumentException=> "BUG: Not found" }}"];"""
   }.mkString("\n")
 }
 
@@ -458,14 +459,14 @@ object MethodBody {
       val isStatic = (ctMethod.getMethodInfo2.getAccessFlags & 0x08) == 0x08
       val argLabels = mRef.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i + 1}") }
       val initialFrame =
-        if(isStatic) Frame(argLabels, List.empty)
-        else Frame(DataLabel.out("this") +: argLabels, List.empty)
+        if(isStatic) Frame(argLabels, List.empty, Effect.fresh())
+        else Frame(DataLabel.out("this") +: argLabels, List.empty, Effect.fresh())
       val insns = mutable.ArrayBuffer.empty[Instruction]
       val index2ILabel = mutable.HashMap.empty[Int, InstructionLabel]
       val dataFlow = mutable.ArrayBuffer.empty[(DataLabel.Out, DataLabel.In)]
 
       val ops = mutable.HashMap.empty[JumpTarget, Frame => FrameUpdate]
-      val controls = mutable.HashMap.empty[JumpTarget, JumpTarget]
+      val controls = new mutable.HashMap[JumpTarget, mutable.Set[JumpTarget]] with mutable.MultiMap[JumpTarget, JumpTarget]
       var prevTarget: JumpTarget = null
 
       val addr2jumpTargets = mutable.HashMap.empty[Int, JumpTarget]
@@ -477,20 +478,27 @@ object MethodBody {
         }
 
       def onExchange(addr: Int, name: String)(f: Frame => Frame): Unit = {
-        println(s"exchange ${name}")
+        println(s"exch ${addr}: ${name}")
         val jt = jumpTargetFromAddr(addr)
-        ops(jt) = {frame: Frame => FrameUpdate(f(frame)) }
-        if(prevTarget != null) controls(prevTarget) = jt
+        ops(jt) = {frame: Frame => println(s"frame for ${name}"); FrameUpdate(f(frame)) }
+        if(prevTarget != null) controls.addBinding(prevTarget, jt)
         prevTarget = jt
       }
 
       def onInstruction(addr: Int, i: Instruction): Unit = {
-        println(s"instruction ${i}")
+        println(s"insn ${addr}: ${i}")
         insns += i
         val jt = jumpTargetFromAddr(addr)
-        ops(jt) = { f: Frame => println("Do " + i); i.nextFrame(f) }
-        if(prevTarget != null) controls(prevTarget) = jt
+        ops(jt) = { f: Frame => println(s"frame for ${i}"); i.nextFrame(f) }
+        if(prevTarget != null) controls.addBinding(prevTarget, jt)
         prevTarget = jt
+        i match {
+          case Instruction.IfICmpLE(th, el) =>
+            controls.addBinding(jt, th)
+            controls.addBinding(jt, el)
+            prevTarget = null
+          case _ =>
+        }
       }
 
 
@@ -504,6 +512,7 @@ object MethodBody {
         val index = it.next()
         it.byteAt(index) match {
           case 0x00 => // nop
+            onExchange(index, "nop")(identity)
           case 0x01 => // aconst_null
             onInstruction(index, Instruction.Const(null, TypeRef.Null))
           // TODO
@@ -522,11 +531,31 @@ object MethodBody {
           case 0x09 => // lconst_0
             onInstruction(index, Instruction.Const(TypeRef.Long, 0L))
           // TODO
+          case 0x10 => // bipush
+            onInstruction(index, Instruction.Const(TypeRef.Int, it.byteAt(index + 1)))
+          // TODO
+          case 0x1B => // iload_1
+            onExchange(index, "iload_1") { frame =>
+              frame.pushStack(frame.locals(1))
+            }
+          // TODO
+          case 0xA4 => // if_icmple
+            onInstruction(
+              index,
+              Instruction.IfICmpLE(
+                jumpTargetFromAddr(index + it.s16bitAt(index + 1)),
+                jumpTargetFromAddr(it.lookAhead())
+              )
+            )
+          // TODO
           case 0x2A => // aload_0
             onExchange(index, "aload_0") { frame =>
               frame.pushStack(frame.locals(0))
             }
-            // TODO
+          // TODO
+          case 0xA7 => // goto
+            onInstruction(index, Instruction.Goto(jumpTargetFromAddr(it.u16bitAt(index + 1))))
+          // TODO
           case 0xAC => // ireturn
             onInstruction(index, Instruction.Return())
           // TODO
@@ -543,17 +572,23 @@ object MethodBody {
         }
       }
 
-      var currentFrame = initialFrame
-
-      var next: Option[JumpTarget] = Some(jumpTargetFromAddr(0))
-      while(next.nonEmpty) {
-        println(currentFrame)
-        val update = ops(next.get).apply(currentFrame)
+      val done = mutable.Set.empty[(JumpTarget, Frame)]
+      val tasks = mutable.Set.empty[(JumpTarget, Frame)]
+      val beforeFrames = mutable.HashMap.empty[JumpTarget, Frame]
+      tasks.add(jumpTargetFromAddr(0) -> initialFrame)
+      while(tasks.nonEmpty) {
+        val (target, frame) = tasks.head
+        tasks.remove(target -> frame)
+        done += (target -> frame)
+        val update = ops(target).apply(frame)
+        beforeFrames(target) = frame
         update.dataIn foreach { dataFlow += _ }
-        currentFrame = update.newFrame
-        next = controls.get(next.get)
+        controls.get(target).getOrElse(Set.empty) foreach { t =>
+          if(!done.contains(t -> update.newFrame)) {
+            tasks.add(t -> update.newFrame)
+          }
+        }
       }
-      dataFlow.pp()
 
       Some(MethodBody(
         isStatic,
@@ -567,23 +602,23 @@ object MethodBody {
   }
 }
 
-case class Frame(locals: Seq[DataLabel.Out], stack: List[DataLabel.Out]) {
+case class Frame(locals: Seq[DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
   def local(n: Int): DataLabel.Out =
     locals(n)
 
   def dropStack(n: Int): Frame =
     if(stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
-    else Frame(locals, stack.drop(n))
+    else Frame(locals, stack.drop(n), effect)
 
   def pushStack(l: DataLabel.Out): Frame =
-    Frame(locals, l +: stack)
+    Frame(locals, l +: stack, effect)
 
   def takeStack(n: Int): List[DataLabel.Out] =
     if(stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
     else stack.take(n)
 }
 object Frame {
-  val empty = Frame(Seq.empty, List.empty)
+  val empty = Frame(Seq.empty, List.empty, Effect.fresh)
 }
 
 case class Data(typeRef: TypeRef, value: Option[Any])
@@ -614,9 +649,7 @@ object Instruction {
     override def output = Some(valueLabel)
     override def inputs = Seq.empty
     override def nextFrame(frame: Frame) =
-      FrameUpdate(
-        frame.pushStack(valueLabel),
-        dataValues = Seq(valueLabel -> Data(tpe, Some(value))))
+      FrameUpdate(frame.pushStack(valueLabel))
     override def updateValues(f: DataLabel.In => Data) =
       Map(valueLabel -> Data(tpe, Some(value)))
   }
@@ -631,18 +664,37 @@ object Instruction {
         } getOrElse {
           frame.dropStack(methodRef.descriptor.args.size + 1)
         },
-        dataIn = frame.takeStack(methodRef.descriptor.args.size + 1).reverse.zip(inputs),
-        dataValues = output.toSeq.flatMap { o => Seq(o -> Data(methodRef.descriptor.ret, None)) }
+        dataIn = frame.takeStack(methodRef.descriptor.args.size + 1).reverse.zip(inputs)
       )
     override def updateValues(f: DataLabel.In => Data) =
       output.map(_ -> Data(methodRef.descriptor.ret, None)).toMap
+  }
+
+  case class IfICmpLE(thenTarget: JumpTarget, elseTarget: JumpTarget) extends Instruction {
+    override def output = None
+    override def inputs = Seq(DataLabel.in("value2"), DataLabel.in("value1"))
+    override def nextFrame(frame: Frame) =
+      FrameUpdate(
+        frame.dropStack(2),
+        frame.takeStack(2).zip(inputs)
+      )
+    override def updateValues(f: DataLabel.In => Data) =
+      Map.empty
+  }
+
+  case class Goto(target: JumpTarget) extends Instruction {
+    override def output = None
+    override def inputs = Seq.empty
+    override def nextFrame(frame: Frame) =
+      FrameUpdate(frame)
+    override def updateValues(f: DataLabel.In => Data) =
+      Map.empty
   }
 }
 
 case class FrameUpdate(
   newFrame: Frame,
-  dataIn: Seq[(DataLabel.Out, DataLabel.In)] = Seq.empty,
-  dataValues: Seq[(DataLabel.Out, Data)] = Seq.empty
+  dataIn: Seq[(DataLabel.Out, DataLabel.In)] = Seq.empty
 )
 
 abstract class AbstractLabel() extends AnyRef {
@@ -682,10 +734,19 @@ object JumpTarget {
 
 sealed abstract class DataLabel private(val name: String) extends AbstractLabel
 object DataLabel {
-  final class In (name: String) extends DataLabel(name)
-  final class Out(name: String) extends DataLabel(name)
+  final class In (name: String) extends DataLabel(name) {
+    override def toString = s"DataLabel.In(${name})@${System.identityHashCode(this)}"
+  }
+  final class Out(name: String) extends DataLabel(name) {
+    override def toString = s"DataLabel.Out(${name})@${System.identityHashCode(this)}"
+  }
 
   def in(name: String) = new In(name)
   def out(name: String) = new Out(name)
 }
 
+
+final class Effect private extends AbstractLabel
+object Effect {
+  def fresh() = new Effect
+}

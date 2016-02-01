@@ -18,9 +18,18 @@ object Test {
     def foo(): Int = bar(1)
     def bar(n: Int): Int = n
   }
+  class If {
+    def foo(a: Int): Int =
+      if(a > 0) 100
+      else -100
+  }
 }
 
 class Spec extends FunSpec with Matchers {
+  def dot(filename: String, b: MethodBody): Unit = {
+    import java.nio.file._
+    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
+  }
   describe("opt") {
     it("hoge-") {
       val orig = new Test.Const
@@ -77,9 +86,29 @@ class Spec extends FunSpec with Matchers {
       val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
 
       val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
-      println(ri.methodBody(foo).get.toDot)
 
       ri.instance.foo() should be(1)
+    }
+    it("if") {
+      val d = new Test.If
+      d.foo(1) should be(100)
+      d.foo(-1) should be(-100)
+
+      val i = Instance.Native(d)
+      val foo = LocalMethodRef("foo", MethodDescriptor.parse("(I)I"))
+
+      val ri = i.replaceInstruction(
+        foo,
+        i.methodBody(foo).get.instructions.find {
+          case Instruction.Const(TypeRef.Int, 100) => true
+          case _ => false
+        }.get.label,
+        Instruction.Const(TypeRef.Int, 500))
+
+      dot("if.dot", ri.methodBody(foo).get)
+
+      // ri.instance.foo(1) should be(500)
+      // ri.instance.foo(-1) should be(-100)
     }
   }
 }
