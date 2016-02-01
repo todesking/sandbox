@@ -107,8 +107,9 @@ class Spec extends FunSpec with Matchers {
 
       dot("if.dot", ri.methodBody(foo).get)
 
-      // ri.instance.foo(1) should be(500)
-      // ri.instance.foo(-1) should be(-100)
+      pending
+      ri.instance.foo(1) should be(500)
+      ri.instance.foo(-1) should be(-100)
     }
   }
 }

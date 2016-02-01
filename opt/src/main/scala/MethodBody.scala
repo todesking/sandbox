@@ -114,6 +114,46 @@ case class MethodBody(
     )
   }
 
+  def toBytecode(la: LocalAllocator): MethodBodyBytecode = {
+    import AbstractBytecode._
+    val ainsns =
+      InstructionSerializer.serialize(this).flatMap {
+        case i @ Instruction.Return() =>
+          if(data(i.retVal).typeRef == TypeRef.Int)
+            Seq(
+              iload(la(i.retVal)),
+              ireturn()
+            )
+          else
+            ???
+        case i @ Instruction.Const(tref, value) =>
+          if(tref == TypeRef.Int) {
+            Seq(
+              iconst(value.asInstanceOf[Int]),
+              istore(la(i.output))
+            )
+          } else ???
+        case i @ Instruction.Goto(target) =>
+          Seq(goto(target))
+        case i @ Instruction.IfICmpLE(th, el) =>
+          Seq(
+            iload(la(i.value1)),
+            iload(la(i.value2)),
+            if_icmple(th),
+            goto(el)
+          )
+        case i @ Instruction.InvokeVirtual(className, methodRef) =>
+          i.argAndType.map { case (label, tpe) =>
+            load(tpe, la(label))
+          } ++ Seq(
+            invokevirtual(className, methodRef)
+          ) ++ i.output.map { ret => store(methodRef.ret, la(ret)) }.toSeq
+        case unk =>
+          throw new NotImplementedError(unk.toString)
+      }
+    new MethodBodyBytecode(ainsns, la.size, 100)
+  }
+
   def toDot(): String = {
     val dataNames = new AbstractLabel.Namer[DataLabel]("data_", "data #")
     val insnNames = new AbstractLabel.Namer[InstructionLabel]("insn_", "#")

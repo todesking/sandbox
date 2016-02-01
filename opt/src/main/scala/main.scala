@@ -27,151 +27,6 @@ class UnsupportedOpcodeException(byte: Int)
 
 class AnalyzeException(msg: String) extends RuntimeException(msg)
 
-sealed abstract class Instance[A <: AnyRef : ClassTag] {
-  def methods: Set[LocalMethodRef]
-
-  def hasMethod(name: String, descriptor: String): Boolean =
-    hasMethod(name, MethodDescriptor.parse(descriptor))
-
-  def hasMethod(name: String, descriptor: MethodDescriptor): Boolean =
-    hasMethod(LocalMethodRef(name, descriptor))
-
-  def hasMethod(ref: LocalMethodRef): Boolean =
-    methods.contains(ref)
-
-  def methodBody(ref: LocalMethodRef): Option[MethodBody]
-
-  def methodModified(ref: LocalMethodRef): Boolean
-
-  def instance(): A
-
-  def replaceInstruction(ref: LocalMethodRef, target: InstructionLabel, instruction: Instruction): Instance[A] = {
-    val newBody =
-      methodBody(ref).map { b =>
-        b.replace(target, instruction)
-      } getOrElse { throw new IllegalArgumentException(s"Can't rewrite ${ref.str}: Method body inaccessible") }
-    Instance.Rewritten[A](this, Map(ref -> newBody))
-  }
-}
-object Instance {
-  case class Native[A <: AnyRef : ClassTag](value: A) extends Instance[A] {
-    private[this] val javaClass = value.getClass
-
-    private[this] def javaMethod(ref: LocalMethodRef): Option[JMethod] =
-      javaClass.getMethods.find { m => LocalMethodRef.from(m) == ref }
-
-    private[this] val methodBodies = mutable.HashMap.empty[LocalMethodRef, Option[MethodBody]]
-
-    override val methods =
-      javaClass.getMethods.map(LocalMethodRef.from).toSet
-
-    override def methodBody(ref: LocalMethodRef): Option[MethodBody] = synchronized {
-      methodBodies.get(ref) getOrElse {
-        val body = javaMethod(ref).flatMap(MethodBody.parse(value, _))
-        methodBodies(ref) = body
-        body
-      }
-    }
-
-    override def instance(): A =
-      value
-
-    override def methodModified(ref: LocalMethodRef) = false
-
-  }
-
-  case class Rewritten[A <: AnyRef : ClassTag](
-    base: Instance[A],
-    methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
-  ) extends Instance[A] {
-    override def methods = base.methods
-    override def methodBody(ref: LocalMethodRef) =
-      methodBodies.get(ref) orElse base.methodBody(ref)
-    override def methodModified(ref: LocalMethodRef) =
-      methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
-    override def instance() = {
-      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod}
-      import javassist.bytecode.{Bytecode, MethodInfo}
-
-      val jClass = classTag[A].runtimeClass
-
-      val classPool = new ClassPool(null)
-      classPool.appendClassPath(new ClassClassPath(jClass))
-
-      val baseClass = classPool.get(jClass.getName)
-      // TODO make name unique
-      val klass = classPool.makeClass(jClass.getName + "_rewritten", baseClass)
-      val constPool = klass.getClassFile.getConstPool
-
-      def ctClass(tr: TypeRef): CtClass = {
-        tr match {
-          case TypeRef.Int => CtClass.intType
-          case unk => throw new NotImplementedError(s"${unk}")
-        }
-      }
-
-      methods.filter(methodModified) foreach { ref =>
-        methodBody(ref) foreach { body =>
-          val locals = new LocalAllocator(body)
-          var stackDepth = 0
-          var maxStackDepth = 0
-          val bc = new Bytecode(constPool, 0, 0)
-          InstructionSerializer.serialize(body) foreach { insn =>
-            insn match {
-              case i @ Instruction.Return() =>
-                val tr = body.data(i.retVal).typeRef
-                if(tr == TypeRef.Int) {
-                  bc.addIload(locals(i.retVal))
-                } else {
-                  throw new NotImplementedError(tr.toString)
-                }
-                bc.addReturn(ctClass(tr))
-              case i @ Instruction.Const(typeRef, value) =>
-                if(typeRef == TypeRef.Int) {
-                  bc.addIconst(value.asInstanceOf[Int])
-                  bc.addIstore(locals(i.valueLabel))
-                } else throw new NotImplementedError(typeRef.toString)
-                stackDepth += 1
-              case i @ Instruction.InvokeVirtual(className, methodRef) =>
-                i.inputs.foreach { in =>
-                  body.data(in).typeRef match {
-                    case TypeRef.This =>
-                      bc.addAload(locals(in))
-                      stackDepth += 1
-                    case TypeRef.Int =>
-                      bc.addIload(locals(in))
-                      stackDepth += 1
-                    case unk => throw new NotImplementedError(unk.toString)
-                  }
-                }
-                maxStackDepth = Math.max(stackDepth, maxStackDepth)
-                bc.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
-                stackDepth -= methodRef.descriptor.args.size + 1
-                if(methodRef.descriptor.ret != TypeRef.Void) {
-                  stackDepth += 1
-                  if(methodRef.descriptor.ret == TypeRef.Int) {
-                    bc.addIstore(locals(i.output.get))
-                  } else {
-                    throw new NotImplementedError(methodRef.descriptor.ret.toString)
-                  }
-                }
-            }
-            maxStackDepth = Math.max(stackDepth, maxStackDepth)
-          }
-          bc.setMaxLocals(locals.size)
-          bc.setMaxStack(maxStackDepth)
-          val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
-          minfo.setCodeAttribute(bc.toCodeAttribute)
-          klass.getClassFile.addMethod(minfo)
-        }
-      }
-      // TODO: fields
-
-      klass.toClass(new java.net.URLClassLoader(Array.empty, jClass.getClassLoader), null).newInstance().asInstanceOf[A]
-    }
-  }
-}
-
 object InstructionSerializer {
   def serialize(body: MethodBody): Seq[Instruction] = {
     Util.tsort(body.instructions)(_.label) { insn => body.dependentInstructions(insn.label) }
@@ -200,6 +55,8 @@ class LocalAllocator(body: MethodBody) {
   }
 
   def size: Int = nextLocal
+  def apply(l: Some[DataLabel]): Int =
+    apply(l.get)
   def apply(l: DataLabel): Int =
     allocated.get(l) getOrElse {
       val local = nextLocal
@@ -208,6 +65,41 @@ class LocalAllocator(body: MethodBody) {
       nextLocal += 1
       local
     }
+}
+
+case class MethodBodyBytecode(instructions: Seq[AbstractBytecode], maxLocals: Int, maxStackDepth: Int)
+sealed abstract class AbstractBytecode {
+  val label: AbstractBytecode.Label = AbstractBytecode.Label.fresh()
+}
+object AbstractBytecode {
+  class Label extends AbstractLabel
+  object Label {
+    def fresh(): Label = new Label
+  }
+
+  def load(t: TypeRef, n: Int): AbstractBytecode =
+    t match {
+      case TypeRef.Int =>iload(n)
+      case TypeRef.Reference(_) => aload(n)
+      case unk =>
+        throw new IllegalArgumentException(s"Unsupported load instruction for ${unk}")
+    }
+
+  def store(t: TypeRef, n: Int): AbstractBytecode =
+    t match {
+      case TypeRef.Int => istore(n)
+      case unk =>
+        throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
+    }
+
+  case class iload(n: Int) extends AbstractBytecode
+  case class aload(n: Int) extends AbstractBytecode
+  case class istore(n: Int) extends AbstractBytecode
+  case class ireturn() extends AbstractBytecode
+  case class iconst(value: Int) extends AbstractBytecode
+  case class goto(target: JumpTarget) extends AbstractBytecode
+  case class if_icmple(target: JumpTarget) extends AbstractBytecode
+  case class invokevirtual(className: ClassName, methodRef: LocalMethodRef) extends AbstractBytecode
 }
 
 sealed abstract class TypeRef 
@@ -256,6 +148,7 @@ case class ClassName(str: String) {
 }
 case class MethodDescriptor(ret: TypeRef.Public, args: Seq[TypeRef.Public]) {
   def str: String = s"${args.map(_.str).mkString("(", "", ")")}${ret.str}"
+  def isVoid: Boolean = ret == TypeRef.Void
 }
 object MethodDescriptor {
   def parse(src: String): MethodDescriptor =
@@ -286,6 +179,9 @@ object MethodDescriptor {
 }
 case class LocalMethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str
+  def isVoid: Boolean = descriptor.isVoid
+  def args: Seq[TypeRef.Public] = descriptor.args
+  def ret: TypeRef.Public = descriptor.ret
 }
 object LocalMethodRef {
   def from(m: JMethod): LocalMethodRef =
@@ -345,7 +241,8 @@ object Instruction {
 
   case class InvokeVirtual(className: ClassName, methodRef: LocalMethodRef) extends Instruction {
     override val inputs = (0 to methodRef.descriptor.args.size).map { i => DataLabel.in(if(i == 0) "receiver" else s"arg_${i}") }.toSeq
-    override val output = if(methodRef.descriptor.ret == TypeRef.Void) None else Some(DataLabel.out("ret"))
+    override val output = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))
+    val argAndType: Seq[(DataLabel.In, TypeRef.Public)] = inputs.zip(TypeRef.Reference(className) +: methodRef.descriptor.args)
     override def nextFrame(frame: Frame) =
       FrameUpdate(
         output.map { o =>
@@ -360,8 +257,10 @@ object Instruction {
   }
 
   case class IfICmpLE(thenTarget: JumpTarget, elseTarget: JumpTarget) extends Instruction {
+    val value1 =DataLabel.in("value1")
+    val value2 =DataLabel.in("value2")
     override val output = None
-    override val inputs = Seq(DataLabel.in("value2"), DataLabel.in("value1"))
+    override val inputs = Seq(value2, value1)
     override def nextFrame(frame: Frame) =
       FrameUpdate(
         frame.dropStack(2),
