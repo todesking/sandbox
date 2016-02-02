@@ -21,6 +21,7 @@ object Test {
   class If {
     def foo(a: Int): Int =
       if(a > 0) 100
+      else if(a > -10) -10
       else -100
   }
 }
@@ -28,7 +29,7 @@ object Test {
 class Spec extends FunSpec with Matchers {
   def dot(filename: String, b: MethodBody): Unit = {
     import java.nio.file._
-    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
+    // Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
     it("hoge-") {
@@ -45,36 +46,23 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.Native(obj)
       i.hasMethod("intMethod", "()I") should be(true)
 
-      val intMethod = LocalMethodRef("intMethod", MethodDescriptor.parse("()I"))
-      val intBody = i.methodBody(intMethod).get
-      intBody.initialFrame.stack should be('empty)
-      intBody.initialFrame.locals.size should be(1)
-      intBody.data(intBody.initialFrame.local(0)) should be(Data(TypeRef.This, None))
-      intBody.returns.size should be(1)
-      val ret = intBody.returns(0)
-      intBody.data(ret.retVal) should be(Data(TypeRef.Int, Some(1)))
-      intBody.dataSource(ret.retVal) should be(Some(Instruction.Const(TypeRef.Int, 1)))
-
-      val longMethod = LocalMethodRef("longMethod", MethodDescriptor.parse("()J"))
-      val longBody = i.methodBody(longMethod).get
-      longBody.data(longBody.returns(0).retVal) should be(Data(TypeRef.Long, Some(0L)))
-
-
-      val iconst1 = intBody.dataSource(intBody.returns(0).retVal).get
-      val rewritten = i.replaceInstruction(intMethod, iconst1.label, Instruction.Const(TypeRef.Int, 2))
-
-      rewritten.methodBody(intMethod).get.data(rewritten.methodBody(intMethod).get.returns(0).retVal) should be(Data(TypeRef.Int, Some(2)))
-
-      rewritten.instance().intMethod() should be(2)
+      val intMethod = LocalMethodRef("intMethod()I")
+      val longMethod = LocalMethodRef("longMethod()J")
+      val ri = Instance.Rewritten(i, Map(
+        intMethod -> i.methodBody(intMethod).get,
+        longMethod -> i.methodBody(longMethod).get
+      ))
+      ri.instance.intMethod() should be(1)
+      ri.instance.longMethod() should be(0L)
     }
     it("invokeVirtual0") {
       val d = new Test.InvokeVirtual0
       d.foo() should be(1)
 
       val i = Instance.Native(d)
-      val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
+      val foo = LocalMethodRef("foo()I")
 
-      val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
 
       ri.instance.foo() should be(1)
     }
@@ -83,33 +71,25 @@ class Spec extends FunSpec with Matchers {
       d.foo() should be(1)
 
       val i = Instance.Native(d)
-      val foo = LocalMethodRef("foo", MethodDescriptor.parse("()I"))
+      val foo = LocalMethodRef("foo()I")
 
-      val ri = i.replaceInstruction(foo, i.methodBody(foo).get.returns(0).label, Instruction.Return())
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
 
       ri.instance.foo() should be(1)
     }
     it("if") {
       val d = new Test.If
       d.foo(1) should be(100)
-      d.foo(-1) should be(-100)
+      d.foo(-1) should be(-10)
+      d.foo(-11) should be(-100)
 
       val i = Instance.Native(d)
-      val foo = LocalMethodRef("foo", MethodDescriptor.parse("(I)I"))
+      val foo = LocalMethodRef("foo(I)I")
 
-      val ri = i.replaceInstruction(
-        foo,
-        i.methodBody(foo).get.instructions.find {
-          case Instruction.Const(TypeRef.Int, 100) => true
-          case _ => false
-        }.get.label,
-        Instruction.Const(TypeRef.Int, 500))
-
-      dot("if.dot", ri.methodBody(foo).get)
-
-      pending
-      ri.instance.foo(1) should be(500)
-      ri.instance.foo(-1) should be(-100)
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
+      ri.instance.foo(1) should be(100)
+      ri.instance.foo(-1) should be(-10)
+      ri.instance.foo(-11) should be(-100)
     }
   }
 }

@@ -27,14 +27,6 @@ sealed abstract class Instance[A <: AnyRef : ClassTag] {
   def methodModified(ref: LocalMethodRef): Boolean
 
   def instance(): A
-
-  def replaceInstruction(ref: LocalMethodRef, target: InstructionLabel, instruction: Instruction): Instance[A] = {
-    val newBody =
-      methodBody(ref).map { b =>
-        b.replace(target, instruction)
-      } getOrElse { throw new IllegalArgumentException(s"Can't rewrite ${ref.str}: Method body inaccessible") }
-    Instance.Rewritten[A](this, Map(ref -> newBody))
-  }
 }
 object Instance {
   case class Native[A <: AnyRef : ClassTag](value: A) extends Instance[A] {
@@ -74,7 +66,7 @@ object Instance {
       methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
     override def instance() = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod}
-      import javassist.bytecode.{Bytecode, MethodInfo}
+      import javassist.bytecode.{Bytecode => JABytecode, MethodInfo}
 
       val jClass = classTag[A].runtimeClass
 
@@ -93,40 +85,63 @@ object Instance {
         }
       }
 
+      val ctObject = classPool.get("java.lang.Object")
+
       methods.filter(methodModified) foreach { ref =>
         methodBody(ref) foreach { body =>
-          val out = new Bytecode(constPool, 0, 0)
-          val bc = body.toBytecode(new LocalAllocator(body))
-          bc.pp()
+          val out = new JABytecode(constPool, 0, 0)
           val jumps = mutable.HashMap.empty[Int, (Int, JumpTarget)] // jump operand address -> (insn addr -> target)
-          val jumpAddresses = mutable.HashMap.empty[JumpTarget, Int] // target -> target address
-          import AbstractBytecode._
-          bc.instructions foreach {
-            case ireturn() =>
-              out.addReturn(CtClass.intType)
-            case iload(n) =>
-              out.addIload(n)
-            case aload(n) =>
-              out.addAload(n)
-            case istore(n) =>
-              out.addIstore(n)
-            case iconst(c) =>
-              out.addIconst(c)
-            case goto(target) =>
-              out.add(0xA7)
-              jumps(out.getSize) = (out.getSize - 1) -> target
-              out.add(0x00, 0x03)
-            case invokevirtual(className, methodRef) =>
-              out.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
-            case if_icmple(target) =>
-              out.add(0xA4)
-              jumps(out.getSize) = (out.getSize - 1) -> target
-              out.add(0x00, 0x03)
+          val addrs = mutable.HashMap.empty[Bytecode.Label, Int]
+          import Bytecode._
+          body.bytecode foreach { bc =>
+            (out.getSize -> bc).pp()
+            addrs(bc.label) = out.getSize
+            bc match {
+              case nop() =>
+                out.add(0x00)
+              case aconst_null() =>
+                out.addConstZero(ctObject)
+              case ireturn() =>
+                out.addReturn(CtClass.intType)
+              case lreturn() =>
+                out.addReturn(CtClass.longType)
+              case iload(n) =>
+                out.addIload(n)
+              case aload(n) =>
+                out.addAload(n)
+              case istore(n) =>
+                out.addIstore(n)
+              case iconst(c) =>
+                out.addIconst(c)
+              case lconst(c) =>
+                out.addLconst(c)
+              case goto(target) =>
+                out.add(0xA7)
+                jumps(out.getSize) = (out.getSize - 1) -> target
+                out.add(0x00, 0x03)
+              case invokevirtual(className, methodRef) =>
+                out.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
+              case if_icmple(target) =>
+                out.add(0xA4)
+                jumps(out.getSize) = (out.getSize - 1) -> target
+                out.add(0x00, 0x03)
+            }
           }
-          out.setMaxLocals(bc.maxLocals)
-          out.setMaxStack(bc.maxStackDepth)
+          body.pp()
+          jumps.pp()
+          addrs.pp()
+          jumps foreach { case (dataIndex, (index, target)) =>
+            val label = body.jumpTargets(target)
+            val targetIndex = addrs(label)
+            out.write16bit(dataIndex, targetIndex - index)
+          }
+          out.setMaxLocals(body.maxLocals)
+          out.setMaxStack(body.maxStackDepth)
+          val ca = out.toCodeAttribute
           val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
-          minfo.setCodeAttribute(out.toCodeAttribute)
+          minfo.setCodeAttribute(ca)
+          val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, minfo)
+          ca.setAttribute(sm)
           klass.getClassFile.addMethod(minfo)
         }
       }
