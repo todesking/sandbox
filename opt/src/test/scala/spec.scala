@@ -24,6 +24,17 @@ object Test {
       else if(a > -10) -10
       else -100
   }
+  object Upcast {
+    abstract class A {
+      def foo(): Int
+      def bar(): Int = 10
+    }
+    class B extends A {
+      override def foo() = baz()
+      override def bar() = 99
+      def baz() = bar()
+    }
+  }
 }
 
 class Spec extends FunSpec with Matchers {
@@ -32,7 +43,7 @@ class Spec extends FunSpec with Matchers {
     // Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
-    it("hoge-") {
+    it("const") {
       val orig = new Test.Const
       val opti = Opt.optimize[Test.Const](orig)
 
@@ -90,6 +101,14 @@ class Spec extends FunSpec with Matchers {
       ri.instance.foo(1) should be(100)
       ri.instance.foo(-1) should be(-10)
       ri.instance.foo(-11) should be(-100)
+    }
+    it("upcast") {
+      val obj = new Test.Upcast.B
+      obj.foo() should be(99)
+      val i = Instance.Native[Test.Upcast.A](obj)
+      val foo = LocalMethodRef("foo()I")
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
+      ri.instance.foo() should be(99)
     }
   }
 }

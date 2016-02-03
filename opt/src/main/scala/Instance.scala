@@ -10,7 +10,7 @@ import java.lang.reflect.{Method => JMethod}
 
 import com.todesking.scalapp.syntax._
 
-sealed abstract class Instance[A <: AnyRef : ClassTag] {
+sealed abstract class Instance[A <: AnyRef] {
   def methods: Set[LocalMethodRef]
 
   def hasMethod(name: String, descriptor: String): Boolean =
@@ -26,10 +26,14 @@ sealed abstract class Instance[A <: AnyRef : ClassTag] {
 
   def methodModified(ref: LocalMethodRef): Boolean
 
+  def baseClass: Class[_ <: A]
+
   def instance(): A
 }
 object Instance {
-  case class Native[A <: AnyRef : ClassTag](value: A) extends Instance[A] {
+  case class Native[A <: AnyRef](value: A) extends Instance[A] {
+    require(value != null)
+
     private[this] val javaClass = value.getClass
 
     private[this] def javaMethod(ref: LocalMethodRef): Option[JMethod] =
@@ -48,6 +52,8 @@ object Instance {
       }
     }
 
+    override def baseClass = value.getClass
+
     override def instance(): A =
       value
 
@@ -55,7 +61,7 @@ object Instance {
 
   }
 
-  case class Rewritten[A <: AnyRef : ClassTag](
+  case class Rewritten[A <: AnyRef](
     base: Instance[A],
     methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
@@ -64,18 +70,17 @@ object Instance {
       methodBodies.get(ref) orElse base.methodBody(ref)
     override def methodModified(ref: LocalMethodRef) =
       methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
+    override def baseClass = base.baseClass
     override def instance() = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod}
       import javassist.bytecode.{Bytecode => JABytecode, MethodInfo}
 
-      val jClass = classTag[A].runtimeClass
-
       val classPool = new ClassPool(null)
-      classPool.appendClassPath(new ClassClassPath(jClass))
+      classPool.appendClassPath(new ClassClassPath(baseClass))
 
-      val baseClass = classPool.get(jClass.getName)
+      val ctBase = classPool.get(baseClass.getName)
       // TODO make name unique
-      val klass = classPool.makeClass(jClass.getName + "_rewritten", baseClass)
+      val klass = classPool.makeClass(baseClass.getName + "_rewritten", ctBase)
       val constPool = klass.getClassFile.getConstPool
 
       def ctClass(tr: TypeRef): CtClass = {
@@ -86,6 +91,8 @@ object Instance {
       }
 
       val ctObject = classPool.get("java.lang.Object")
+
+      methods.filter(methodModified).map(methodBody)
 
       methods.filter(methodModified) foreach { ref =>
         methodBody(ref) foreach { body =>
@@ -147,7 +154,7 @@ object Instance {
       }
       // TODO: fields
 
-      klass.toClass(new java.net.URLClassLoader(Array.empty, jClass.getClassLoader), null).newInstance().asInstanceOf[A]
+      klass.toClass(new java.net.URLClassLoader(Array.empty, baseClass.getClassLoader), null).newInstance().asInstanceOf[A]
     }
   }
 }
