@@ -61,103 +61,7 @@ class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[
     }
 }
 
-sealed abstract class TypeRef 
-object TypeRef {
-  def from(c: Class[_]): Public = {
-    if(c == java.lang.Integer.TYPE) Int
-    else if(c == java.lang.Long.TYPE) Long
-    else if(c == java.lang.Character.TYPE) Char
-    else if(c == java.lang.Byte.TYPE) Byte
-    else if(c == java.lang.Boolean.TYPE) Boolean
-    else if(c == java.lang.Short.TYPE) Short
-    else if(c == java.lang.Float.TYPE) Float
-    else if(c == java.lang.Double.TYPE) Double
-    else if(c == java.lang.Void.TYPE) Void
-    else if(c.isArray) ???
-    else Reference(ClassName(c.getName))
-  }
 
-  case object Undefined extends TypeRef
-  case object This extends TypeRef
-  case object Null extends TypeRef
-
-  sealed abstract class Public extends TypeRef {
-    def str: String
-  }
-
-  sealed abstract class Primitive(override val str: String) extends Public
-
-  object Byte extends Primitive("B")
-  object Boolean extends Primitive("Z")
-  object Char extends Primitive("C")
-  object Short extends Primitive("S")
-  object Int extends Primitive("I")
-  object Float extends Primitive("F")
-  object Long extends Primitive("J")
-  object Double extends Primitive("D")
-  object Void extends Primitive("V")
-
-  case class Reference(className: ClassName) extends Public {
-    override def str = s"L${className.binaryString};"
-  }
-}
-
-case class ClassName(str: String) {
-  def binaryString: String = str.replaceAll("\\.", "/")
-}
-case class MethodDescriptor(ret: TypeRef.Public, args: Seq[TypeRef.Public]) {
-  def str: String = s"${args.map(_.str).mkString("(", "", ")")}${ret.str}"
-  def isVoid: Boolean = ret == TypeRef.Void
-}
-object MethodDescriptor {
-  def parse(src: String): MethodDescriptor =
-    Parser.parse(src)
-
-  def from(m: JMethod): MethodDescriptor =
-    MethodDescriptor(TypeRef.from(m.getReturnType), m.getParameterTypes.map(TypeRef.from).toSeq)
-
-  object Parser extends scala.util.parsing.combinator.RegexParsers {
-    def parse(src: String): MethodDescriptor =
-      parseAll(all, src).get
-    lazy val all = args ~ tpe ^^ { case args ~ ret => MethodDescriptor(ret, args) }
-    lazy val args = ('(' ~> rep(tpe)) <~ ')'
-    val refPat = """L([^;]+);""".r
-    lazy val tpe = "B|Z|C|S|I|F|J|D|V|L[^;]+;".r ^^ {
-      case "B" => TypeRef.Byte
-      case "Z" => TypeRef.Boolean
-      case "C" => TypeRef.Char
-      case "S" => TypeRef.Short
-      case "I" => TypeRef.Int
-      case "F" => TypeRef.Float
-      case "J" => TypeRef.Long
-      case "D" => TypeRef.Double
-      case "V" => TypeRef.Void
-      case `refPat`(ref) => TypeRef.Reference(ClassName(ref.replaceAll("/", ".")))
-    }
-  }
-}
-case class LocalMethodRef(name: String, descriptor: MethodDescriptor) {
-  def str: String = name + descriptor.str
-  def isVoid: Boolean = descriptor.isVoid
-  def args: Seq[TypeRef.Public] = descriptor.args
-  def ret: TypeRef.Public = descriptor.ret
-}
-object LocalMethodRef {
-  def from(m: JMethod): LocalMethodRef =
-    LocalMethodRef(m.getName, MethodDescriptor.from(m))
-  def apply(src: String): LocalMethodRef =
-    Parser.parse(src)
-  object Parser {
-    lazy val all = """([^(]+)(\(.+)""".r
-    def parse(src: String): LocalMethodRef =
-      src match {
-        case `all`(name, desc) =>
-          LocalMethodRef(name, MethodDescriptor.parse(desc))
-        case unk =>
-          throw new IllegalArgumentException(s"Invalid method ref: ${unk}")
-      }
-  }
-}
 case class Frame(locals: Seq[DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
   def local(n: Int): DataLabel.Out =
     locals(n)
@@ -186,40 +90,6 @@ case class FrameUpdate(
   newFrame: Frame,
   dataIn: Seq[(DataLabel.Out, DataLabel.In)] = Seq.empty
 )
-
-abstract class AbstractLabel() extends AnyRef {
-  override def equals(other: Any): Boolean =
-    other match {
-      case r: AnyRef => this eq r
-      case _ => false
-    }
-  override def hashCode: Int =
-    System.identityHashCode(this)
-}
-object AbstractLabel {
-  class Namer[A <: AbstractLabel](idPrefix: String, namePrefix: String) {
-    private[this] val ids = mutable.HashMap.empty[A, Int]
-    private[this] var nextId = 0
-
-    def num(l: A): Int =
-      ids.get(l) getOrElse {
-        ids(l) = nextId
-        nextId += 1
-        ids(l)
-      }
-    def id(l: A): String = s"${idPrefix}${num(l)}"
-    def name(l: A): String = s"${namePrefix}${num(l)}"
-  }
-  class Assigner[A, L <: AbstractLabel](fresh: =>L) {
-    private[this] val mapping = mutable.HashMap.empty[A, L]
-    def apply(key: A): L =
-      mapping.get(key) getOrElse {
-        val l = fresh
-        mapping(key) = l
-        l
-      }
-  }
-}
 
 final class InstructionLabel private() extends AbstractLabel
 object InstructionLabel {
