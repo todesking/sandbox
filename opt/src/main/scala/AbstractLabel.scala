@@ -25,7 +25,7 @@ object AbstractLabel {
     def id(l: A): String = s"${idPrefix}${num(l)}"
     def name(l: A): String = s"${namePrefix}${num(l)}"
   }
-  class Assigner[A, L <: AbstractLabel](fresh: =>L) {
+  class Assigner[A, L <: AbstractLabel](fresh: => L) {
     private[this] val mapping = mutable.HashMap.empty[A, L]
     def apply(key: A): L =
       mapping.get(key) getOrElse {

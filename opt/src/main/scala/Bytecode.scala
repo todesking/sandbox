@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 sealed abstract class Bytecode {
@@ -20,7 +20,7 @@ object Bytecode {
 
   def load(t: TypeRef, n: Int): Bytecode =
     t match {
-      case TypeRef.Int =>iload(n)
+      case TypeRef.Int => iload(n)
       case TypeRef.Reference(_) => aload(n)
       case unk =>
         throw new IllegalArgumentException(s"Unsupported load instruction for ${unk}")

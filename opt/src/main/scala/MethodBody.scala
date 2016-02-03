@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 
@@ -198,9 +198,9 @@ object MethodBody {
 
     val ctMethod = ctClass.getMethod(mRef.name, mRef.descriptor.str)
 
-    if(ctMethod.isEmpty) { // "abstract or native"(from CtClass doc)
+    if (ctMethod.isEmpty) { // "abstract or native"(from CtClass doc)
       None
-    } else if(ctMethod.getMethodInfo2.getCodeAttribute == null) { // ??? but it happens
+    } else if (ctMethod.getMethodInfo2.getCodeAttribute == null) { // ??? but it happens
       None
     } else {
       val isStatic = (ctMethod.getMethodInfo2.getAccessFlags & 0x08) == 0x08
@@ -217,7 +217,7 @@ object MethodBody {
         jumpTargets(addr2jt(index)) = bc.label
       }
 
-      while(it.hasNext) {
+      while (it.hasNext) {
         val index = it.next()
         import Bytecode._
         it.byteAt(index) match {
@@ -267,7 +267,7 @@ object MethodBody {
             onInstruction(index, lreturn())
           // TODO
           case 0xB6 => // invokevirtual
-            val constIndex = it.u16bitAt(index+1)
+            val constIndex = it.u16bitAt(index + 1)
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)

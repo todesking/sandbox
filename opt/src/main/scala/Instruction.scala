@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 
@@ -39,8 +39,8 @@ object Instruction {
   }
 
   case class InvokeVirtual(className: ClassName, methodRef: LocalMethodRef) extends Instruction {
-    override val inputs = (0 to methodRef.descriptor.args.size).map { i => DataLabel.in(if(i == 0) "receiver" else s"arg_${i}") }.toSeq
-    override val output = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))
+    override val inputs = (0 to methodRef.descriptor.args.size).map { i => DataLabel.in(if (i == 0) "receiver" else s"arg_${i}") }.toSeq
+    override val output = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
     val argAndType: Seq[(DataLabel.In, TypeRef.Public)] = inputs.zip(TypeRef.Reference(className) +: methodRef.descriptor.args)
     override def nextFrame(frame: Frame) =
       FrameUpdate(
@@ -56,8 +56,8 @@ object Instruction {
   }
 
   case class IfICmpLE(thenTarget: JumpTarget, elseTarget: JumpTarget) extends Instruction {
-    val value1 =DataLabel.in("value1")
-    val value2 =DataLabel.in("value2")
+    val value1 = DataLabel.in("value1")
+    val value2 = DataLabel.in("value2")
     override val output = None
     override val inputs = Seq(value2, value1)
     override def nextFrame(frame: Frame) =

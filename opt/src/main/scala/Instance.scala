@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 
@@ -62,8 +62,8 @@ object Instance {
   }
 
   case class Rewritten[A <: AnyRef](
-    base: Instance[A],
-    methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
+      base: Instance[A],
+      methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
     override def methods = base.methods
     override def methodBody(ref: LocalMethodRef) =
@@ -72,8 +72,8 @@ object Instance {
       methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
     override def baseClass = base.baseClass
     override def instance() = {
-      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod}
-      import javassist.bytecode.{Bytecode => JABytecode, MethodInfo}
+      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod }
+      import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
 
       val classPool = new ClassPool(null)
       classPool.appendClassPath(new ClassClassPath(baseClass))
@@ -137,10 +137,11 @@ object Instance {
           body.pp()
           jumps.pp()
           addrs.pp()
-          jumps foreach { case (dataIndex, (index, target)) =>
-            val label = body.jumpTargets(target)
-            val targetIndex = addrs(label)
-            out.write16bit(dataIndex, targetIndex - index)
+          jumps foreach {
+            case (dataIndex, (index, target)) =>
+              val label = body.jumpTargets(target)
+              val targetIndex = addrs(label)
+              out.write16bit(dataIndex, targetIndex - index)
           }
           out.setMaxLocals(body.maxLocals)
           out.setMaxStack(body.maxStackDepth)

@@ -1,18 +1,18 @@
 package com.todesking.hoge
 
-sealed abstract class TypeRef 
+sealed abstract class TypeRef
 object TypeRef {
   def from(c: Class[_]): Public = {
-    if(c == java.lang.Integer.TYPE) Int
-    else if(c == java.lang.Long.TYPE) Long
-    else if(c == java.lang.Character.TYPE) Char
-    else if(c == java.lang.Byte.TYPE) Byte
-    else if(c == java.lang.Boolean.TYPE) Boolean
-    else if(c == java.lang.Short.TYPE) Short
-    else if(c == java.lang.Float.TYPE) Float
-    else if(c == java.lang.Double.TYPE) Double
-    else if(c == java.lang.Void.TYPE) Void
-    else if(c.isArray) ???
+    if (c == java.lang.Integer.TYPE) Int
+    else if (c == java.lang.Long.TYPE) Long
+    else if (c == java.lang.Character.TYPE) Char
+    else if (c == java.lang.Byte.TYPE) Byte
+    else if (c == java.lang.Boolean.TYPE) Boolean
+    else if (c == java.lang.Short.TYPE) Short
+    else if (c == java.lang.Float.TYPE) Float
+    else if (c == java.lang.Double.TYPE) Double
+    else if (c == java.lang.Void.TYPE) Void
+    else if (c.isArray) ???
     else Reference(ClassName(c.getName))
   }
 

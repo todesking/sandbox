@@ -1,6 +1,6 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 case class LocalMethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str

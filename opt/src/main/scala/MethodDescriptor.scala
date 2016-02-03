@@ -1,6 +1,6 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 case class MethodDescriptor(ret: TypeRef.Public, args: Seq[TypeRef.Public]) {
   def str: String = s"${args.map(_.str).mkString("(", "", ")")}${ret.str}"

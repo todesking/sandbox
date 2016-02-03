@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 
@@ -16,7 +16,7 @@ object Main {
 }
 
 object Opt {
-  def optimize[A <: AnyRef : ClassTag](orig: A): A = {
+  def optimize[A <: AnyRef: ClassTag](orig: A): A = {
     val instance = Instance.Native[A](orig)
     instance.instance()
   }
@@ -32,7 +32,7 @@ object Util {
     tsort0(in.map { i => (i, labelOf(i), depsOf(i)) }, Set.empty, Seq.empty)
 
   private[this] def tsort0[A, B](in: Seq[(A, B, Set[B])], deps: Set[B], sorted: Seq[A]): Seq[A] =
-    if(in.isEmpty) {
+    if (in.isEmpty) {
       sorted
     } else {
       val (nodep, dep) = in.partition { case (a, b, bs) => bs.forall(deps.contains) }
@@ -44,8 +44,9 @@ class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[
   private[this] val allocated = mutable.HashMap.empty[DataLabel, Int]
   private[this] var nextLocal = preservedLocals.size
 
-  preservedLocals.zipWithIndex foreach { case (l, i) =>
-    aliasOf(l).foreach { a => allocated(a) = i }
+  preservedLocals.zipWithIndex foreach {
+    case (l, i) =>
+      aliasOf(l).foreach { a => allocated(a) = i }
   }
 
   def size: Int = nextLocal
@@ -61,20 +62,19 @@ class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[
     }
 }
 
-
 case class Frame(locals: Seq[DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
   def local(n: Int): DataLabel.Out =
     locals(n)
 
   def dropStack(n: Int): Frame =
-    if(stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
+    if (stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
     else Frame(locals, stack.drop(n), effect)
 
   def pushStack(l: DataLabel.Out): Frame =
     Frame(locals, l +: stack, effect)
 
   def takeStack(n: Int): List[DataLabel.Out] =
-    if(stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
+    if (stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
     else stack.take(n)
 }
 object Frame {
@@ -91,7 +91,7 @@ case class FrameUpdate(
   dataIn: Seq[(DataLabel.Out, DataLabel.In)] = Seq.empty
 )
 
-final class InstructionLabel private() extends AbstractLabel
+final class InstructionLabel private () extends AbstractLabel
 object InstructionLabel {
   def fresh(): InstructionLabel = new InstructionLabel
 }
@@ -101,9 +101,9 @@ object JumpTarget extends AbstractLabel.AssignerProvider[JumpTarget] {
   def fresh(): JumpTarget = new JumpTarget
 }
 
-sealed abstract class DataLabel private(val name: String) extends AbstractLabel
+sealed abstract class DataLabel private (val name: String) extends AbstractLabel
 object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
-  final class In (name: String) extends DataLabel(name) {
+  final class In(name: String) extends DataLabel(name) {
     override def toString = s"DataLabel.In(${name})@${System.identityHashCode(this)}"
   }
   final class Out(name: String) extends DataLabel(name) {
@@ -113,7 +113,6 @@ object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
   def in(name: String) = new In(name)
   def out(name: String) = new Out(name)
 }
-
 
 final class Effect private extends AbstractLabel
 object Effect {
