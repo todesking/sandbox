@@ -97,12 +97,12 @@ object InstructionLabel {
 }
 
 final class JumpTarget private extends AbstractLabel
-object JumpTarget {
+object JumpTarget extends AbstractLabel.AssignerProvider[JumpTarget] {
   def fresh(): JumpTarget = new JumpTarget
 }
 
 sealed abstract class DataLabel private(val name: String) extends AbstractLabel
-object DataLabel {
+object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
   final class In (name: String) extends DataLabel(name) {
     override def toString = s"DataLabel.In(${name})@${System.identityHashCode(this)}"
   }

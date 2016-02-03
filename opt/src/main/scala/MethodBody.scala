@@ -210,7 +210,7 @@ object MethodBody {
       val cpool = ctClass.getClassFile2.getConstPool
       val bcs = mutable.ArrayBuffer.empty[Bytecode]
       val jumpTargets = mutable.HashMap.empty[JumpTarget, Bytecode.Label]
-      val addr2jt = new AbstractLabel.Assigner[Int, JumpTarget](JumpTarget.fresh())
+      val addr2jt = JumpTarget.assigner[Int]()
 
       def onInstruction(index: Int, bc: Bytecode): Unit = {
         bcs += bc

@@ -34,5 +34,12 @@ object AbstractLabel {
         l
       }
   }
+
+  trait NamerProvider[A <: AbstractLabel] {
+    def namer(idPrefix: String, namePrefix: String): Namer[A] = new Namer(idPrefix, namePrefix)
+  }
+  trait AssignerProvider[A <: AbstractLabel] { self: { def fresh(): A } =>
+    def assigner[B](): Assigner[B, A] = new Assigner(fresh())
+  }
 }
 
