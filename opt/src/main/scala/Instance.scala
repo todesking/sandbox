@@ -6,11 +6,13 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{ Method => JMethod }
+import java.lang.reflect.{ Method => JMethod, Modifier }
 
 import com.todesking.scalapp.syntax._
 
-sealed abstract class Instance[A <: AnyRef] {
+sealed abstract class Instance[+A <: AnyRef] {
+  type ActualType <: A
+
   def methods: Set[LocalMethodRef]
 
   def hasMethod(name: String, descriptor: String): Boolean =
@@ -26,12 +28,28 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def methodModified(ref: LocalMethodRef): Boolean
 
-  def baseClass: Class[_ <: A]
+  def baseClass: Class[ActualType]
 
   def instance(): A
+
+  // false if unsure
+  def sameMethodDefined[B <: AnyRef](method: LocalMethodRef, other: Instance[B]): Boolean =
+    if(!this.methodModified(method) && !other.methodModified(method))
+      method.getJavaMethod(this.baseClass) == method.getJavaMethod(other.baseClass)
+    else false
+
+  def isNativeMethod(methodRef: LocalMethodRef): Boolean =
+    methodModifiers(methodRef).map { mod => (mod & Modifier.NATIVE) == Modifier.NATIVE }.getOrElse(???)
+
+  def isAbstractMethod(methodRef: LocalMethodRef): Boolean =
+    methodModifiers(methodRef).map { mod => (mod & Modifier.ABSTRACT) == Modifier.ABSTRACT }.getOrElse(???)
+
+  def methodModifiers(m: LocalMethodRef): Option[Int] =
+    if(methodModified(m)) None // TODO
+    else m.getJavaMethod(baseClass).map(_.getModifiers)
 }
 object Instance {
-  case class Native[A <: AnyRef](value: A) extends Instance[A] {
+  case class Native[+A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
 
     private[this] val javaClass = value.getClass
@@ -41,18 +59,18 @@ object Instance {
 
     private[this] val methodBodies = mutable.HashMap.empty[LocalMethodRef, Option[MethodBody]]
 
+    override def baseClass = value.getClass.asInstanceOf[Class[ActualType]]
+
     override val methods =
       javaClass.getMethods.map(LocalMethodRef.from).toSet
 
     override def methodBody(ref: LocalMethodRef): Option[MethodBody] = synchronized {
       methodBodies.get(ref) getOrElse {
-        val body = javaMethod(ref).flatMap(MethodBody.parse(value, _))
+        val body = javaMethod(ref).flatMap(MethodBody.parse(value.getClass, _))
         methodBodies(ref) = body
         body
       }
     }
-
-    override def baseClass = value.getClass
 
     override def instance(): A =
       value
@@ -61,10 +79,33 @@ object Instance {
 
   }
 
-  case class Rewritten[A <: AnyRef](
+  case class New[A <: AnyRef](override val baseClass: Class[A]) extends Instance[A] {
+    try  {
+      baseClass.getConstructor()
+    } catch {
+      case e: NoSuchMethodException =>
+        throw new IllegalArgumentException(s"class ${baseClass} have no 0-ary constructor")
+    }
+
+    override type ActualType = A
+
+    override val methods: Set[LocalMethodRef] =
+      baseClass.getMethods.map(LocalMethodRef.from).toSet
+
+    override def methodBody(ref: LocalMethodRef): Option[MethodBody] =
+      ref.getJavaMethod(baseClass).flatMap(MethodBody.parse(baseClass, _))
+
+    override def methodModified(ref: LocalMethodRef): Boolean = false
+
+    override def instance(): A =
+      baseClass.newInstance()
+  }
+
+  case class Rewritten[+A <: AnyRef](
       base: Instance[A],
       methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
+    override type ActualType = base.ActualType
     override def methods = base.methods
     override def methodBody(ref: LocalMethodRef) =
       methodBodies.get(ref) orElse base.methodBody(ref)
@@ -91,8 +132,6 @@ object Instance {
       }
 
       val ctObject = classPool.get("java.lang.Object")
-
-      methods.filter(methodModified).map(methodBody)
 
       methods.filter(methodModified) foreach { ref =>
         methodBody(ref) foreach { body =>

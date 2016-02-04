@@ -2,7 +2,7 @@ package com.todesking.hoge
 
 import com.todesking.scalapp.syntax._
 
-import org.scalatest._
+import org.scalatest.{FunSpec, Matchers}
 
 object Test {
   class Const {
@@ -24,12 +24,23 @@ object Test {
       else if(a > -10) -10
       else -100
   }
-  object Upcast {
+  object OtherMethod {
     abstract class A {
       def foo(): Int
       def bar(): Int = 10
     }
     class B extends A {
+      override def foo() = baz()
+      override def bar() = 99
+      def baz() = bar()
+    }
+  }
+  object Upcast {
+    abstract class A {
+      def foo(): Int
+      def bar(): Int = 10
+    }
+    final class B extends A {
       override def foo() = baz()
       override def bar() = 99
       def baz() = bar()
@@ -102,12 +113,22 @@ class Spec extends FunSpec with Matchers {
       ri.instance.foo(-1) should be(-10)
       ri.instance.foo(-11) should be(-100)
     }
-    it("upcast") {
+    it("other method") {
+      val obj = new Test.OtherMethod.B
+      obj.foo() should be(99)
+      val i = Instance.Native(obj)
+      val foo = LocalMethodRef("foo()I")
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
+      ri.instance.foo() should be(99)
+    }
+    it("real upcast") {
       val obj = new Test.Upcast.B
       obj.foo() should be(99)
       val i = Instance.Native[Test.Upcast.A](obj)
       val foo = LocalMethodRef("foo()I")
-      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
+      val ri = Transformer.changeBaseClass(classOf[Test.Upcast.A])(i).get
+      classOf[Test.Upcast.A].isAssignableFrom(ri.instance.getClass) should be(true)
+      classOf[Test.Upcast.B].isAssignableFrom(ri.instance.getClass) should be(false)
       ri.instance.foo() should be(99)
     }
   }

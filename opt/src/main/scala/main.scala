@@ -5,6 +5,7 @@ import scala.language.higherKinds
 
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
+import scala.util.{Try, Success, Failure}
 
 import java.lang.reflect.{ Method => JMethod }
 
@@ -21,11 +22,6 @@ object Opt {
     instance.instance()
   }
 }
-
-class UnsupportedOpcodeException(byte: Int)
-  extends RuntimeException(f"Unsupported opcode: 0x$byte%02X")
-
-class AnalyzeException(msg: String) extends RuntimeException(msg)
 
 object Util {
   def tsort[A, B](in: Seq[A])(labelOf: A => B)(depsOf: A => Set[B]): Seq[A] =
@@ -117,4 +113,41 @@ object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
 final class Effect private extends AbstractLabel
 object Effect {
   def fresh() = new Effect
+}
+
+trait Transformer[A <: AnyRef, B <: AnyRef] {
+  def apply(orig: Instance[A]): Try[Instance[B]]
+}
+object Transformer {
+  def changeBaseClass[A <: AnyRef](baseClass: Class[A]): Transformer[A, A] = new Transformer[A, A] {
+    override def apply(orig: Instance[A]): Try[Instance[A]] = {
+      try {
+        // TODO: handle protected/package method
+        val newInstance = Instance.New(baseClass)
+
+        val required = newInstance.methods.flatMap { m => requiredMethods(orig, newInstance, m) }
+
+        Success(Instance.Rewritten(
+          newInstance,
+          required.map { m =>
+            val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
+            m -> body
+          }.toMap
+        ))
+      } catch {
+        case e: TransformError => Failure(e)
+      }
+    }
+
+    private[this] def requiredMethods(orig: Instance[_ <: AnyRef], newInstance: Instance[_ <: AnyRef], m: LocalMethodRef): Set[LocalMethodRef] = {
+      if(newInstance.sameMethodDefined(m, orig)) Set.empty
+      else if(orig.isNativeMethod(m)) throw new TransformError(s"Method ${m.str} in ${orig.baseClass} is native")
+      else if(orig.isAbstractMethod(m)) Set.empty
+      else orig.methodBody(m).map { body =>
+        // TODO: check other instance's protected/package private
+        // TODO: check same-instance method call(virtual/special)
+        Set.empty[LocalMethodRef]
+      }.getOrElse { throw new AssertionError() }
+    }
+  }
 }

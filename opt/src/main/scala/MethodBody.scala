@@ -184,11 +184,9 @@ ${
 */
 
 object MethodBody {
-  def parse(instance: AnyRef, m: JMethod): Option[MethodBody] = {
-    require(instance != null)
+  def parse(jClass: Class[_], m: JMethod): Option[MethodBody] = {
     require(m != null)
 
-    val jClass = instance.getClass
     import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod }
     val classPool = new ClassPool(null)
     classPool.appendClassPath(new ClassClassPath(jClass))
