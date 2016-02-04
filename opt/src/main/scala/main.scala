@@ -58,23 +58,16 @@ class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[
     }
 }
 
-case class Frame(locals: Seq[DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
+case class Frame(locals: Map[Int, DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
   def local(n: Int): DataLabel.Out =
     locals(n)
 
-  def dropStack(n: Int): Frame =
-    if (stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
-    else Frame(locals, stack.drop(n), effect)
+  def stackTop: DataLabel.Out = stack.head
 
-  def pushStack(l: DataLabel.Out): Frame =
-    Frame(locals, l +: stack, effect)
-
-  def takeStack(n: Int): List[DataLabel.Out] =
-    if (stack.length < n) throw new IllegalArgumentException(s"Stack size is ${stack.size}, ${n} required.")
-    else stack.take(n)
+  def update: FrameUpdate = FrameUpdate(this, Map.empty)
 }
 object Frame {
-  val empty = Frame(Seq.empty, List.empty, Effect.fresh)
+  val empty = Frame(Map.empty, List.empty, Effect.fresh())
 }
 
 case class Data(typeRef: TypeRef, value: Option[Any])
@@ -84,8 +77,41 @@ object Data {
 
 case class FrameUpdate(
   newFrame: Frame,
-  dataIn: Seq[(DataLabel.Out, DataLabel.In)] = Seq.empty
-)
+  binding: Map[DataLabel.In, DataLabel.Out]
+) {
+  def pop1(l: DataLabel.In): FrameUpdate =
+    FrameUpdate(
+      newFrame.copy(stack = newFrame.stack.tail),
+      binding + (l -> newFrame.stack.head)
+    )
+
+  def pop2(l: DataLabel.In): FrameUpdate =
+    FrameUpdate(
+      newFrame.copy(stack = newFrame.stack.drop(2)),
+      binding + (l -> newFrame.stack(1))
+    )
+
+  def setLocal(n: Int, data: DataLabel.Out): FrameUpdate =
+    FrameUpdate(newFrame.copy(locals = newFrame.locals.updated(n, data)), binding)
+
+  def load1(n: Int): FrameUpdate = push1(newFrame.local(n))
+
+  def store1(n: Int): FrameUpdate = setLocal(n, newFrame.stackTop)
+
+  def push1(d: DataLabel.Out): FrameUpdate =
+    FrameUpdate(newFrame.copy(stack = d +: newFrame.stack), binding)
+
+  def push2(d: DataLabel.Out): FrameUpdate =
+    FrameUpdate(newFrame.copy(stack = DataLabel.out(s"second word of ${d.name}") :: d :: newFrame.stack), binding)
+
+  def ret: FrameUpdate =
+    FrameUpdate(
+      Frame.empty.copy(effect = newFrame.effect),
+      binding
+    )
+}
+object FrameUpdate {
+}
 
 final class InstructionLabel private () extends AbstractLabel
 object InstructionLabel {
@@ -139,15 +165,58 @@ object Transformer {
       }
     }
 
-    private[this] def requiredMethods(orig: Instance[_ <: AnyRef], newInstance: Instance[_ <: AnyRef], m: LocalMethodRef): Set[LocalMethodRef] = {
-      if(newInstance.sameMethodDefined(m, orig)) Set.empty
+    private[this] def requiredMethods(
+      orig: Instance[_ <: AnyRef],
+      newInstance: Instance[_ <: AnyRef],
+      m: LocalMethodRef,
+      required: Set[LocalMethodRef] = Set.empty
+    ): Set[LocalMethodRef] = {
+      if(required.contains(m)) Set.empty
+      else if(newInstance.sameMethodDefined(m, orig)) Set.empty
       else if(orig.isNativeMethod(m)) throw new TransformError(s"Method ${m.str} in ${orig.baseClass} is native")
       else if(orig.isAbstractMethod(m)) Set.empty
       else orig.methodBody(m).map { body =>
+        import Dataflow.INode._
+        body.dataflow.iNodes.collect {
+          case InvokeVirtual(className, method, Data(TypeRef.This, _), retOption, args @ _*) =>
+            method
+          }.distinct.foldLeft(required) { (r, m) => r ++ requiredMethods(orig, newInstance, m, r) }
         // TODO: check other instance's protected/package private
         // TODO: check same-instance method call(virtual/special)
-        Set.empty[LocalMethodRef]
       }.getOrElse { throw new AssertionError() }
     }
+  }
+}
+
+case class Dataflow(
+  iNodes: Seq[Dataflow.INode]
+) {
+}
+object Dataflow {
+  def build(body: MethodBody): Dataflow = {
+    val connection = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
+    val dataValues = mutable.HashMap.empty[DataLabel, Data]
+
+    val thisLabel = if(body.isStatic) None else Some(DataLabel.out("this"))
+    val argLabels = body.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i}") }
+
+    val initialFrame =
+      Frame((thisLabel.toSeq ++ argLabels).zipWithIndex.map(_.swap).toMap, List.empty, Effect.fresh())
+
+    val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
+    val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
+
+    tasks += (body.bytecode.head.label -> initialFrame)
+
+    while(tasks.nonEmpty) {
+      val (pos, frame) = tasks.head
+      tasks.remove(pos -> frame)
+    }
+
+    Dataflow(Seq.empty)
+  }
+  sealed abstract class INode
+  object INode {
+    case class InvokeVirtual(className: ClassName, method: LocalMethodRef, receiver: Data, ret: Option[Data], args: Data*) extends INode
   }
 }

@@ -1,6 +1,8 @@
 package com.todesking.hoge
 
-sealed abstract class TypeRef
+sealed abstract class TypeRef {
+  def isDoubleWord: Boolean = false
+}
 object TypeRef {
   def from(c: Class[_]): Public = {
     if (c == java.lang.Integer.TYPE) Int
@@ -14,6 +16,10 @@ object TypeRef {
     else if (c == Void.javaClass) Void
     else if (c.isArray) ???
     else Reference(ClassName(c.getName))
+  }
+
+  trait DoubleWord extends TypeRef {
+    override def isDoubleWord = true
   }
 
   case object Undefined extends TypeRef
@@ -33,8 +39,8 @@ object TypeRef {
   object Short extends Primitive("S", java.lang.Short.TYPE)
   object Int extends Primitive("I", java.lang.Byte.TYPE)
   object Float extends Primitive("F", java.lang.Integer.TYPE)
-  object Long extends Primitive("J", java.lang.Long.TYPE)
-  object Double extends Primitive("D", java.lang.Double.TYPE)
+  object Long extends Primitive("J", java.lang.Long.TYPE) with DoubleWord
+  object Double extends Primitive("D", java.lang.Double.TYPE) with DoubleWord
   object Void extends Primitive("V", java.lang.Void.TYPE)
 
   // TODO: Support CL

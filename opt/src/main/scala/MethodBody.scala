@@ -17,7 +17,12 @@ case class MethodBody(
   jumpTargets: Map[JumpTarget, Bytecode.Label],
   maxLocals: Int,
   maxStackDepth: Int
-)
+) {
+  require(bytecode.nonEmpty)
+
+  lazy val dataflow: Dataflow =
+    Dataflow.build(this)
+}
 
 /*
 sealed abstract class Operation {
