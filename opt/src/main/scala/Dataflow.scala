@@ -12,9 +12,12 @@ import java.lang.reflect.{ Method => JMethod }
 import com.todesking.scalapp.syntax._
 
 case class Dataflow(
+  isStatic: Boolean,
+  descriptor: MethodDescriptor,
   iNodes: Seq[Dataflow.INode],
   dataValues: Map[DataLabel, Data]
 ) {
+  def compile(): MethodBody = ???
 }
 object Dataflow {
   private[this] def newMultiMap[A, B] = new mutable.HashMap[A, mutable.Set[B]] with mutable.MultiMap[A, B]
@@ -41,11 +44,55 @@ object Dataflow {
   }
 
   def build(body: MethodBody): Dataflow = {
-    val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
-
     val thisLabel = if(body.isStatic) None else Some(DataLabel.out("this"))
     val argLabels = body.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i}") }
     val initialEffect = Effect.fresh()
+
+    val (binding, liveBcs) = analyze(body, thisLabel, argLabels, initialEffect)
+
+    val dataValues = mutable.HashMap.empty[DataLabel, Data]
+    dataValues ++= thisLabel.map { th => (th -> Data(TypeRef.This, None)) }
+    dataValues ++= argLabels.zip(body.descriptor.args).map { case (l, t) =>
+      (l -> Data(t, None))
+    }
+    val out2bc = body.bytecode.flatMap { bc =>
+      bc.output.map { o => (o -> bc.label) }
+    }.toMap
+    Util.tsort(liveBcs)(_.label) { bc =>
+      bc.inputs.map(binding).flatMap(out2bc.get).toSet
+    } foreach { bc =>
+      dataValues ++= bc.inputs.map { i => (i -> dataValues(binding(i))) }
+      dataValues ++= bc.outValue(dataValues)
+    }
+
+    val inodes = liveBcs collect {
+      case ret :Bytecode.XReturn =>
+        INode.Return()(ret.in, ret.effect)
+      case iv @ Bytecode.invokevirtual(className, methodRef) =>
+        INode.InvokeVirtual(
+          className,
+          methodRef,
+          dataValues(iv.receiver),
+          iv.ret.map(dataValues),
+          iv.args.map(dataValues): _*
+        )(
+          iv.receiver,
+          iv.ret,
+          iv.args,
+          iv.effect
+        )
+    }
+
+    Dataflow(body.isStatic, body.descriptor, inodes.toSeq, dataValues.toMap)
+  }
+
+  private[this] def analyze(
+    body: MethodBody,
+    thisLabel: Option[DataLabel.Out],
+    argLabels: Seq[DataLabel.Out],
+    initialEffect: Effect
+  ): (Map[DataLabel.In, DataLabel.Out], Seq[Bytecode]) = {
+    val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
 
     val initialFrame =
       Frame((thisLabel.toSeq ++ argLabels).zipWithIndex.map(_.swap).toMap, List.empty, initialEffect)
@@ -97,41 +144,10 @@ object Dataflow {
     }
     // now we have complete binding and data merges
 
-    val dataValues = mutable.HashMap.empty[DataLabel, Data]
-    dataValues ++= thisLabel.map { th => (th -> Data(TypeRef.This, None)) }
-    dataValues ++= argLabels.zip(body.descriptor.args).map { case (l, t) =>
-      (l -> Data(t, None))
-    }
-    val out2bc = body.bytecode.flatMap { bc =>
-      bc.output.map { o => (o -> bc.label) }
-    }.toMap
-    Util.tsort(liveBcs.values.toSeq)(_.label) { bc =>
-      bc.inputs.map(binding).flatMap(out2bc.get).toSet
-    } foreach { bc =>
-      dataValues ++= bc.inputs.map { i => (i -> dataValues(binding(i))) }
-      dataValues ++= bc.outValue(dataValues)
-    }
-
-    val inodes = liveBcs.values collect {
-      case ret :Bytecode.XReturn =>
-        INode.Return()(ret.in, ret.effect)
-      case iv @ Bytecode.invokevirtual(className, methodRef) =>
-        INode.InvokeVirtual(
-          className,
-          methodRef,
-          dataValues(iv.receiver),
-          iv.ret.map(dataValues),
-          iv.args.map(dataValues): _*
-        )(
-          iv.receiver,
-          iv.ret,
-          iv.args,
-          iv.effect
-        )
-    }
-
-    Dataflow(inodes.toSeq, dataValues.toMap)
+    (binding.toMap -> liveBcs.values.toSeq)
   }
+
+
   sealed abstract class INode {
     final val label: INode.Label = INode.Label.fresh()
     def inputs: Seq[DataLabel.In]

@@ -161,7 +161,7 @@ object Transformer {
           newInstance,
           required.map { m =>
             val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
-            m -> body
+            m -> body.dataflow.compile
           }.toMap
         ))
       } catch {
