@@ -70,7 +70,9 @@ object Frame {
   val empty = Frame(Map.empty, List.empty, Effect.fresh())
 }
 
-case class Data(typeRef: TypeRef, value: Option[Any])
+case class Data(typeRef: TypeRef, value: Option[Any]) {
+  def pretty: String = s"""${typeRef.pretty}${value.map { v => s" = ${v}" } getOrElse ""}"""
+}
 object Data {
   val Undefined = Data(TypeRef.Undefined, None)
 }
@@ -141,7 +143,7 @@ object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
 }
 
 final class Effect private extends AbstractLabel
-object Effect {
+object Effect extends AbstractLabel.NamerProvider[Effect] {
   def fresh() = new Effect
 }
 

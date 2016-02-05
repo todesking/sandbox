@@ -15,9 +15,76 @@ case class Dataflow(
   isStatic: Boolean,
   descriptor: MethodDescriptor,
   iNodes: Seq[Dataflow.INode],
+  dataDependencies: Map[DataLabel.In, DataLabel.Out],
+  effectDependencies: Map[Effect, Set[Effect]],
   dataValues: Map[DataLabel, Data]
 ) {
-  def compile(): MethodBody = ???
+  import Dataflow.INode
+
+  def data(l: DataLabel): Data = dataValues(l)
+
+  def compile(): MethodBody = {
+    println(toDot)
+    ???
+  }
+
+  private[this] val out2inode = iNodes.flatMap { inode => inode.output.map { o => (o -> inode) } }.toMap
+
+  def iNode(l: INode.Label): INode =
+    iNodes.find(_.label == l).get
+
+  def dependentINodes(inode: INode): Seq[INode] =
+    inode.inputs.map(dataDependencies).flatMap(out2inode.get)
+
+  def toDot: String = {
+    def drawNode(id: String, label: String) = s"""${id}[label="${label}"]"""
+    def drawEdge(from: String, to: String) = s"""${from} -> ${to}"""
+    val dataName = DataLabel.namer("data_", "Data ")
+    val inodeName = INode.Label.namer("inode_", "INode ")
+    val effName = Effect.namer("effect_", "Effect ")
+    s"""digraph {
+graph[rankdir="BT"]
+${
+  iNodes.map { inode => drawNode(inodeName.id(inode.label), inode.pretty) }.mkString("\n")
+}
+${
+  (dataValues.keys ++ iNodes.flatMap { i => i.inputs ++ i.output }).toSet.map { d: DataLabel =>
+    drawNode(dataName.id(d), s"""${d.name}: ${dataValues.get(d).map(_.pretty) getOrElse "ERROR: Not Found"}""")
+  }.mkString("\n")
+}
+${
+  (iNodes.flatMap(_.effect) ++ effectDependencies.flatMap { case (k, vs) => vs + k }).distinct.map { eff =>
+    drawNode(effName.id(eff), effName.name(eff))
+  }.mkString("\n")
+}
+${
+  dataDependencies.map { case (from, to) =>
+    drawEdge(dataName.id(from), dataName.id(to))
+  }.mkString("\n")
+}
+${
+  iNodes.flatMap { inode =>
+    inode.inputs.map { in =>
+      drawEdge(inodeName.id(inode.label), dataName.id(in))
+    } ++ inode.output.map { out =>
+      drawEdge(dataName.id(out), inodeName.id(inode.label))
+    }
+  }.mkString("\n")
+}
+${
+  effectDependencies.flatMap { case (from, tos) =>
+    tos.map { to =>
+      drawEdge(effName.id(from), effName.id(to))
+    }
+  }.mkString("\n")
+}
+${
+  iNodes.flatMap { inode =>
+    inode.effect.map {eff => drawEdge(effName.id(eff), inodeName.id(inode.label)) }
+  }.mkString("\n")
+}
+}"""
+    }
 }
 object Dataflow {
   private[this] def newMultiMap[A, B] = new mutable.HashMap[A, mutable.Set[B]] with mutable.MultiMap[A, B]
@@ -83,7 +150,14 @@ object Dataflow {
         )
     }
 
-    Dataflow(body.isStatic, body.descriptor, inodes.toSeq, dataValues.toMap)
+    Dataflow(
+      body.isStatic,
+      body.descriptor,
+      inodes.toSeq,
+      binding.toMap,
+      Map.empty,
+      dataValues.toMap
+    )
   }
 
   private[this] def analyze(
@@ -153,10 +227,11 @@ object Dataflow {
     def inputs: Seq[DataLabel.In]
     def output: Option[DataLabel.Out]
     def effect: Option[Effect]
+    def pretty: String = toString
   }
   object INode {
     final class Label private() extends AbstractLabel
-    object Label {
+    object Label extends AbstractLabel.NamerProvider[Label] {
       def fresh(): Label = new Label
     }
 
@@ -164,6 +239,7 @@ object Dataflow {
       override val inputs = Seq(ret)
       override val output = None
       override val effect = Some(eff)
+      override def pretty = "return"
     }
     case class InvokeVirtual(
       className: ClassName,
@@ -183,16 +259,19 @@ object Dataflow {
       override def inputs = argLabels
       override def output = retLabel
       override def effect = Some(eff)
+      override def pretty = s"""invokevirtual ${className.binaryString}#${method.str}"""
     }
     case class WhiteHole(out: DataLabel.Out) extends INode {
       override def inputs = Seq.empty
       override def output = Some(out)
       override val effect = Some(Effect.fresh())
+      override def pretty = "WhiteHole"
     }
     case class BlackHole(in: DataLabel.In) extends INode {
       override def inputs = Seq(in)
       override def output = None
       override val effect = Some(Effect.fresh())
+      override def pretty = "BlackHole"
     }
   }
 }
