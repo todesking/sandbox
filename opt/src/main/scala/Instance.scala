@@ -140,7 +140,6 @@ object Instance {
           val addrs = mutable.HashMap.empty[Bytecode.Label, Int]
           import Bytecode._
           body.bytecode foreach { bc =>
-            (out.getSize -> bc).pp()
             addrs(bc.label) = out.getSize
             bc match {
               case nop() =>
@@ -173,9 +172,6 @@ object Instance {
                 out.add(0x00, 0x03)
             }
           }
-          body.pp()
-          jumps.pp()
-          addrs.pp()
           jumps foreach {
             case (dataIndex, (index, target)) =>
               val label = body.jumpTargets(target)
