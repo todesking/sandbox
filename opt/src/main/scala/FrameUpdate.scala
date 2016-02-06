@@ -13,34 +13,38 @@ import com.todesking.scalapp.syntax._
 
 case class FrameUpdate(
   newFrame: Frame,
-  binding: Map[DataLabel.In, DataLabel.Out]
+  binding: Map[DataLabel.In, DataLabel.Out],
+  effectDependencies: Map[Bytecode.Label, Effect]
 ) {
   def pop1(l: DataLabel.In): FrameUpdate =
     FrameUpdate(
       newFrame.copy(stack = newFrame.stack.tail),
-      binding + (l -> newFrame.stack.head)
+      binding + (l -> newFrame.stack.head),
+      effectDependencies
     )
 
   def pop2(l: DataLabel.In): FrameUpdate =
     FrameUpdate(
       newFrame.copy(stack = newFrame.stack.drop(2)),
-      binding + (l -> newFrame.stack(1))
+      binding + (l -> newFrame.stack(1)),
+      effectDependencies
     )
 
   def setLocal(n: Int, data: DataLabel.Out): FrameUpdate =
-    FrameUpdate(newFrame.copy(locals = newFrame.locals.updated(n, data)), binding)
+    FrameUpdate(newFrame.copy(locals = newFrame.locals.updated(n, data)), binding, effectDependencies)
 
   def load1(n: Int): FrameUpdate = push1(newFrame.local(n))
 
   def store1(n: Int): FrameUpdate = setLocal(n, newFrame.stackTop)
 
   def push1(d: DataLabel.Out): FrameUpdate =
-    FrameUpdate(newFrame.copy(stack = d +: newFrame.stack), binding)
+    FrameUpdate(newFrame.copy(stack = d +: newFrame.stack), binding, effectDependencies)
 
   def push2(d: DataLabel.Out): FrameUpdate =
     FrameUpdate(
       newFrame.copy(stack = DataLabel.out(s"second word of ${d.name}") :: d :: newFrame.stack),
-      binding
+      binding,
+      effectDependencies
     )
 
   def push(t: TypeRef, d: DataLabel.Out): FrameUpdate =
@@ -50,7 +54,8 @@ case class FrameUpdate(
   def ret(retval: DataLabel.In): FrameUpdate =
     FrameUpdate(
       Frame(Map.empty, List.empty, newFrame.effect),
-      binding + (retval -> newFrame.stack.head)
+      binding + (retval -> newFrame.stack.head),
+      effectDependencies
     )
 }
 object FrameUpdate {

@@ -15,9 +15,14 @@ sealed abstract class Bytecode {
   def output: Option[DataLabel.Out]
   def nextFrame(frame: Frame): FrameUpdate
   def outValue(values: DataLabel => Data): Option[(DataLabel.Out, Data)]
+  def effect: Option[Effect]
 
   protected def update(frame: Frame): FrameUpdate =
-    FrameUpdate(frame, Map.empty)
+    FrameUpdate(
+      frame.copy(effect = this.effect getOrElse frame.effect),
+      Map.empty,
+      effect.map { eff => (this.label -> frame.effect)}.toMap
+    )
 }
 object Bytecode {
   class Label extends AbstractLabel
@@ -41,12 +46,14 @@ object Bytecode {
     }
 
   sealed abstract class Control extends Bytecode {
-    val effect: Effect = Effect.fresh()
+    val eff: Effect = Effect.fresh()
+    override def effect = Some(eff)
   }
   sealed abstract class Shuffle extends Bytecode {
     override def inputs = Seq.empty
     override def output = None
     override def outValue(vs: DataLabel => Data) = None
+    override def effect = None
   }
   sealed abstract class Procedure extends Bytecode
 
@@ -99,7 +106,9 @@ object Bytecode {
     override def inputs = Seq.empty
     override def output = Some(out)
     override def outValue(vs: DataLabel => Data) = Some(out -> data)
+    override def effect = None
   }
+
   sealed abstract class Const1 extends ConstX {
     final val out: DataLabel.Out = DataLabel.out("const(1word)")
     override def nextFrame(f: Frame) = update(f).push1(out)
@@ -131,7 +140,8 @@ object Bytecode {
   }
   case class if_icmple(override val target: JumpTarget) extends if_icmpXX
   case class invokevirtual(className: ClassName, methodRef: LocalMethodRef) extends Procedure {
-    val effect: Effect = Effect.fresh()
+    override def effect = Some(eff)
+    val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
     val ret: Option[DataLabel.Out] = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))

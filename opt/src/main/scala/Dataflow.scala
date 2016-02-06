@@ -17,7 +17,8 @@ case class Dataflow(
   iNodes: Seq[Dataflow.INode],
   dataDependencies: Map[DataLabel.In, DataLabel.Out],
   effectDependencies: Map[Dataflow.INode.Label, Effect],
-  dataValues: Map[DataLabel, Data]
+  dataValues: Map[DataLabel, Data],
+  jumpTargets: Map[JumpTarget, Dataflow.INode.Label]
 ) {
   import Dataflow.INode
 
@@ -38,10 +39,16 @@ case class Dataflow(
 
   def toDot: String = {
     def drawNode(id: String, label: String) = s"""${id}[label="${label}"]"""
-    def drawEdge(from: String, to: String) = s"""${from} -> ${to}"""
+    def drawEdge(from: String, to: String, style: String = "") = s"""${from} -> ${to} [style="${style}"]"""
     val dataName = DataLabel.namer("data_", "Data ")
     val inodeName = INode.Label.namer("inode_", "INode ")
     val effName = Effect.namer("effect_", "Effect ")
+    def jumpTargets(inode: INode): Seq[INode.Label] = (inode match {
+      case i: INode.Goto => Seq(i.target)
+      case i: INode.ICmp => Seq(i.thenTarget)
+      case _ => Seq.empty
+      }).map(this.jumpTargets)
+
     s"""digraph {
 graph[rankdir="BT"]
 ${
@@ -81,6 +88,11 @@ ${
     inode.effect.map {eff => drawEdge(effName.id(eff), inodeName.id(inode.label)) }
   }.mkString("\n")
 }
+${
+  iNodes.flatMap { inode =>
+    jumpTargets(inode) map { l => drawEdge(inodeName.id(inode.label), inodeName.id(l), style = "dashed") }
+  }.mkString("\n")
+}
 }"""
     }
 }
@@ -89,6 +101,8 @@ object Dataflow {
 
   class Merger[P, L <: AbstractLabel](fresh: => L) {
     private[this] val merges = newMultiMap[(P, L), L]
+
+    def toMap: Map[(P, L), Set[L]] = merges.mapValues(_.toSet).toMap
 
     def merge(pos: P, l1: L, l2: L): L =
       if(l1 == l2) {
@@ -113,7 +127,13 @@ object Dataflow {
     val argLabels = body.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i}") }
     val initialEffect = Effect.fresh()
 
-    val (binding, effectDependencies, liveBcs) = analyze(body, thisLabel, argLabels, initialEffect)
+    val Analyzed(
+      binding,
+      effectDependencies,
+      liveBcs,
+      dataMerges,
+      effectMerges
+    ) = analyze(body, thisLabel, argLabels, initialEffect)
 
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
     dataValues ++= thisLabel.map { th => (th -> Data(TypeRef.This, None)) }
@@ -130,11 +150,11 @@ object Dataflow {
       dataValues ++= bc.outValue(dataValues)
     }
 
-    val inodes = liveBcs collect {
+    val inodes = liveBcs.collect {
       case ret :Bytecode.XReturn =>
-        INode.XReturn()(ret.in, ret.effect)
+        ret.label -> INode.XReturn()(ret.in, ret.eff)
       case iv @ Bytecode.invokevirtual(className, methodRef) =>
-        INode.InvokeVirtual(
+        iv.label -> INode.InvokeVirtual(
           className,
           methodRef,
           dataValues(iv.receiver),
@@ -144,41 +164,75 @@ object Dataflow {
           iv.receiver,
           iv.ret,
           iv.args,
-          iv.effect
+          iv.eff
         )
       case c: Bytecode.ConstX =>
-        INode.Const(c.data)(c.out)
+        c.label -> INode.Const(c.data)(c.out)
       case j: Bytecode.Jump =>
-        INode.Goto(j.target)(j.effect)
+        j.label -> INode.Goto(j.target)(j.eff)
       case cmp: Bytecode.if_icmple =>
-        INode.ICmp(dataValues(cmp.value1), dataValues(cmp.value2))(
+        cmp.label -> INode.ICmp(dataValues(cmp.value1), dataValues(cmp.value2))(
           "le",
           cmp.value1,
           cmp.value2,
-          cmp.effect
+          cmp.target,
+          cmp.eff
         )
       case unk: Bytecode.Procedure if({println(unk); false}) =>
         ???
       case unk: Bytecode.Control if({println(unk); false}) =>
         ???
+      case unk: Bytecode.Control =>
+        throw new AssertionError()
+      case unk: Bytecode.Procedure =>
+        throw new AssertionError()
+      case unk if unk.effect.nonEmpty =>
+        throw new AssertionError()
+    }.toMap
+
+    val inodeEffectDeps = mutable.HashMap.empty[INode.Label, Effect]
+    for {
+      (bcl, inode) <- inodes
+      eff <- effectDependencies.get(bcl)
+    } inodeEffectDeps(inode.label) = eff
+
+    val bytecodeAggregate: Map[Bytecode.Label, Bytecode.Label] = {
+      def f(pending: Set[Bytecode.Label], bcs: Seq[Bytecode]): Map[Bytecode.Label, Set[Bytecode.Label]] = bcs match {
+        case Seq(bc: Bytecode.Shuffle, tail @ _*) => f(pending + bc.label, tail)
+        case Seq(bc, tail @ _*) => Map(bc.label -> (pending + bc.label)) ++ f(Set.empty, tail)
+        case Seq() => Map.empty
+      }
+      f(Set.empty, body.bytecode).flatMap { case(agg, ts) => ts.map(_ -> agg) }
     }
+
+    val jumpTargets: Map[JumpTarget, INode.Label] =
+      body.jumpTargets.mapValues(bytecodeAggregate).mapValues(inodes).mapValues(_.label)
 
     Dataflow(
       body.isStatic,
       body.descriptor,
-      inodes.toSeq,
+      inodes.values.toSeq,
       binding.toMap,
-      effectDependencies.toMap,
-      dataValues.toMap
+      inodeEffectDeps.toMap,
+      dataValues.toMap,
+      jumpTargets
     )
   }
+
+  case class Analyzed(
+    binding: Map[DataLabel.In, DataLabel.Out],
+    effectDependencies: Map[Bytecode.Label, Effect],
+    liveBytecodes: Seq[Bytecode],
+    dataMerges: Map[(Bytecode.Label, DataLabel.Out), Set[DataLabel.Out]],
+    effectMerges: Map[(Bytecode.Label, Effect), Set[Effect]]
+  )
 
   private[this] def analyze(
     body: MethodBody,
     thisLabel: Option[DataLabel.Out],
     argLabels: Seq[DataLabel.Out],
     initialEffect: Effect
-  ): (Map[DataLabel.In, DataLabel.Out], Map[INode.Label, Effect], Seq[Bytecode]) = {
+  ): Analyzed = {
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
 
     val initialFrame =
@@ -189,7 +243,7 @@ object Dataflow {
 
     tasks += (body.bytecode.head.label -> initialFrame)
 
-    val effectDependencies = newMultiMap[INode, Effect]
+    val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
 
     val dataMerges = new Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
 
@@ -218,6 +272,7 @@ object Dataflow {
         liveBcs(bc.label) = bc
         val u = bc.nextFrame(merged)
         binding ++= u.binding
+        effectDependencies ++= u.effectDependencies
         bseq.head match {
           case j: Bytecode.Jump =>
             tasks += (body.jumpTargets(j.target) -> u.newFrame)
@@ -232,7 +287,13 @@ object Dataflow {
     }
     // now we have complete binding and data merges
 
-    (binding.toMap, effectDependencies.toMap, liveBcs.values.toSeq)
+    Analyzed(
+      binding.toMap,
+      effectDependencies.toMap,
+      liveBcs.values.toSeq,
+      dataMerges.toMap,
+      effectMerges.toMap
+    )
   }
 
 
@@ -271,10 +332,11 @@ object Dataflow {
     }
 
     case class ICmp(value1: Data, value2: Data)(
-      op: String,
-      label1: DataLabel.In,
-      label2: DataLabel.In,
-      eff: Effect
+      val op: String,
+      val label1: DataLabel.In,
+      val label2: DataLabel.In,
+      val thenTarget: JumpTarget,
+      val eff: Effect
     ) extends INode {
       override val inputs = Seq(label1, label2)
       override val output = None
@@ -289,10 +351,10 @@ object Dataflow {
       ret: Option[Data],
       args: Data*
     )(
-      receiverLabel: DataLabel.In,
-      retLabel: Option[DataLabel.Out],
-      argLabels: Seq[DataLabel.In],
-      eff: Effect
+      val receiverLabel: DataLabel.In,
+      val retLabel: Option[DataLabel.Out],
+      val argLabels: Seq[DataLabel.In],
+      val eff: Effect
     )extends INode {
       require(!(method.isVoid ^ retLabel.isEmpty))
       require(method.args.size == argLabels.size)

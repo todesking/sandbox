@@ -58,6 +58,7 @@ class Spec extends FunSpec with Matchers {
       val foo = LocalMethodRef("foo(I)I")
       val i = Instance.Native(new Test.If)
       dot("if.dot", i.methodBody(foo).get)
+      println(i.methodBody(foo).get.bytecode.map(_.toString).mkString("\n"))
     }
     it("const") {
       val orig = new Test.Const
