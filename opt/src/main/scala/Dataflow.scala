@@ -16,7 +16,7 @@ case class Dataflow(
   descriptor: MethodDescriptor,
   iNodes: Seq[Dataflow.INode],
   dataDependencies: Map[DataLabel.In, DataLabel.Out],
-  effectDependencies: Map[Effect, Set[Effect]],
+  effectDependencies: Map[Dataflow.INode.Label, Effect],
   dataValues: Map[DataLabel, Data]
 ) {
   import Dataflow.INode
@@ -53,7 +53,7 @@ ${
   }.mkString("\n")
 }
 ${
-  (iNodes.flatMap(_.effect) ++ effectDependencies.flatMap { case (k, vs) => vs + k }).distinct.map { eff =>
+  (iNodes.flatMap(_.effect) ++ effectDependencies.values).distinct.map { eff =>
     drawNode(effName.id(eff), effName.name(eff))
   }.mkString("\n")
 }
@@ -72,10 +72,8 @@ ${
   }.mkString("\n")
 }
 ${
-  effectDependencies.flatMap { case (from, tos) =>
-    tos.map { to =>
-      drawEdge(effName.id(from), effName.id(to))
-    }
+  effectDependencies.map { case (from, to) =>
+    drawEdge(inodeName.id(from), effName.id(to))
   }.mkString("\n")
 }
 ${
@@ -115,7 +113,7 @@ object Dataflow {
     val argLabels = body.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i}") }
     val initialEffect = Effect.fresh()
 
-    val (binding, liveBcs) = analyze(body, thisLabel, argLabels, initialEffect)
+    val (binding, effectDependencies, liveBcs) = analyze(body, thisLabel, argLabels, initialEffect)
 
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
     dataValues ++= thisLabel.map { th => (th -> Data(TypeRef.This, None)) }
@@ -134,7 +132,7 @@ object Dataflow {
 
     val inodes = liveBcs collect {
       case ret :Bytecode.XReturn =>
-        INode.Return()(ret.in, ret.effect)
+        INode.XReturn()(ret.in, ret.effect)
       case iv @ Bytecode.invokevirtual(className, methodRef) =>
         INode.InvokeVirtual(
           className,
@@ -148,6 +146,21 @@ object Dataflow {
           iv.args,
           iv.effect
         )
+      case c: Bytecode.ConstX =>
+        INode.Const(c.data)(c.out)
+      case j: Bytecode.Jump =>
+        INode.Goto(j.target)(j.effect)
+      case cmp: Bytecode.if_icmple =>
+        INode.ICmp(dataValues(cmp.value1), dataValues(cmp.value2))(
+          "le",
+          cmp.value1,
+          cmp.value2,
+          cmp.effect
+        )
+      case unk: Bytecode.Procedure if({println(unk); false}) =>
+        ???
+      case unk: Bytecode.Control if({println(unk); false}) =>
+        ???
     }
 
     Dataflow(
@@ -155,7 +168,7 @@ object Dataflow {
       body.descriptor,
       inodes.toSeq,
       binding.toMap,
-      Map.empty,
+      effectDependencies.toMap,
       dataValues.toMap
     )
   }
@@ -165,7 +178,7 @@ object Dataflow {
     thisLabel: Option[DataLabel.Out],
     argLabels: Seq[DataLabel.Out],
     initialEffect: Effect
-  ): (Map[DataLabel.In, DataLabel.Out], Seq[Bytecode]) = {
+  ): (Map[DataLabel.In, DataLabel.Out], Map[INode.Label, Effect], Seq[Bytecode]) = {
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
 
     val initialFrame =
@@ -176,7 +189,7 @@ object Dataflow {
 
     tasks += (body.bytecode.head.label -> initialFrame)
 
-    val effectDependencies = mutable.HashMap.empty[Effect, Effect]
+    val effectDependencies = newMultiMap[INode, Effect]
 
     val dataMerges = new Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
 
@@ -201,8 +214,9 @@ object Dataflow {
       if(preFrames.get(pos).map(_ != merged) getOrElse true) {
         preFrames(pos) = merged
         val bseq = body.bytecode.dropWhile(_.label != pos)
-        liveBcs(bseq.head.label) = bseq.head
-        val u = bseq.head.nextFrame(merged)
+        val bc = bseq.head
+        liveBcs(bc.label) = bc
+        val u = bc.nextFrame(merged)
         binding ++= u.binding
         bseq.head match {
           case j: Bytecode.Jump =>
@@ -218,7 +232,7 @@ object Dataflow {
     }
     // now we have complete binding and data merges
 
-    (binding.toMap -> liveBcs.values.toSeq)
+    (binding.toMap, effectDependencies.toMap, liveBcs.values.toSeq)
   }
 
 
@@ -235,12 +249,39 @@ object Dataflow {
       def fresh(): Label = new Label
     }
 
-    case class Return()(ret: DataLabel.In, eff: Effect) extends INode {
+    case class XReturn()(ret: DataLabel.In, eff: Effect) extends INode {
       override val inputs = Seq(ret)
       override val output = None
       override val effect = Some(eff)
       override def pretty = "return"
     }
+
+    case class Const(value: Data)(out: DataLabel.Out) extends INode {
+      override val inputs = Seq.empty
+      override val output = Some(out)
+      override val effect = None
+      override def pretty = s"const ${value.pretty}"
+    }
+
+    case class Goto(target: JumpTarget)(eff: Effect) extends INode {
+      override val inputs = Seq.empty
+      override val output = None
+      override val effect = Some(eff)
+      override def pretty = s"goto"
+    }
+
+    case class ICmp(value1: Data, value2: Data)(
+      op: String,
+      label1: DataLabel.In,
+      label2: DataLabel.In,
+      eff: Effect
+    ) extends INode {
+      override val inputs = Seq(label1, label2)
+      override val output = None
+      override val effect = Some(eff)
+      override def pretty = s"if_icmp${op}"
+    }
+
     case class InvokeVirtual(
       className: ClassName,
       method: LocalMethodRef,
