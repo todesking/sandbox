@@ -19,12 +19,26 @@ object TypeRef {
     else Reference(ClassName(c.getName))
   }
 
+  def common(t1: TypeRef, t2: TypeRef): TypeRef =
+    (t1, t2) match {
+      case (t1, t2) if t1 == t2 => t1
+      case (Undefined, _) => Undefined
+      case (_, Undefined) => Undefined
+      case (Null, ref @ Reference(_)) => ref
+      case (ref @ Reference(_), Null) => ref
+      case (r1 @ Reference(_), r2 @ Reference(_)) =>
+        ???
+    }
+
   trait DoubleWord extends TypeRef {
     override def isDoubleWord = true
   }
 
   case object Undefined extends TypeRef {
     override def pretty = "undefined"
+  }
+  case object SecondWord extends TypeRef {
+    override def pretty = "second word"
   }
   case object This extends TypeRef {
     override def pretty = "this"

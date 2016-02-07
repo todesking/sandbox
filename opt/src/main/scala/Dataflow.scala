@@ -90,7 +90,7 @@ ${
 }
 ${
   iNodes.flatMap { inode =>
-    jumpTargets(inode) map { l => drawEdge(inodeName.id(inode.label), inodeName.id(l), style = "dashed") }
+    jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), style = "dashed") }
   }.mkString("\n")
 }
 }"""
@@ -99,67 +99,17 @@ ${
 object Dataflow {
   private[this] def newMultiMap[A, B] = new mutable.HashMap[A, mutable.Set[B]] with mutable.MultiMap[A, B]
 
-  class Merger[P, L <: AbstractLabel](fresh: => L) {
-    private[this] val merges = newMultiMap[(P, L), L]
-
-    def toMap: Map[(P, L), Set[L]] = merges.mapValues(_.toSet).toMap
-
-    def merge(pos: P, l1: L, l2: L): L =
-      if(l1 == l2) {
-        l1
-      } else if(merges.contains(pos -> l1)) {
-        if(merges.contains(pos -> l2)) throw new AssertionError
-        merges.addBinding(pos -> l1, l2)
-        l2
-      } else if(merges.contains(pos -> l2)) {
-        merges.addBinding(pos -> l2, l1)
-        l1
-      } else {
-        val m = fresh
-        merges.addBinding(pos -> m, l1)
-        merges.addBinding(pos -> m, l2)
-        m
-      }
-  }
-
   def build(body: MethodBody): Dataflow = {
-    val thisLabel = if(body.isStatic) None else Some(DataLabel.out("this"))
-    val argLabels = body.descriptor.args.zipWithIndex.map { case (_, i) => DataLabel.out(s"arg_${i}") }
-    val initialEffect = Effect.fresh()
-
-    val Analyzed(
-      binding,
-      effectDependencies,
-      liveBcs,
-      dataMerges,
-      effectMerges
-    ) = analyze(body, thisLabel, argLabels, initialEffect)
-
-    val dataValues = mutable.HashMap.empty[DataLabel, Data]
-    dataValues ++= thisLabel.map { th => (th -> Data(TypeRef.This, None)) }
-    dataValues ++= argLabels.zip(body.descriptor.args).map { case (l, t) =>
-      (l -> Data(t, None))
-    }
-    val out2bc = body.bytecode.flatMap { bc =>
-      bc.output.map { o => (o -> bc.label) }
-    }.toMap
-    Util.tsort(liveBcs)(_.label) { bc =>
-      bc.inputs.map(binding).flatMap(out2bc.get).toSet
-    } foreach { bc =>
-      dataValues ++= bc.inputs.map { i => (i -> dataValues(binding(i))) }
-      dataValues ++= bc.outValue(dataValues)
-    }
-
-    val inodes = liveBcs.collect {
+    val inodes = body.liveBytecode.collect {
       case ret :Bytecode.XReturn =>
         ret.label -> INode.XReturn()(ret.in, ret.eff)
       case iv @ Bytecode.invokevirtual(className, methodRef) =>
         iv.label -> INode.InvokeVirtual(
           className,
           methodRef,
-          dataValues(iv.receiver),
-          iv.ret.map(dataValues),
-          iv.args.map(dataValues): _*
+          body.dataValue(iv.receiver),
+          iv.ret.map(body.dataValue),
+          iv.args.map(body.dataValue): _*
         )(
           iv.receiver,
           iv.ret,
@@ -171,7 +121,7 @@ object Dataflow {
       case j: Bytecode.Jump =>
         j.label -> INode.Goto(j.target)(j.eff)
       case cmp: Bytecode.if_icmple =>
-        cmp.label -> INode.ICmp(dataValues(cmp.value1), dataValues(cmp.value2))(
+        cmp.label -> INode.ICmp(body.dataValue(cmp.value1), body.dataValue(cmp.value2))(
           "le",
           cmp.value1,
           cmp.value2,
@@ -193,7 +143,7 @@ object Dataflow {
     val inodeEffectDeps = mutable.HashMap.empty[INode.Label, Effect]
     for {
       (bcl, inode) <- inodes
-      eff <- effectDependencies.get(bcl)
+      eff <- body.effectDependencies.get(bcl)
     } inodeEffectDeps(inode.label) = eff
 
     val bytecodeAggregate: Map[Bytecode.Label, Bytecode.Label] = {
@@ -212,87 +162,10 @@ object Dataflow {
       body.isStatic,
       body.descriptor,
       inodes.values.toSeq,
-      binding.toMap,
+      body.dataBinding,
       inodeEffectDeps.toMap,
-      dataValues.toMap,
+      body.dataValues,
       jumpTargets
-    )
-  }
-
-  case class Analyzed(
-    binding: Map[DataLabel.In, DataLabel.Out],
-    effectDependencies: Map[Bytecode.Label, Effect],
-    liveBytecodes: Seq[Bytecode],
-    dataMerges: Map[(Bytecode.Label, DataLabel.Out), Set[DataLabel.Out]],
-    effectMerges: Map[(Bytecode.Label, Effect), Set[Effect]]
-  )
-
-  private[this] def analyze(
-    body: MethodBody,
-    thisLabel: Option[DataLabel.Out],
-    argLabels: Seq[DataLabel.Out],
-    initialEffect: Effect
-  ): Analyzed = {
-    val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
-
-    val initialFrame =
-      Frame((thisLabel.toSeq ++ argLabels).zipWithIndex.map(_.swap).toMap, List.empty, initialEffect)
-
-    val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
-    val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
-
-    tasks += (body.bytecode.head.label -> initialFrame)
-
-    val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
-
-    val dataMerges = new Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
-
-    val effectMerges = new Merger[Bytecode.Label, Effect](Effect.fresh())
-
-    def merge(pos: Bytecode.Label, f1: Frame, f2: Frame): Frame = {
-      Frame(
-        (f1.locals.keySet ++ f2.locals.keySet)
-          .filter { k => f1.locals.contains(k) && f2.locals.contains(k) }
-          .map { k => (k -> dataMerges.merge(pos, f1.locals(k), f2.locals(k))) }.toMap,
-        f1.stack.zip(f2.stack).map { case(a, b) => dataMerges.merge(pos, a, b) },
-        effectMerges.merge(pos, f1.effect, f2.effect)
-      )
-    }
-
-    val liveBcs = mutable.HashMap.empty[Bytecode.Label, Bytecode]
-
-    while(tasks.nonEmpty) {
-      val (pos, frame) = tasks.head
-      tasks.remove(pos -> frame)
-      val merged = preFrames.get(pos).map(merge(pos, _, frame)) getOrElse frame
-      if(preFrames.get(pos).map(_ != merged) getOrElse true) {
-        preFrames(pos) = merged
-        val bseq = body.bytecode.dropWhile(_.label != pos)
-        val bc = bseq.head
-        liveBcs(bc.label) = bc
-        val u = bc.nextFrame(merged)
-        binding ++= u.binding
-        effectDependencies ++= u.effectDependencies
-        bseq.head match {
-          case j: Bytecode.Jump =>
-            tasks += (body.jumpTargets(j.target) -> u.newFrame)
-          case b:  Bytecode.Branch =>
-            tasks += (body.jumpTargets(b.target) -> u.newFrame)
-            tasks += (bseq(1).label -> u.newFrame)
-          case r: Bytecode.XReturn =>
-          case _: Bytecode.Procedure | _: Bytecode.Shuffle =>
-            tasks += (bseq(1).label -> u.newFrame)
-        }
-      }
-    }
-    // now we have complete binding and data merges
-
-    Analyzed(
-      binding.toMap,
-      effectDependencies.toMap,
-      liveBcs.values.toSeq,
-      dataMerges.toMap,
-      effectMerges.toMap
     )
   }
 

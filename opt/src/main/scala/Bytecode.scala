@@ -14,14 +14,14 @@ sealed abstract class Bytecode {
   def inputs: Seq[DataLabel.In]
   def output: Option[DataLabel.Out]
   def nextFrame(frame: Frame): FrameUpdate
-  def outValue(values: DataLabel => Data): Option[(DataLabel.Out, Data)]
   def effect: Option[Effect]
 
   protected def update(frame: Frame): FrameUpdate =
     FrameUpdate(
       frame.copy(effect = this.effect getOrElse frame.effect),
       Map.empty,
-      effect.map { eff => (this.label -> frame.effect)}.toMap
+      effect.map { eff => (this.label -> frame.effect)}.toMap,
+      Map.empty
     )
 }
 object Bytecode {
@@ -52,7 +52,6 @@ object Bytecode {
   sealed abstract class Shuffle extends Bytecode {
     override def inputs = Seq.empty
     override def output = None
-    override def outValue(vs: DataLabel => Data) = None
     override def effect = None
   }
   sealed abstract class Procedure extends Bytecode
@@ -60,25 +59,21 @@ object Bytecode {
   sealed abstract class Jump extends Control {
     override def inputs = Seq.empty
     override def output = None
-    override def outValue(vs: DataLabel => Data) = None
     override def nextFrame(f: Frame) = update(f)
     def target: JumpTarget
   }
 
   sealed abstract class Branch extends Control {
     def target: JumpTarget
-    override def outValue(vs: DataLabel => Data) = None
   }
 
   sealed abstract class Return extends Control {
-    override def outValue(vs: DataLabel => Data) = None
   }
   sealed abstract class XReturn extends Return {
     val in: DataLabel.In = DataLabel.in("retval")
     override val inputs = Seq(in)
     override def output = None
     override def nextFrame(f: Frame) = update(f).ret(in)
-    override def outValue(vs: DataLabel => Data) = None
   }
 
   sealed abstract class if_icmpXX extends Branch {
@@ -87,7 +82,6 @@ object Bytecode {
     override def inputs = Seq(value1, value2)
     override def output = None
     override def nextFrame(f: Frame) = update(f).pop1(value1).pop1(value2)
-    override def outValue(vs: DataLabel => Data) = None
   }
 
   sealed abstract class Load1 extends Shuffle {
@@ -105,18 +99,17 @@ object Bytecode {
     def data: Data
     override def inputs = Seq.empty
     override def output = Some(out)
-    override def outValue(vs: DataLabel => Data) = Some(out -> data)
     override def effect = None
   }
 
   sealed abstract class Const1 extends ConstX {
     final val out: DataLabel.Out = DataLabel.out("const(1word)")
-    override def nextFrame(f: Frame) = update(f).push1(out)
+    override def nextFrame(f: Frame) = update(f).push1(out -> data)
   }
 
   sealed abstract class Const2 extends ConstX {
     final val out: DataLabel.Out = DataLabel.out("const(2word)")
-    override def nextFrame(f: Frame) = update(f).push2(out)
+    override def nextFrame(f: Frame) = update(f).push2(out -> data)
   }
 
   case class nop() extends Shuffle {
@@ -154,8 +147,7 @@ object Bytecode {
           if(t.isDoubleWord) u.pop2(a)
           else u.pop1(a)
         }.pop1(receiver)
-      ret.fold(popped)(popped.push(methodRef.ret, _))
+      ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
     }
-    override def outValue(vs: DataLabel => Data) = ret.map { r => (r -> Data(methodRef.ret, None)) }
   }
 }

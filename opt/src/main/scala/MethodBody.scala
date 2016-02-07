@@ -22,6 +22,79 @@ case class MethodBody(
 
   lazy val dataflow: Dataflow =
     Dataflow.build(this)
+
+  lazy val initialFrame: Frame = {
+    val initialEffect = Effect.fresh()
+    val thisData = if(isStatic) None else Some(DataLabel.out("this") -> Data(TypeRef.This, None))
+    val argData = descriptor.args.zipWithIndex.flatMap {
+      case (t, i) =>
+        val data = Data(t, None)
+        val label = DataLabel.out(s"arg_${i}")
+        if(t.isDoubleWord)
+          Seq((DataLabel.out(s"second word of ${label.name}") -> data.secondWordData), (label -> data))
+        else
+          Seq(label -> data)
+    }
+    Frame((thisData.toSeq ++ argData).zipWithIndex.map(_.swap).toMap, List.empty, initialEffect)
+  }
+
+  def dataValue(l: DataLabel): Data =
+    dataValues(l)
+
+  lazy val (dataBinding, dataValues, dataMerges, effectDependencies, effectMerges, liveBytecode) = {
+    val dataMerges = new AbstractLabel.Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
+
+    val effectMerges = new AbstractLabel.Merger[Bytecode.Label, Effect](Effect.fresh())
+
+    def mergeData(pos: Bytecode.Label, d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
+      (dataMerges.merge(pos, d1._1, d2._1) -> Data.merge(d1._2, d2._2))
+
+    def merge(pos: Bytecode.Label, f1: Frame, f2: Frame): Frame = {
+      Frame(
+        (f1.locals.keySet ++ f2.locals.keySet)
+          .filter { k => f1.locals.contains(k) && f2.locals.contains(k) }
+          .map { k => (k -> mergeData(pos, f1.locals(k), f2.locals(k))) }.toMap,
+        f1.stack.zip(f2.stack).map { case(a, b) => mergeData(pos, a, b) },
+        effectMerges.merge(pos, f1.effect, f2.effect)
+      )
+    }
+
+    val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
+    tasks += (bytecode.head.label -> initialFrame)
+
+    val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
+    val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
+    val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
+    val dataValues = mutable.HashMap.empty[DataLabel, Data]
+    val liveBcs = mutable.HashMap.empty[Bytecode.Label, Bytecode]
+
+    while(tasks.nonEmpty) {
+      val (pos, frame) = tasks.head
+      tasks.remove(pos -> frame)
+      val merged = preFrames.get(pos).map(merge(pos, _, frame)) getOrElse frame
+      if(preFrames.get(pos).map(_ != merged) getOrElse true) {
+        preFrames(pos) = merged
+        val bseq = bytecode.dropWhile(_.label != pos)
+        val bc = bseq.head
+        liveBcs(bc.label) = bc
+        val u = bc.nextFrame(merged)
+        binding ++= u.binding
+        effectDependencies ++= u.effectDependencies
+        dataValues ++= u.dataValues
+        bseq.head match {
+          case j: Bytecode.Jump =>
+            tasks += (jumpTargets(j.target) -> u.newFrame)
+          case b:  Bytecode.Branch =>
+            tasks += (jumpTargets(b.target) -> u.newFrame)
+            tasks += (bseq(1).label -> u.newFrame)
+          case r: Bytecode.XReturn =>
+          case _: Bytecode.Procedure | _: Bytecode.Shuffle =>
+            tasks += (bseq(1).label -> u.newFrame)
+        }
+      }
+    };
+    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq)
+  }
 }
 
 object MethodBody {

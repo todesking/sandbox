@@ -58,18 +58,37 @@ class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[
     }
 }
 
-case class Frame(locals: Map[Int, DataLabel.Out], stack: List[DataLabel.Out], effect: Effect) {
-  def local(n: Int): DataLabel.Out =
+case class Frame(locals: Map[Int, (DataLabel.Out, Data)], stack: List[(DataLabel.Out, Data)], effect: Effect) {
+  def local(n: Int): (DataLabel.Out, Data) =
     locals(n)
 
-  def stackTop: DataLabel.Out = stack.head
+  def stackTop: (DataLabel.Out, Data) = stack.head
 }
 
 case class Data(typeRef: TypeRef, value: Option[Any]) {
   def pretty: String = s"""${typeRef.pretty}${value.map { v => s" = ${v}" } getOrElse ""}"""
+  def secondWordData: Data =
+    if(!typeRef.isDoubleWord) throw new IllegalArgumentException()
+    else Data(TypeRef.SecondWord, None)
 }
 object Data {
   val Undefined = Data(TypeRef.Undefined, None)
+  def merge(d1: Data, d2: Data): Data = {
+    if(d1 == d2) d1
+    else {
+      val t = TypeRef.common(d1.typeRef, d2.typeRef)
+      val v =
+        for {
+          v1 <- d1.value
+          v2 <- d2.value if same(v1, v2)
+        } yield v1
+      Data(t, v)
+    }
+  }
+  private[this] def same(v1: Any, v2: Any): Boolean =
+    (v1, v2) match {
+      case (v1: AnyRef, v2: AnyRef) => v1 eq v2
+    }
 }
 
 final class InstructionLabel private () extends AbstractLabel

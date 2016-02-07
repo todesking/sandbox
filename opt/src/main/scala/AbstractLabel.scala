@@ -34,6 +34,28 @@ object AbstractLabel {
         l
       }
   }
+  class Merger[P, L <: AbstractLabel](fresh: => L) {
+    private[this] val merges = new mutable.HashMap[(P, L), mutable.Set[L]] with mutable.MultiMap[(P, L), L]
+
+    def toMap: Map[(P, L), Set[L]] = merges.mapValues(_.toSet).toMap
+
+    def merge(pos: P, l1: L, l2: L): L =
+      if(l1 == l2) {
+        l1
+      } else if(merges.contains(pos -> l1)) {
+        if(merges.contains(pos -> l2)) throw new AssertionError
+        merges.addBinding(pos -> l1, l2)
+        l1
+      } else if(merges.contains(pos -> l2)) {
+        merges.addBinding(pos -> l2, l1)
+        l2
+      } else {
+        val m = fresh
+        merges.addBinding(pos -> m, l1)
+        merges.addBinding(pos -> m, l2)
+        m
+      }
+  }
 
   trait NamerProvider[A <: AbstractLabel] {
     def namer(idPrefix: String, namePrefix: String): Namer[A] = new Namer(idPrefix, namePrefix)
