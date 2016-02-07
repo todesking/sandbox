@@ -41,14 +41,19 @@ case class MethodBody(
   def dataValue(l: DataLabel): Data =
     dataValues(l)
 
-  lazy val (dataBinding, dataValues, dataMerges, effectDependencies, effectMerges, liveBytecode) = {
+  // Yes I know this is just a pattern matching, not type-annotation, but I need readability
+  lazy val (
+    dataBinding: Map[DataLabel.In, DataLabel.Out],
+    dataValues: Map[DataLabel, Data],
+    dataMerges: Map[(Bytecode.Label, DataLabel.Out), Set[DataLabel.Out]],
+    effectDependencies: Map[Bytecode.Label, Effect],
+    effectMerges: Map[(Bytecode.Label, Effect), Set[Effect]],
+    liveBytecode: Seq[Bytecode]
+  ) = {
     val dataMerges = new AbstractLabel.Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
-
     val effectMerges = new AbstractLabel.Merger[Bytecode.Label, Effect](Effect.fresh())
-
     def mergeData(pos: Bytecode.Label, d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
       (dataMerges.merge(pos, d1._1, d2._1) -> Data.merge(d1._2, d2._2))
-
     def merge(pos: Bytecode.Label, f1: Frame, f2: Frame): Frame = {
       Frame(
         (f1.locals.keySet ++ f2.locals.keySet)
@@ -59,14 +64,14 @@ case class MethodBody(
       )
     }
 
-    val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
-    tasks += (bytecode.head.label -> initialFrame)
-
     val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
     val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
     val liveBcs = mutable.HashMap.empty[Bytecode.Label, Bytecode]
+
+    val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
+    tasks += (bytecode.head.label -> initialFrame)
 
     while(tasks.nonEmpty) {
       val (pos, frame) = tasks.head
@@ -92,7 +97,12 @@ case class MethodBody(
             tasks += (bseq(1).label -> u.newFrame)
         }
       }
-    };
+    }
+
+    dataMerges.toMap foreach { case ((pos, merged), ds) =>
+      dataValues(merged) = ds.map(dataValues).reduceLeft[Data] { case (a, b) => Data.merge(a, b) }
+    }
+
     (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq)
   }
 }

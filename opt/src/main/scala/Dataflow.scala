@@ -18,7 +18,9 @@ case class Dataflow(
   dataDependencies: Map[DataLabel.In, DataLabel.Out],
   effectDependencies: Map[Dataflow.INode.Label, Effect],
   dataValues: Map[DataLabel, Data],
-  jumpTargets: Map[JumpTarget, Dataflow.INode.Label]
+  jumpTargets: Map[JumpTarget, Dataflow.INode.Label],
+  dataMerges: Map[DataLabel.Out, Set[DataLabel.Out]],
+  effectMerges: Map[Effect, Set[Effect]]
 ) {
   import Dataflow.INode
 
@@ -48,6 +50,10 @@ case class Dataflow(
       case i: INode.ICmp => Seq(i.thenTarget)
       case _ => Seq.empty
       }).map(this.jumpTargets)
+    val bhs = iNodes.collect { case bh: INode.BlackHole => bh }
+    val whs = iNodes.collect { case wh: INode.WhiteHole => wh }
+    val holeDeps =
+      whs.map { wh => wh -> bhs.filter(_.dest == wh.out) }
 
     s"""digraph {
 graph[rankdir="BT"]
@@ -91,6 +97,16 @@ ${
 ${
   iNodes.flatMap { inode =>
     jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), style = "dashed") }
+  }.mkString("\n")
+}
+${
+  effectMerges.flatMap { case (m, es) =>
+    es map { e => drawEdge(effName.id(m), effName.id(e), style = "dotted") }
+  }.mkString("\n")
+}
+${
+  holeDeps.flatMap { case (wh, bhs) =>
+    bhs map { bh => drawEdge(inodeName.id(wh.label), inodeName.id(bh.label), style = "dotted") }
   }.mkString("\n")
 }
 }"""
@@ -158,14 +174,28 @@ object Dataflow {
     val jumpTargets: Map[JumpTarget, INode.Label] =
       body.jumpTargets.mapValues(bytecodeAggregate).mapValues(inodes).mapValues(_.label)
 
+    val blackHoles = body.dataMerges.flatMap { case ((pos, merged), ds) =>
+      ds.map { d => (d -> INode.BlackHole(merged)) }
+    }
+    val whiteHoles = body.dataMerges.map { case ((pos, merged), ds) =>
+      INode.WhiteHole(merged)
+    }
+
+    val holeBindings =
+      blackHoles map { case (d, bh) => (bh.in -> d) }
+
+    val holeValues = blackHoles.map { case (d, bh) => bh.in -> body.dataValue(d) }
+
     Dataflow(
       body.isStatic,
       body.descriptor,
-      inodes.values.toSeq,
-      body.dataBinding,
+      inodes.values.toSeq ++ blackHoles.values ++ whiteHoles,
+      body.dataBinding ++ holeBindings,
       inodeEffectDeps.toMap,
-      body.dataValues,
-      jumpTargets
+      body.dataValues ++ holeValues,
+      jumpTargets,
+      body.dataMerges.toMap.map { case ((pos, d), ds) => (d -> ds) },
+      body.effectMerges.toMap.map { case ((pos, e), es) => (e -> es) }
     )
   }
 
@@ -241,13 +271,14 @@ object Dataflow {
       override def inputs = Seq.empty
       override def output = Some(out)
       override val effect = Some(Effect.fresh())
-      override def pretty = "WhiteHole"
+      override def pretty = s"WhiteHole"
     }
-    case class BlackHole(in: DataLabel.In) extends INode {
+    case class BlackHole(dest: DataLabel.Out) extends INode {
+      val in = DataLabel.in("in")
       override def inputs = Seq(in)
       override def output = None
       override val effect = Some(Effect.fresh())
-      override def pretty = "BlackHole"
+      override def pretty = s"BlackHole"
     }
   }
 }
