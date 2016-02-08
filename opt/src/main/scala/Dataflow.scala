@@ -40,8 +40,10 @@ case class Dataflow(
     inode.inputs.map(dataDependencies).flatMap(out2inode.get)
 
   def toDot: String = {
-    def drawNode(id: String, label: String) = s"""${id}[label="${label}"]"""
-    def drawEdge(from: String, to: String, style: String = "") = s"""${from} -> ${to} [style="${style}"]"""
+    def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
+    def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""
+    def drawEdge(from: String, to: String, attr: (Symbol, String)*) =
+      s"""${from} -> ${to} ${drawAttr(attr)}"""
     val dataName = DataLabel.namer("data_", "Data ")
     val inodeName = INode.Label.namer("inode_", "INode ")
     val effName = Effect.namer("effect_", "Effect ")
@@ -58,29 +60,24 @@ case class Dataflow(
     s"""digraph {
 graph[rankdir="BT"]
 ${
-  iNodes.map { inode => drawNode(inodeName.id(inode.label), inode.pretty) }.mkString("\n")
+  iNodes.map { inode => drawNode(inodeName.id(inode.label), 'shape -> "rectangle", 'label -> inode.pretty) }.mkString("\n")
 }
 ${
-  (dataValues.keys ++ iNodes.flatMap { i => i.inputs ++ i.output }).toSet.map { d: DataLabel =>
-    drawNode(dataName.id(d), s"""${d.name}: ${dataValues.get(d).map(_.pretty) getOrElse "ERROR: Not Found"}""")
+  (dataValues.keys ++ iNodes.flatMap { i => i.output }).collect { case d: DataLabel.Out => d }.toSet.map { d: DataLabel =>
+    drawNode(dataName.id(d), 'label -> s"""${d.name}: ${dataValues.get(d).map(_.pretty) getOrElse "ERROR: Not Found"}""")
   }.mkString("\n")
 }
 ${
   (iNodes.flatMap(_.effect) ++ effectDependencies.values).distinct.map { eff =>
-    drawNode(effName.id(eff), effName.name(eff))
-  }.mkString("\n")
-}
-${
-  dataDependencies.map { case (from, to) =>
-    drawEdge(dataName.id(from), dataName.id(to))
+    drawNode(effName.id(eff), 'label -> effName.name(eff))
   }.mkString("\n")
 }
 ${
   iNodes.flatMap { inode =>
     inode.inputs.map { in =>
-      drawEdge(inodeName.id(inode.label), dataName.id(in))
+      drawEdge(inodeName.id(inode.label), dataName.id(dataDependencies(in)), 'label -> in.name)
     } ++ inode.output.map { out =>
-      drawEdge(dataName.id(out), inodeName.id(inode.label))
+      drawEdge(dataName.id(out), inodeName.id(inode.label), 'label -> out.name)
     }
   }.mkString("\n")
 }
@@ -96,17 +93,17 @@ ${
 }
 ${
   iNodes.flatMap { inode =>
-    jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), style = "dashed") }
+    jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), 'style -> "dashed") }
   }.mkString("\n")
 }
 ${
   effectMerges.flatMap { case (m, es) =>
-    es map { e => drawEdge(effName.id(m), effName.id(e), style = "dotted") }
+    es map { e => drawEdge(effName.id(m), effName.id(e), 'style -> "dotted") }
   }.mkString("\n")
 }
 ${
   holeDeps.flatMap { case (wh, bhs) =>
-    bhs map { bh => drawEdge(inodeName.id(wh.label), inodeName.id(bh.label), style = "dotted") }
+    bhs map { bh => drawEdge(inodeName.id(wh.label), inodeName.id(bh.label), 'style -> "dotted") }
   }.mkString("\n")
 }
 }"""
