@@ -16,6 +16,13 @@ object Main {
   }
 }
 
+object Graphviz {
+  def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
+  def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""
+  def drawEdge(from: String, to: String, attr: (Symbol, String)*) =
+    s"""${from} -> ${to} ${drawAttr(attr)}"""
+}
+
 object Opt {
   def optimize[A <: AnyRef: ClassTag](orig: A): A = {
     val instance = Instance.Native[A](orig)
@@ -32,6 +39,7 @@ object Util {
       sorted
     } else {
       val (nodep, dep) = in.partition { case (a, b, bs) => bs.forall(deps.contains) }
+      if(nodep.isEmpty) throw new IllegalArgumentException(s"Cyclic reference found: ${dep}")
       tsort0(dep, deps ++ nodep.map(_._2), sorted ++ nodep.map(_._1))
     }
 }
@@ -104,10 +112,10 @@ object JumpTarget extends AbstractLabel.AssignerProvider[JumpTarget] {
 sealed abstract class DataLabel private (val name: String) extends AbstractLabel
 object DataLabel extends AbstractLabel.NamerProvider[DataLabel] {
   final class In(name: String) extends DataLabel(name) {
-    override def toString = s"DataLabel.In(${name})@${System.identityHashCode(this)}"
+    override def toString = s"DataLabel.In(${name})#${innerId}"
   }
   final class Out(name: String) extends DataLabel(name) {
-    override def toString = s"DataLabel.Out(${name})@${System.identityHashCode(this)}"
+    override def toString = s"DataLabel.Out(${name})#${innerId}"
   }
 
   def in(name: String) = new In(name)

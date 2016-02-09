@@ -5,6 +5,14 @@ import com.todesking.scalapp.syntax._
 import org.scalatest.{FunSpec, Matchers}
 
 object Test {
+  class Complex {
+    @scala.annotation.tailrec
+    final def foo(a: Int): Int =
+      if(a > 0) 100
+      else if(a > -10) bar(a)
+      else foo(a + 100)
+    def bar(a: Int) = a
+  }
   class Const {
     def intMethod(): Int = 1
     def longMethod(): Long = 0L
@@ -51,13 +59,13 @@ object Test {
 class Spec extends FunSpec with Matchers {
   def dot(filename: String, b: MethodBody): Unit = {
     import java.nio.file._
-    Files.write(Paths.get(filename), b.dataflow.toDot.getBytes("UTF-8"))
+    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
     it("dot test") {
       val foo = LocalMethodRef("foo(I)I")
-      val i = Instance.Native(new Test.If)
-      dot("if.dot", i.methodBody(foo).get)
+      val i = Instance.Native(new Test.Complex)
+      dot("complex.dot", i.methodBody(foo).get)
       println(i.methodBody(foo).get.bytecode.map(_.toString).mkString("\n"))
     }
     it("const") {

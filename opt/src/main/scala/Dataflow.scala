@@ -40,10 +40,7 @@ case class Dataflow(
     inode.inputs.map(dataDependencies).flatMap(out2inode.get)
 
   def toDot: String = {
-    def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
-    def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""
-    def drawEdge(from: String, to: String, attr: (Symbol, String)*) =
-      s"""${from} -> ${to} ${drawAttr(attr)}"""
+    import Graphviz._
     val dataName = DataLabel.namer("data_", "Data ")
     val inodeName = INode.Label.namer("inode_", "INode ")
     val effName = Effect.namer("effect_", "Effect ")
@@ -141,6 +138,12 @@ object Dataflow {
           cmp.target,
           cmp.eff
         )
+      case iadd: Bytecode.iadd =>
+        iadd.label -> INode.IAdd(body.dataValue(iadd.value1), body.dataValue(iadd.value2))(
+          iadd.value1,
+          iadd.value2,
+          iadd.out
+        )
       case unk: Bytecode.Procedure if({println(unk); false}) =>
         ???
       case unk: Bytecode.Control if({println(unk); false}) =>
@@ -181,7 +184,7 @@ object Dataflow {
     val holeBindings =
       blackHoles map { case (d, bh) => (bh.in -> d) }
 
-    val holeValues = blackHoles.map { case (d, bh) => bh.in -> body.dataValue(d) }
+    val holeValues = Seq.empty // blackHoles.map { case (d, bh) => bh.in -> body.dataValue(d) }
 
     Dataflow(
       body.isStatic,
@@ -242,6 +245,17 @@ object Dataflow {
       override val output = None
       override val effect = Some(eff)
       override def pretty = s"if_icmp${op}"
+    }
+
+    case class IAdd(value1: Data, value2: Data)(
+      val label1: DataLabel.In,
+      val label2: DataLabel.In,
+      val out: DataLabel.Out
+    ) extends INode {
+      override val inputs = Seq(label1, label2)
+      override val output = Some(out)
+      override val effect = None
+      override val pretty = "iadd"
     }
 
     case class InvokeVirtual(

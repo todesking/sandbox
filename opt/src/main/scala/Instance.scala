@@ -164,6 +164,8 @@ object Instance {
                 out.add(0xA7)
                 jumps(out.getSize) = (out.getSize - 1) -> target
                 out.add(0x00, 0x03)
+              case iadd() =>
+                out.add(0x60)
               case invokevirtual(className, methodRef) =>
                 out.addInvokevirtual(className.str, methodRef.name, methodRef.descriptor.str)
               case if_icmple(target) =>

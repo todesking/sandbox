@@ -15,6 +15,7 @@ sealed abstract class Bytecode {
   def output: Option[DataLabel.Out]
   def nextFrame(frame: Frame): FrameUpdate
   def effect: Option[Effect]
+  def pretty: String = toString
 
   protected def update(frame: Frame): FrameUpdate =
     FrameUpdate(
@@ -26,7 +27,7 @@ sealed abstract class Bytecode {
 }
 object Bytecode {
   class Label extends AbstractLabel
-  object Label {
+  object Label extends AbstractLabel.NamerProvider[Label] {
     def fresh(): Label = new Label
   }
 
@@ -132,7 +133,22 @@ object Bytecode {
   case class goto(override val target: JumpTarget) extends Jump {
   }
   case class if_icmple(override val target: JumpTarget) extends if_icmpXX
+  case class iadd() extends Procedure {
+    val value1 = DataLabel.in("value1")
+    val value2 = DataLabel.in("value2")
+    val out = DataLabel.out("result")
+    override def inputs = Seq(value1, value2)
+    override def output = Some(out)
+    override def effect = None
+    override def nextFrame(f: Frame) =
+      (f.stack(0), f.stack(1)) match {
+        case ((_, Data(TypeRef.Int, v1)), (_, Data(TypeRef.Int, v2))) =>
+          update(f).pop1(value2).pop1(value1).push(out -> Data(TypeRef.Int, v1.flatMap { v1 => v2.map { v2 => v1.asInstanceOf[Int] + v2.asInstanceOf[Int] }}))
+        case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
+      }
+  }
   case class invokevirtual(className: ClassName, methodRef: LocalMethodRef) extends Procedure {
+    override def pretty = s"invokevirtual ${className.str}.${methodRef.str}"
     override def effect = Some(eff)
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")
