@@ -21,7 +21,7 @@ sealed abstract class Bytecode {
     FrameUpdate(
       frame.copy(effect = this.effect getOrElse frame.effect),
       Map.empty,
-      Map(this.label -> frame.effect),
+      this.effect.map { _ => this.label -> frame.effect }.toMap,
       Map.empty
     )
 }

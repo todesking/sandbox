@@ -70,6 +70,7 @@ ${
 graph[rankdir="BT"]
 start[label="start" shape="doublecircle"]
 ${bcName.id(bytecode.head.label)} -> start
+${eName.id(initialFrame.effect)} -> start [style="dotted"]
     ${
     bytecode.map { bc =>
       drawNode(bcName.id(bc.label), 'label -> bc.pretty, 'shape -> "rectangle")
@@ -194,8 +195,10 @@ ${bcName.id(bytecode.head.label)} -> start
     }
 
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
-    (initialFrame.locals.values ++ initialFrame.stack) foreach { case (l, d) =>
-      dataValues(l) = d
+    (preFrames.values.toSeq :+ initialFrame) foreach { frame =>
+      (frame.locals.values ++ frame.stack) foreach { case (l, d) =>
+        dataValues(l) = d
+      }
     }
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
     val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
@@ -204,8 +207,6 @@ ${bcName.id(bytecode.head.label)} -> start
       binding ++= u.binding
       effectDependencies ++= u.effectDependencies
     }
-
-    println(pretty())
 
     (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, jumps.mapValues(_.toSet).toMap)
   }
