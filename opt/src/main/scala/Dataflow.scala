@@ -273,7 +273,7 @@ object Dataflow {
       require(!(method.isVoid ^ retLabel.isEmpty))
       require(method.args.size == argLabels.size)
 
-      override def inputs = argLabels
+      override def inputs = receiverLabel +: argLabels
       override def output = retLabel
       override def effect = Some(eff)
       override def pretty = s"""invokevirtual ${className.binaryString}#${method.str}"""

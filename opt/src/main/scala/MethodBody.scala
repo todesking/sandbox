@@ -77,17 +77,18 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     }.mkString("\n")
     }
     ${
-      jumps.flatMap { case (src, dests) =>
-        dests.map { d =>
-          val label =
-            bcs(src) match {
-              case b: Bytecode.Branch =>
-                if(jumpTargets(b.target) == d) "then"
-                else "else"
-              case _ => ""
-            }
-          drawEdge(bcName.id(d), bcName.id(src), 'label -> label)
-        }
+      fallThroughs.map { case (src, d) =>
+        drawEdge(bcName.id(d), bcName.id(src))
+      }.mkString("\n")
+    }
+    ${
+      bytecode.flatMap {
+        case bc: Bytecode.Jump =>
+          Seq(drawEdge(bcName.id(jumpTargets(bc.target)), bcName.id(bc.label)))
+        case bc: Bytecode.Branch =>
+          Seq(drawEdge(bcName.id(jumpTargets(bc.target)), bcName.id(bc.label), 'label -> "then"))
+        case _ =>
+          Seq.empty
       }.mkString("\n")
     }
     ${
@@ -140,7 +141,7 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     effectDependencies: Map[Bytecode.Label, Effect],
     effectMerges: Map[(Bytecode.Label, Effect), Set[Effect]],
     liveBytecode: Seq[Bytecode],
-    jumps: Map[Bytecode.Label, Set[Bytecode.Label]]
+    fallThroughs: Map[Bytecode.Label, Bytecode.Label]
   ) = {
     val dataMerges = new AbstractLabel.Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
     val effectMerges = new AbstractLabel.Merger[Bytecode.Label, Effect](Effect.fresh())
@@ -158,8 +159,8 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
 
     val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
     val updates = mutable.HashMap.empty[Bytecode.Label, FrameUpdate]
-    val jumps = new mutable.HashMap[Bytecode.Label, mutable.Set[Bytecode.Label]]
-      with mutable.MultiMap[Bytecode.Label, Bytecode.Label]
+    val falls = mutable.HashMap.empty[Bytecode.Label, Bytecode.Label]
+    val fallThroughs = new mutable.HashMap[Bytecode.Label, Bytecode.Label]
 
     val liveBcs = mutable.HashMap.empty[Bytecode.Label, Bytecode]
 
@@ -177,19 +178,17 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
         liveBcs(bc.label) = bc
         val u = bc.nextFrame(merged)
         updates(bc.label) = u
-        bseq.head match {
+        bc match {
+          case r: Bytecode.XReturn =>
           case j: Bytecode.Jump =>
             tasks += (jumpTargets(j.target) -> u.newFrame)
-            jumps.addBinding(j.label, jumpTargets(j.target))
           case b:  Bytecode.Branch =>
             tasks += (jumpTargets(b.target) -> u.newFrame)
             tasks += (bseq(1).label -> u.newFrame)
-            jumps.addBinding(b.label, jumpTargets(b.target))
-            jumps.addBinding(b.label, bseq(1).label)
-          case r: Bytecode.XReturn =>
+            fallThroughs(b.label) = bseq(1).label
           case _: Bytecode.Procedure | _: Bytecode.Shuffle =>
             tasks += (bseq(1).label -> u.newFrame)
-            jumps.addBinding(bc.label, bseq(1).label)
+            fallThroughs(bc.label) = bseq(1).label
         }
       }
     }
@@ -208,7 +207,7 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
       effectDependencies ++= u.effectDependencies
     }
 
-    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, jumps.mapValues(_.toSet).toMap)
+    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, fallThroughs.toMap)
   }
 }
 
