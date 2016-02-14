@@ -38,6 +38,13 @@ case class FrameUpdate(
     pop0(in, out, d, newFrame.stack.drop(1))
   }
 
+  def pop1(): FrameUpdate = {
+    requireSingleWord(newFrame.stackTop)
+    copy(
+      newFrame = newFrame.copy(stack = newFrame.stack.drop(1))
+    )
+  }
+
   def pop2(in: DataLabel.In): FrameUpdate = {
     requireSecondWord(newFrame.stack(0))
     requireDoubleWord(newFrame.stack(1))

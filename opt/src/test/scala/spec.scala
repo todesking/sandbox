@@ -54,19 +54,23 @@ object Test {
       def baz() = bar()
     }
   }
+  object SimpleDataflow {
+    class A {
+      def foo(): Int = 1
+    }
+  }
 }
 
 class Spec extends FunSpec with Matchers {
   def dot(filename: String, b: MethodBody): Unit = {
     import java.nio.file._
-    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
+    Files.write(Paths.get(filename), b.dataflow.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
     it("dot test") {
       val foo = LocalMethodRef("foo(I)I")
       val i = Instance.Native(new Test.Complex)
       dot("complex.dot", i.methodBody(foo).get)
-      println(i.methodBody(foo).get.bytecode.map(_.toString).mkString("\n"))
     }
     it("const") {
       val orig = new Test.Const
@@ -136,25 +140,30 @@ class Spec extends FunSpec with Matchers {
       ri.instance.foo() should be(99)
     }
     it("real upcast") {
+      pending
       val obj = new Test.Upcast.B
       obj.foo() should be(99)
       val i = Instance.Native[Test.Upcast.A](obj)
       val foo = LocalMethodRef("foo()I")
       val ri = Transformer.changeBaseClass(classOf[Test.Upcast.A])(i).get
+      dot("real_upcast.dot", ri.methodBody(foo).get)
       classOf[Test.Upcast.A].isAssignableFrom(ri.instance.getClass) should be(true)
       classOf[Test.Upcast.B].isAssignableFrom(ri.instance.getClass) should be(false)
       ri.instance.foo() should be(99)
     }
     it("simple dataflow compile") {
-      class A {
-        def foo(): Int = 1
-      }
+      import Test.SimpleDataflow.A
+
       val i = Instance.Native(new A)
       i.instance.foo() should be(1)
 
       val foo = LocalMethodRef("foo()I")
 
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get.dataflow.compile))
+
+      ri.baseClass.pp()
+      ri.baseClass.getConstructors().pp()
+
       ri.instance.foo() should be(1)
     }
   }

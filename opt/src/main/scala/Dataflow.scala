@@ -14,30 +14,123 @@ import com.todesking.scalapp.syntax._
 case class Dataflow(
   isStatic: Boolean,
   descriptor: MethodDescriptor,
+  startINodeLabel: Dataflow.INode.Label,
   iNodes: Seq[Dataflow.INode],
-  dataDependencies: Map[DataLabel.In, DataLabel.Out],
-  effectDependencies: Map[Dataflow.INode.Label, Effect],
+  dataBinding: Map[DataLabel.In, DataLabel.Out],
   dataValues: Map[DataLabel, Data],
   jumpTargets: Map[JumpTarget, Dataflow.INode.Label],
-  dataMerges: Map[DataLabel.Out, Set[DataLabel.Out]],
-  effectMerges: Map[Effect, Set[Effect]]
+  fallThroughs: Map[Dataflow.INode.Label, Dataflow.INode.Label],
+  dataMerges: Map[DataLabel.Out, Set[DataLabel.Out]]
 ) {
+  require(iNodes.nonEmpty)
+
   import Dataflow.INode
 
   def data(l: DataLabel): Data = dataValues(l)
 
+  private[this] def sortINode() = {
+    val tails = fallThroughs.values.toSet
+
+    def dragOut(start: INode.Label, blob: Set[INode.Label]): (Seq[INode.Label], Set[INode.Label]) = {
+      fallThroughs.get(start).fold(Seq(start) -> blob) { next =>
+        val (s, b) = dragOut(next, blob - next)
+        (start +: s) -> b
+      }
+    }
+
+    def sort(start: INode.Label, blob: Set[INode.Label]): Seq[INode.Label] = {
+      val (s, b) = dragOut(start, blob)
+      startingPoint(b).fold(s) { next =>
+        s ++ sort(next, b - next)
+      }
+    }
+
+    def startingPoint(blob: Set[INode.Label]): Option[INode.Label] = {
+      if(blob.isEmpty) {
+        None
+      } else {
+        blob.find { l => !tails.contains(l) }.fold(throw new AssertionError) { l => Some(l) }
+      }
+    }
+
+    sort(startINodeLabel, iNodes.map(_.label).toSet - startINodeLabel)
+  }
+
   def compile(): MethodBody = {
-    println(toDot)
-    ???
+    val bcs = mutable.ArrayBuffer.empty[Bytecode]
+
+    val sorted = sortINode().map { l => iNodes.find(_.label == l).get }
+
+    val predefinedLocalSize = descriptor.args.size + (if(isStatic) 0 else 1)
+
+    val localAssigns: Map[DataLabel.In, Int] = dataBinding.keys.zipWithIndex.map { case (in, i) =>
+      in -> ( i + predefinedLocalSize)
+    }.toMap
+
+    // TODO: emit
+    // NOTE: make sure jumpTargets correct
+
+    import INode._
+    import Bytecode._
+    val bytecode: Seq[(INode, Seq[Bytecode])] =
+      sorted.map {
+        case i @ XReturn() =>
+          descriptor.ret match {
+            case TypeRef.Int =>
+              i -> Seq(
+                iload(localAssigns(i.ret)),
+                ireturn()
+              )
+            case _ => ???
+          }
+        case i @ Const(data) =>
+          data.typeRef match {
+            case TypeRef.Int =>
+              i ->Seq(
+                Seq(iconst(data.value.get.asInstanceOf[Int])),
+                dataBinding
+                  .filter(_._2 == i.out)
+                  .map(_._1)
+                  .map(localAssigns).flatMap { n =>
+                    Seq(
+                      dup(),
+                      istore(n)
+                    )
+                  },
+                Seq(pop())
+              ).flatten
+            case _ => ???
+          }
+        case unk =>
+          throw new NotImplementedError(unk.toString)
+      }
+
+    iNodes.toVector.pp()
+    sorted.pp()
+
+    val jts = jumpTargets.map { case (jt, iLabel) =>
+      bytecode.find(_._1.label == iLabel).map(jt -> _._2.head.label).get
+    }
+
+    MethodBody(
+      isStatic,
+      descriptor,
+      bytecode.flatMap(_._2),
+      jts,
+      100, // TODO
+      100
+    )
   }
 
   private[this] val out2inode = iNodes.flatMap { inode => inode.output.map { o => (o -> inode) } }.toMap
+
+  def startINode: INode = iNodes.find(_.label == startINodeLabel).get
 
   def iNode(l: INode.Label): INode =
     iNodes.find(_.label == l).get
 
   def dependentINodes(inode: INode): Seq[INode] =
-    inode.inputs.map(dataDependencies).flatMap(out2inode.get)
+    inode.inputs.map(dataBinding).flatMap(out2inode.get)
 
   def toDot: String = {
     import Graphviz._
@@ -49,13 +142,11 @@ case class Dataflow(
       case i: INode.ICmp => Seq(i.thenTarget)
       case _ => Seq.empty
       }).map(this.jumpTargets)
-    val bhs = iNodes.collect { case bh: INode.BlackHole => bh }
-    val whs = iNodes.collect { case wh: INode.WhiteHole => wh }
-    val holeDeps =
-      whs.map { wh => wh -> bhs.filter(_.dest == wh.out) }
 
     s"""digraph {
 graph[rankdir="BT"]
+start[label="start" shape="doublecircle"]
+${inodeName.id(startINode.label)} -> start
 ${
   iNodes.map { inode => drawNode(inodeName.id(inode.label), 'shape -> "rectangle", 'label -> inode.pretty) }.mkString("\n")
 }
@@ -65,42 +156,27 @@ ${
   }.mkString("\n")
 }
 ${
-  (iNodes.flatMap(_.effect) ++ effectDependencies.values).distinct.map { eff =>
-    drawNode(effName.id(eff), 'label -> effName.name(eff))
-  }.mkString("\n")
-}
-${
   iNodes.flatMap { inode =>
     inode.inputs.map { in =>
-      drawEdge(inodeName.id(inode.label), dataName.id(dataDependencies(in)), 'label -> in.name)
+      drawEdge(inodeName.id(inode.label), dataName.id(dataBinding(in)), 'label -> in.name, 'style -> "dashed")
     } ++ inode.output.map { out =>
-      drawEdge(dataName.id(out), inodeName.id(inode.label), 'label -> out.name)
+      drawEdge(dataName.id(out), inodeName.id(inode.label), 'label -> out.name, 'style -> "dashed")
     }
   }.mkString("\n")
 }
 ${
-  effectDependencies.map { case (from, to) =>
-    drawEdge(inodeName.id(from), effName.id(to))
+  iNodes.flatMap { inode =>
+    jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), 'label -> "then", 'style -> "") }
   }.mkString("\n")
 }
 ${
   iNodes.flatMap { inode =>
-    inode.effect.map {eff => drawEdge(effName.id(eff), inodeName.id(inode.label)) }
+    fallThroughs.get(inode.label) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), 'style -> "") }
   }.mkString("\n")
 }
 ${
-  iNodes.flatMap { inode =>
-    jumpTargets(inode) map { l => drawEdge(inodeName.id(l), inodeName.id(inode.label), 'style -> "dashed") }
-  }.mkString("\n")
-}
-${
-  effectMerges.flatMap { case (m, es) =>
-    es map { e => drawEdge(effName.id(m), effName.id(e), 'style -> "dotted") }
-  }.mkString("\n")
-}
-${
-  holeDeps.flatMap { case (wh, bhs) =>
-    bhs map { bh => drawEdge(inodeName.id(wh.label), inodeName.id(bh.label), 'style -> "dotted") }
+  dataMerges.flatMap { case (m, ds) =>
+    ds.map { d => drawEdge(dataName.id(m), dataName.id(d), 'style -> "dotted") }
   }.mkString("\n")
 }
 }"""
@@ -156,11 +232,7 @@ object Dataflow {
         throw new AssertionError()
     }.toMap
 
-    val inodeEffectDeps = mutable.HashMap.empty[INode.Label, Effect]
-    for {
-      (bcl, inode) <- inodes
-      eff <- body.effectDependencies.get(bcl)
-    } inodeEffectDeps(inode.label) = eff
+    // TODO: insert goto at BB end
 
     val bytecodeAggregate: Map[Bytecode.Label, Bytecode.Label] = {
       def f(pending: Set[Bytecode.Label], bcs: Seq[Bytecode]): Map[Bytecode.Label, Set[Bytecode.Label]] = bcs match {
@@ -174,28 +246,22 @@ object Dataflow {
     val jumpTargets: Map[JumpTarget, INode.Label] =
       body.jumpTargets.mapValues(bytecodeAggregate).mapValues(inodes).mapValues(_.label)
 
-    val blackHoles = body.dataMerges.flatMap { case ((pos, merged), ds) =>
-      ds.map { d => (d -> INode.BlackHole(merged)) }
-    }
-    val whiteHoles = body.dataMerges.map { case ((pos, merged), ds) =>
-      INode.WhiteHole(merged)
-    }
-
-    val holeBindings =
-      blackHoles map { case (d, bh) => (bh.in -> d) }
-
-    val holeValues = Seq.empty // blackHoles.map { case (d, bh) => bh.in -> body.dataValue(d) }
+    val fallThroughs = body.fallThroughs
+      .map { case (from, to) => inodes(bytecodeAggregate(from)) -> inodes(bytecodeAggregate(to)) }
+      .filter { case (from, to) => from.label != to.label}
+      .map { case (from, to) => (from.label, to.label) }
+      .toMap
 
     Dataflow(
       body.isStatic,
       body.descriptor,
-      inodes.values.toSeq ++ blackHoles.values ++ whiteHoles,
-      body.dataBinding ++ holeBindings,
-      inodeEffectDeps.toMap,
-      body.dataValues ++ holeValues,
+      inodes(bytecodeAggregate(body.bytecode.head.label)).label,
+      inodes.values.toSeq,
+      body.dataBinding,
+      body.dataValues,
       jumpTargets,
-      body.dataMerges.toMap.map { case ((pos, d), ds) => (d -> ds) },
-      body.effectMerges.toMap.map { case ((pos, e), es) => (e -> es) }
+      fallThroughs,
+      body.dataMerges
     )
   }
 
@@ -213,14 +279,14 @@ object Dataflow {
       def fresh(): Label = new Label
     }
 
-    case class XReturn()(ret: DataLabel.In, eff: Effect) extends INode {
+    case class XReturn()(val ret: DataLabel.In, val eff: Effect) extends INode {
       override val inputs = Seq(ret)
       override val output = None
       override val effect = Some(eff)
       override def pretty = "return"
     }
 
-    case class Const(value: Data)(out: DataLabel.Out) extends INode {
+    case class Const(value: Data)(val out: DataLabel.Out) extends INode {
       override val inputs = Seq.empty
       override val output = Some(out)
       override val effect = None
@@ -277,19 +343,6 @@ object Dataflow {
       override def output = retLabel
       override def effect = Some(eff)
       override def pretty = s"""invokevirtual ${className.binaryString}#${method.str}"""
-    }
-    case class WhiteHole(out: DataLabel.Out) extends INode {
-      override def inputs = Seq.empty
-      override def output = Some(out)
-      override val effect = Some(Effect.fresh())
-      override def pretty = s"WhiteHole"
-    }
-    case class BlackHole(dest: DataLabel.Out) extends INode {
-      val in = DataLabel.in("in")
-      override def inputs = Seq(in)
-      override def output = None
-      override val effect = Some(Effect.fresh())
-      override def pretty = s"BlackHole"
     }
   }
 }

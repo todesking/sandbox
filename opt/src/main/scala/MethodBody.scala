@@ -111,12 +111,12 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
       }.mkString("\n")
     }
     ${
-      dataMerges.flatMap { case ((p, m), ds) =>
+      dataMerges.flatMap { case (m, ds) =>
         ds.map { d => drawEdge(dName.id(m), dName.id(d), 'style -> "dotted") }
       }.mkString("\n")
     }
     ${
-      effectMerges.flatMap { case ((p, m), es) =>
+      effectMerges.flatMap { case (m, es) =>
         es.map { e => drawEdge(eName.id(m), eName.id(e), 'style -> "dotted") }
       }.mkString("\n")
     }
@@ -137,23 +137,23 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
   lazy val (
     dataBinding: Map[DataLabel.In, DataLabel.Out],
     dataValues: Map[DataLabel, Data],
-    dataMerges: Map[(Bytecode.Label, DataLabel.Out), Set[DataLabel.Out]],
+    dataMerges: Map[DataLabel.Out, Set[DataLabel.Out]],
     effectDependencies: Map[Bytecode.Label, Effect],
-    effectMerges: Map[(Bytecode.Label, Effect), Set[Effect]],
+    effectMerges: Map[Effect, Set[Effect]],
     liveBytecode: Seq[Bytecode],
     fallThroughs: Map[Bytecode.Label, Bytecode.Label]
   ) = {
-    val dataMerges = new AbstractLabel.Merger[Bytecode.Label, DataLabel.Out](DataLabel.out("merged"))
-    val effectMerges = new AbstractLabel.Merger[Bytecode.Label, Effect](Effect.fresh())
-    def mergeData(pos: Bytecode.Label, d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
-      (dataMerges.merge(pos, d1._1, d2._1) -> Data.merge(d1._2, d2._2))
-    def merge(pos: Bytecode.Label, f1: Frame, f2: Frame): Frame = {
+    val dataMerges = new AbstractLabel.Merger[DataLabel.Out](DataLabel.out("merged"))
+    val effectMerges = new AbstractLabel.Merger[Effect](Effect.fresh())
+    def mergeData(d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
+      (dataMerges.merge(d1._1, d2._1) -> Data.merge(d1._2, d2._2))
+    def merge(f1: Frame, f2: Frame): Frame = {
       Frame(
         (f1.locals.keySet ++ f2.locals.keySet)
           .filter { k => f1.locals.contains(k) && f2.locals.contains(k) }
-          .map { k => (k -> mergeData(pos, f1.locals(k), f2.locals(k))) }.toMap,
-        f1.stack.zip(f2.stack).map { case(a, b) => mergeData(pos, a, b) },
-        effectMerges.merge(pos, f1.effect, f2.effect)
+          .map { k => (k -> mergeData(f1.locals(k), f2.locals(k))) }.toMap,
+        f1.stack.zip(f2.stack).map { case(a, b) => mergeData(a, b) },
+        effectMerges.merge(f1.effect, f2.effect)
       )
     }
 
@@ -170,7 +170,7 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     while(tasks.nonEmpty) {
       val (pos, frame) = tasks.head
       tasks.remove(pos -> frame)
-      val merged = preFrames.get(pos).map(merge(pos, _, frame)) getOrElse frame
+      val merged = preFrames.get(pos).map(merge(_, frame)) getOrElse frame
       if(preFrames.get(pos).map(_ != merged) getOrElse true) {
         preFrames(pos) = merged
         val bseq = bytecode.dropWhile(_.label != pos)

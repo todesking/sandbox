@@ -43,42 +43,39 @@ object AbstractLabel {
         l
       }
   }
-  class Merger[P, L <: AbstractLabel](fresh: => L) {
-    private[this] val merges = new mutable.HashMap[(P, L), mutable.Set[L]] with mutable.MultiMap[(P, L), L]
-    private[this] val cache = new mutable.HashMap[(P, L, L), L]
+  class Merger[L <: AbstractLabel](fresh: => L) {
+    private[this] val merges = new mutable.HashMap[L, mutable.Set[L]] with mutable.MultiMap[L, L]
+    private[this] val cache = new mutable.HashMap[(L, L), L]
 
-    def toMap: Map[(P, L), Set[L]] = merges.mapValues(_.toSet).toMap
+    def toMap: Map[L, Set[L]] = merges.mapValues(_.toSet).toMap
 
     // TODO: Is this really enough?
-    def merge(pos: P, l1: L, l2: L): L =
-      cache.get((pos, l1, l2)) getOrElse {
-        val m = merge0(pos, l1, l2)
-        cache((pos, l1, l2)) = m
-        cache((pos, l2, l1)) = m
+    def merge(l1: L, l2: L): L =
+      cache.get((l1, l2)) getOrElse {
+        val m = merge0(l1, l2)
+        cache((l1, l2)) = m
+        cache((l2, l1)) = m
         m
       }
 
-    private[this] def merge0(pos: P, l1: L, l2: L): L =
+    private[this] def merge0(l1: L, l2: L): L =
       if(l1 == l2) {
         l1
-      } else if(merges.contains(pos -> l1)) {
-        if(merges.contains(pos -> l2)) throw new AssertionError
-        merges.addBinding(pos -> l1, l2)
-        println(s"add ${l2} to ${l1} @ ${pos}")
+      } else if(merges.contains(l1)) {
+        if(merges.contains(l2)) throw new AssertionError
+        merges.addBinding(l1, l2)
         l1
-      } else if(merges.contains(pos -> l2)) {
-        merges.addBinding(pos -> l2, l1)
-        println(s"add ${l1} to ${l1} @ ${pos}")
+      } else if(merges.contains(l2)) {
+        merges.addBinding(l2, l1)
         l2
-      } else if(merges.find(_._1._2 == l1).map(_._2.contains(l2)) getOrElse false) {
+      } else if(merges.find(_._1 == l1).map(_._2.contains(l2)) getOrElse false) {
         l1
-      } else if(merges.find(_._1._2 == l2).map(_._2.contains(l1)) getOrElse false) {
+      } else if(merges.find(_._1 == l2).map(_._2.contains(l1)) getOrElse false) {
         l2
       } else {
         val m = fresh
-        merges.addBinding(pos -> m, l1)
-        merges.addBinding(pos -> m, l2)
-        println(s"merge ${l2}, ${l1} to ${m} @ ${pos}")
+        merges.addBinding(m, l1)
+        merges.addBinding(m, l2)
         m
       }
   }

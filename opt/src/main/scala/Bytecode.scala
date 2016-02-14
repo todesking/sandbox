@@ -116,6 +116,12 @@ object Bytecode {
   case class nop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f)
   }
+  case class dup() extends Shuffle {
+    override def nextFrame(f: Frame) = update(f).push(f.stack.head)
+  }
+  case class pop() extends Shuffle {
+    override def nextFrame(f: Frame) = update(f).pop1()
+  }
   case class iload(n: Int) extends Load1
   case class aload(n: Int) extends Load1
   case class istore(n: Int) extends Store1

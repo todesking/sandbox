@@ -113,8 +113,10 @@ object Instance {
       methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
     override def baseClass = base.baseClass
     override def instance() = {
-      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod }
+      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtConstructor }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
+
+      // TODO check baseClass has 0-ary constructor
 
       val classPool = new ClassPool(null)
       classPool.appendClassPath(new ClassClassPath(baseClass))
@@ -164,6 +166,10 @@ object Instance {
                 out.add(0xA7)
                 jumps(out.getSize) = (out.getSize - 1) -> target
                 out.add(0x00, 0x03)
+              case dup() =>
+                out.add(0x59)
+              case pop() =>
+                out.add(0x57)
               case iadd() =>
                 out.add(0x60)
               case invokevirtual(className, methodRef) =>
@@ -191,6 +197,10 @@ object Instance {
         }
       }
       // TODO: fields
+
+      val ctor = new CtConstructor(Array.empty, klass)
+      ctor.setBody("super();")
+      klass.addConstructor(ctor)
 
       klass.toClass(new java.net.URLClassLoader(Array.empty, baseClass.getClassLoader), null).newInstance().asInstanceOf[A]
     }
