@@ -35,6 +35,7 @@ object Bytecode {
     t match {
       case TypeRef.Int => iload(n)
       case TypeRef.Reference(_) => aload(n)
+      case TypeRef.This => aload(n)
       case unk =>
         throw new IllegalArgumentException(s"Unsupported load instruction for ${unk}")
     }

@@ -67,8 +67,26 @@ case class Dataflow(
       in -> ( i + predefinedLocalSize)
     }.toMap
 
-    // TODO: emit
-    // NOTE: make sure jumpTargets correct
+    def genLoad(i: DataLabel.In): Seq[Bytecode] =
+      Seq(Bytecode.load(dataValues(i).typeRef, localAssigns(i)))
+
+    def genStores(o: DataLabel.Out): Seq[Bytecode] = {
+      val stores =
+        dataBinding
+          .filter(_._2 == o)
+          .map(_._1)
+          .map(localAssigns).map { n =>
+            Bytecode.store(dataValues(o).typeRef, n)
+          }
+      if(stores.size < 2) {
+        stores.toSeq
+      } else {
+        stores
+          .zip(
+            Stream.fill(stores.size - 1)(Seq(Bytecode.dup())) ++ Seq(Seq())
+          ).flatMap { case (s, d) => s +: d }.toSeq
+      }
+    }
 
     import INode._
     import Bytecode._
@@ -88,19 +106,16 @@ case class Dataflow(
             case TypeRef.Int =>
               i ->Seq(
                 Seq(iconst(data.value.get.asInstanceOf[Int])),
-                dataBinding
-                  .filter(_._2 == i.out)
-                  .map(_._1)
-                  .map(localAssigns).flatMap { n =>
-                    Seq(
-                      dup(),
-                      istore(n)
-                    )
-                  },
-                Seq(pop())
+                genStores(i.out)
               ).flatten
             case _ => ???
           }
+        case i :InvokeVirtual =>
+          i -> Seq(
+            (i.receiverLabel +: i.argLabels).flatMap(genLoad),
+            Seq(invokevirtual(i.className, i.method)),
+            i.retLabel.toSeq.flatMap(genStores)
+          ).flatten
         case unk =>
           throw new NotImplementedError(unk.toString)
       }

@@ -56,7 +56,8 @@ object Test {
   }
   object SimpleDataflow {
     class A {
-      def foo(): Int = 1
+      def foo(): Int = if(bar > 20) 1 else 2
+      def bar(): Int = 10
     }
   }
 }
@@ -155,7 +156,7 @@ class Spec extends FunSpec with Matchers {
       import Test.SimpleDataflow.A
 
       val i = Instance.Native(new A)
-      i.instance.foo() should be(1)
+      i.instance.foo() should be(2)
 
       val foo = LocalMethodRef("foo()I")
 
@@ -164,7 +165,7 @@ class Spec extends FunSpec with Matchers {
       ri.baseClass.pp()
       ri.baseClass.getConstructors().pp()
 
-      ri.instance.foo() should be(1)
+      ri.instance.foo() should be(2)
     }
   }
 }
