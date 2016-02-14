@@ -63,15 +63,19 @@ object Test {
 }
 
 class Spec extends FunSpec with Matchers {
-  def dot(filename: String, b: MethodBody): Unit = {
+  def dotBody(filename: String, b: MethodBody): Unit = {
     import java.nio.file._
-    Files.write(Paths.get(filename), b.dataflow.toDot.getBytes("UTF-8"))
+    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
+  }
+  def dotFlow(filename: String, b: MethodBody): Unit = {
+    import java.nio.file._
+    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
     it("dot test") {
       val foo = LocalMethodRef("foo(I)I")
       val i = Instance.Native(new Test.Complex)
-      dot("complex.dot", i.methodBody(foo).get)
+      dotBody("complex.dot", i.methodBody(foo).get)
     }
     it("const") {
       val orig = new Test.Const
@@ -147,7 +151,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.Native[Test.Upcast.A](obj)
       val foo = LocalMethodRef("foo()I")
       val ri = Transformer.changeBaseClass(classOf[Test.Upcast.A])(i).get
-      dot("real_upcast.dot", ri.methodBody(foo).get)
+      dotBody("real_upcast.dot", ri.methodBody(foo).get)
       classOf[Test.Upcast.A].isAssignableFrom(ri.instance.getClass) should be(true)
       classOf[Test.Upcast.B].isAssignableFrom(ri.instance.getClass) should be(false)
       ri.instance.foo() should be(99)
@@ -162,8 +166,7 @@ class Spec extends FunSpec with Matchers {
 
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get.dataflow.compile))
 
-      ri.baseClass.pp()
-      ri.baseClass.getConstructors().pp()
+      dotBody("s.dot", ri.methodBody(foo).get)
 
       ri.instance.foo() should be(2)
     }

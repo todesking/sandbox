@@ -14,6 +14,7 @@ import com.todesking.scalapp.syntax._
 case class Dataflow(
   isStatic: Boolean,
   descriptor: MethodDescriptor,
+  initialFrame: Frame, // TODO: make local only
   startINodeLabel: Dataflow.INode.Label,
   iNodes: Seq[Dataflow.INode],
   dataBinding: Map[DataLabel.In, DataLabel.Out],
@@ -62,6 +63,7 @@ case class Dataflow(
     val sorted = sortINode().map { l => iNodes.find(_.label == l).get }
 
     val predefinedLocalSize = descriptor.args.size + (if(isStatic) 0 else 1)
+    val firstFreeLocalIndex = predefinedLocalSize + 1
 
     val localAssigns: Map[DataLabel.In, Int] = dataBinding.keys.zipWithIndex.map { case (in, i) =>
       in -> ( i + predefinedLocalSize)
@@ -71,15 +73,28 @@ case class Dataflow(
       Seq(Bytecode.load(dataValues(i).typeRef, localAssigns(i)))
 
     def genStores(o: DataLabel.Out): Seq[Bytecode] = {
+      def refs(l: DataLabel.Out, done: Set[DataLabel.Out]): Set[DataLabel.In] = {
+        val ins = dataBinding.filter(_._2 == l).map(_._1).toSet
+        if(done.contains(l)) {
+          Set.empty
+        } else {
+          dataMerges
+            .filter(_._2.contains(l))
+            .map(_._1)
+            .foldLeft(ins -> (done + o)) { case ((r, d), l2) =>
+              ((r ++ refs(l2, d)) -> (d + l2))
+            }._1
+        }
+      }
       val stores =
-        dataBinding
-          .filter(_._2 == o)
-          .map(_._1)
+        refs(o, Set.empty)
+          .toSeq
           .map(localAssigns).map { n =>
             Bytecode.store(dataValues(o).typeRef, n)
           }
-      if(stores.size < 2) {
-        stores.toSeq
+      if(stores.size == 0) {
+        if(dataValues(o).typeRef.isDoubleWord) ???
+        else Seq(Bytecode.pop())
       } else {
         stores
           .zip(
@@ -87,6 +102,11 @@ case class Dataflow(
           ).flatMap { case (s, d) => s +: d }.toSeq
       }
     }
+
+    val prelude =
+      initialFrame.locals.flatMap { case (index, (l, d)) =>
+        Bytecode.load(d.typeRef, index) +: genStores(l)
+      }
 
     import INode._
     import Bytecode._
@@ -116,12 +136,23 @@ case class Dataflow(
             Seq(invokevirtual(i.className, i.method)),
             i.retLabel.toSeq.flatMap(genStores)
           ).flatten
+        case i: ICmp =>
+          i -> Seq(
+            genLoad(i.label1),
+            genLoad(i.label2),
+            Seq(i.op match {
+              case "le" => if_icmple(i.thenTarget)
+            })
+          ).flatten
+        case i: Goto =>
+          i -> Seq(goto(i.target))
         case unk =>
           throw new NotImplementedError(unk.toString)
       }
 
-    iNodes.toVector.pp()
     sorted.pp()
+    prelude.pp()
+    bytecode.pp()
 
     val jts = jumpTargets.map { case (jt, iLabel) =>
       bytecode.find(_._1.label == iLabel).map(jt -> _._2.head.label).get
@@ -130,7 +161,7 @@ case class Dataflow(
     MethodBody(
       isStatic,
       descriptor,
-      bytecode.flatMap(_._2),
+      prelude.toSeq ++ bytecode.flatMap(_._2),
       jts,
       100, // TODO
       100
@@ -270,6 +301,7 @@ object Dataflow {
     Dataflow(
       body.isStatic,
       body.descriptor,
+      body.initialFrame,
       inodes(bytecodeAggregate(body.bytecode.head.label)).label,
       inodes.values.toSeq,
       body.dataBinding,

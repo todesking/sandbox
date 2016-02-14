@@ -158,6 +158,8 @@ object Instance {
                 out.addAload(n)
               case istore(n) =>
                 out.addIstore(n)
+              case astore(n) =>
+                out.addAstore(n)
               case iconst(c) =>
                 out.addIconst(c)
               case lconst(c) =>

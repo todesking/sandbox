@@ -43,6 +43,7 @@ object Bytecode {
   def store(t: TypeRef, n: Int): Bytecode =
     t match {
       case TypeRef.Int => istore(n)
+      case TypeRef.This => astore(n)
       case unk =>
         throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
     }
@@ -83,7 +84,7 @@ object Bytecode {
     val value2: DataLabel.In = DataLabel.in("value2")
     override def inputs = Seq(value1, value2)
     override def output = None
-    override def nextFrame(f: Frame) = update(f).pop1(value1).pop1(value2)
+    override def nextFrame(f: Frame) = update(f).pop1(value2).pop1(value1)
   }
 
   sealed abstract class Load1 extends Shuffle {
@@ -126,6 +127,7 @@ object Bytecode {
   case class iload(n: Int) extends Load1
   case class aload(n: Int) extends Load1
   case class istore(n: Int) extends Store1
+  case class astore(n: Int) extends Store1
   case class ireturn() extends XReturn
   case class lreturn() extends XReturn
   case class iconst(value: Int) extends Const1 {
