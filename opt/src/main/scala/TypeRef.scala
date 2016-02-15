@@ -16,7 +16,7 @@ object TypeRef {
     else if (c == Double.javaClass) Double
     else if (c == Void.javaClass) Void
     else if (c.isArray) ???
-    else Reference(ClassName(c.getName))
+    else Reference(ClassRef.of(c))
   }
 
   def common(t1: TypeRef, t2: TypeRef): TypeRef =
@@ -69,10 +69,10 @@ object TypeRef {
   object Void extends Primitive("void", "V", java.lang.Void.TYPE)
 
   // TODO: Support CL
-  case class Reference(className: ClassName) extends Public {
-    override def str = s"L${className.binaryString};"
+  case class Reference(classRef: ClassRef) extends Public {
+    override def str = s"L${classRef.binaryString};"
     // TODO: Support CL
-    override val javaClass = Class.forName(className.str)
-    override def pretty = className.str
+    override val javaClass = classRef.loadClass
+    override def pretty = classRef.str
   }
 }

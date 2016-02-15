@@ -303,9 +303,12 @@ object MethodBody {
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)
+            val referencedClass = jClass.getClassLoader.loadClass(className)
             onInstruction(
               index,
-              invokevirtual(ClassName(className), LocalMethodRef(methodName, MethodDescriptor.parse(methodType)))
+              invokevirtual(
+                ClassRef(className, referencedClass.getClassLoader),
+                LocalMethodRef(methodName, MethodDescriptor.parse(methodType)))
             )
           case unk =>
             throw new UnsupportedOpcodeException(unk)

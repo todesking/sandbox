@@ -156,8 +156,8 @@ object Bytecode {
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
   }
-  case class invokevirtual(className: ClassName, methodRef: LocalMethodRef) extends Procedure {
-    override def pretty = s"invokevirtual ${className.str}.${methodRef.str}"
+  case class invokevirtual(classRef: ClassRef, methodRef: LocalMethodRef) extends Procedure {
+    override def pretty = s"invokevirtual ${classRef.str}.${methodRef.str}"
     override def effect = Some(eff)
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")

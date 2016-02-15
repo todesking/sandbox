@@ -29,7 +29,11 @@ object MethodDescriptor {
       case "J" => TypeRef.Long
       case "D" => TypeRef.Double
       case "V" => TypeRef.Void
-      case `refPat`(ref) => TypeRef.Reference(ClassName(ref.replaceAll("/", ".")))
+      case `refPat`(ref) =>
+        val cName = ref.replaceAll("/", ".")
+        val cl = ClassLoader.getSystemClassLoader
+        val klass = cl.loadClass(cName)
+        TypeRef.Reference(ClassRef(cName, klass.getClassLoader))
     }
   }
 }

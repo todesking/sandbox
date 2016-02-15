@@ -133,7 +133,7 @@ case class Dataflow(
         case i :InvokeVirtual =>
           i -> Seq(
             (i.receiverLabel +: i.argLabels).flatMap(genLoad),
-            Seq(invokevirtual(i.className, i.method)),
+            Seq(invokevirtual(i.classRef, i.method)),
             i.retLabel.toSeq.flatMap(genStores)
           ).flatten
         case i: ICmp =>
@@ -372,7 +372,7 @@ object Dataflow {
     }
 
     case class InvokeVirtual(
-      className: ClassName,
+      classRef: ClassRef,
       method: LocalMethodRef,
       receiver: Data,
       ret: Option[Data],
@@ -389,7 +389,7 @@ object Dataflow {
       override def inputs = receiverLabel +: argLabels
       override def output = retLabel
       override def effect = Some(eff)
-      override def pretty = s"""invokevirtual ${className.binaryString}#${method.str}"""
+      override def pretty = s"""invokevirtual ${classRef.binaryString}#${method.str}"""
     }
   }
 }

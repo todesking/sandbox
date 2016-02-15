@@ -44,28 +44,6 @@ object Util {
     }
 }
 
-class LocalAllocator(preservedLocals: Seq[DataLabel])(aliasOf: DataLabel => Set[DataLabel]) {
-  private[this] val allocated = mutable.HashMap.empty[DataLabel, Int]
-  private[this] var nextLocal = preservedLocals.size
-
-  preservedLocals.zipWithIndex foreach {
-    case (l, i) =>
-      aliasOf(l).foreach { a => allocated(a) = i }
-  }
-
-  def size: Int = nextLocal
-  def apply(l: Some[DataLabel]): Int =
-    apply(l.get)
-  def apply(l: DataLabel): Int =
-    allocated.get(l) getOrElse {
-      val local = nextLocal
-      aliasOf(l).foreach { a => allocated(a) = local }
-      // TODO: support 2word
-      nextLocal += 1
-      local
-    }
-}
-
 case class Frame(locals: Map[Int, (DataLabel.Out, Data)], stack: List[(DataLabel.Out, Data)], effect: Effect) {
   def local(n: Int): (DataLabel.Out, Data) =
     locals(n)
@@ -139,12 +117,19 @@ object Transformer {
 
         val required = newInstance.methods.flatMap { m => requiredMethods(orig, newInstance, m) }
 
+        import Dataflow.INode._
+        import Bytecode._
+
         Success(Instance.Rewritten(
           newInstance,
-          required.map { m =>
-            val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
-            m -> body.dataflow.compile
-          }.toMap
+          ???
+          // required.map { m =>
+          //   val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
+          //   m -> body.rewrite {
+          //     case iv @ invokevirtual(className, method) if body.dataType(iv.receiver) == TypeRef.This && className < baseClass =>
+          //       ???
+          //   }.compile
+          // }.toMap
         ))
       } catch {
         case e: TransformError => Failure(e)
