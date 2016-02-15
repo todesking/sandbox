@@ -25,7 +25,7 @@ object Graphviz {
 
 object Opt {
   def optimize[A <: AnyRef: ClassTag](orig: A): A = {
-    val instance = Instance.Copy[A](orig)
+    val instance = Instance.Native[A](orig)
     instance.instance()
   }
 }
@@ -130,7 +130,8 @@ object Transformer {
               case iv @ invokevirtual(classRef, method) if body.dataType(iv.receiver) == TypeRef.This && classRef < baseRef =>
                 invokevirtual(newInstance.classRef, method)
             }
-          }.toMap
+          }.toMap,
+          useBaseClassRef = true
         ))
       } catch {
         case e: TransformError => Failure(e)

@@ -13,7 +13,7 @@ import com.todesking.scalapp.syntax._
 sealed abstract class Instance[+A <: AnyRef] {
   type ActualType <: A
 
-  def classRef: ClassRef
+  val classRef: ClassRef
 
   def methods: Set[LocalMethodRef]
 
@@ -36,9 +36,9 @@ sealed abstract class Instance[+A <: AnyRef] {
 
   // false if unsure
   def sameMethodDefined[B <: AnyRef](method: LocalMethodRef, other: Instance[B]): Boolean =
-    if(!this.methodModified(method) && !other.methodModified(method))
+    this.hasMethod(method) && other.hasMethod(method) &&
+      !this.methodModified(method) && !other.methodModified(method) &&
       method.getJavaMethod(this.baseClass) == method.getJavaMethod(other.baseClass)
-    else false
 
   def isNativeMethod(methodRef: LocalMethodRef): Boolean =
     methodModifiers(methodRef).map { mod => (mod & Modifier.NATIVE) == Modifier.NATIVE }.getOrElse(???)
@@ -51,7 +51,7 @@ sealed abstract class Instance[+A <: AnyRef] {
     else m.getJavaMethod(baseClass).map(_.getModifiers)
 }
 object Instance {
-  case class Copy[+A <: AnyRef](value: A) extends Instance[A] {
+  case class Native[+A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
 
     private[this] val javaClass = value.getClass
@@ -61,7 +61,7 @@ object Instance {
 
     private[this] val methodBodies = mutable.HashMap.empty[LocalMethodRef, Option[MethodBody]]
 
-    override val classRef = ClassRef.newAnonymous(value.getClass.getClassLoader)
+    override val classRef = ClassRef.of(javaClass)
 
     override def baseClass = value.getClass.asInstanceOf[Class[ActualType]]
 
@@ -80,7 +80,6 @@ object Instance {
       value
 
     override def methodModified(ref: LocalMethodRef) = false
-
   }
 
   case class New[A <: AnyRef](override val baseClass: Class[A], override val classRef: ClassRef) extends Instance[A] {
@@ -107,10 +106,11 @@ object Instance {
 
   case class Rewritten[+A <: AnyRef](
       base: Instance[A],
-      methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
+      methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty,
+      useBaseClassRef: Boolean = false
   ) extends Instance[A] {
     override type ActualType = base.ActualType
-    override def classRef = base.classRef
+    override val classRef = if(useBaseClassRef) base.classRef else ClassRef.newAnonymous(base.classRef.classLoader, baseClass.getName)
     override def methods = base.methods ++ methodBodies.keySet
     override def methodBody(ref: LocalMethodRef) =
       methodBodies.get(ref) orElse base.methodBody(ref)
