@@ -25,7 +25,7 @@ object Graphviz {
 
 object Opt {
   def optimize[A <: AnyRef: ClassTag](orig: A): A = {
-    val instance = Instance.Native[A](orig)
+    val instance = Instance.Copy[A](orig)
     instance.instance()
   }
 }
@@ -113,7 +113,9 @@ object Transformer {
     override def apply(orig: Instance[A]): Try[Instance[A]] = {
       try {
         // TODO: handle protected/package method
-        val newInstance = Instance.New(baseClass)
+        val newInstance = Instance.New(baseClass, ClassRef.newAnonymous(baseClass.getClassLoader, baseClass.getName))
+
+        val baseRef = ClassRef.of(baseClass)
 
         val required = newInstance.methods.flatMap { m => requiredMethods(orig, newInstance, m) }
 
@@ -122,14 +124,13 @@ object Transformer {
 
         Success(Instance.Rewritten(
           newInstance,
-          ???
-          // required.map { m =>
-          //   val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
-          //   m -> body.rewrite {
-          //     case iv @ invokevirtual(className, method) if body.dataType(iv.receiver) == TypeRef.This && className < baseClass =>
-          //       ???
-          //   }.compile
-          // }.toMap
+          required.map { m =>
+            val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
+            m -> body.rewrite {
+              case iv @ invokevirtual(classRef, method) if body.dataType(iv.receiver) == TypeRef.This && classRef < baseRef =>
+                invokevirtual(newInstance.classRef, method)
+            }
+          }.toMap
         ))
       } catch {
         case e: TransformError => Failure(e)

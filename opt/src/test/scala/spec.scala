@@ -74,7 +74,7 @@ class Spec extends FunSpec with Matchers {
   describe("opt") {
     it("dot test") {
       val foo = LocalMethodRef("foo(I)I")
-      val i = Instance.Native(new Test.Complex)
+      val i = Instance.Copy(new Test.Complex)
       dotBody("complex.dot", i.methodBody(foo).get)
     }
     it("const") {
@@ -88,7 +88,7 @@ class Spec extends FunSpec with Matchers {
     }
     it("class") {
       val obj = new Test.Const
-      val i = Instance.Native(obj)
+      val i = Instance.Copy(obj)
       i.hasMethod("intMethod", "()I") should be(true)
 
       val intMethod = LocalMethodRef("intMethod()I")
@@ -104,7 +104,7 @@ class Spec extends FunSpec with Matchers {
       val d = new Test.InvokeVirtual0
       d.foo() should be(1)
 
-      val i = Instance.Native(d)
+      val i = Instance.Copy(d)
       val foo = LocalMethodRef("foo()I")
 
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
@@ -115,7 +115,7 @@ class Spec extends FunSpec with Matchers {
       val d = new Test.InvokeVirtual1
       d.foo() should be(1)
 
-      val i = Instance.Native(d)
+      val i = Instance.Copy(d)
       val foo = LocalMethodRef("foo()I")
 
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
@@ -128,7 +128,7 @@ class Spec extends FunSpec with Matchers {
       d.foo(-1) should be(-10)
       d.foo(-11) should be(-100)
 
-      val i = Instance.Native(d)
+      val i = Instance.Copy(d)
       val foo = LocalMethodRef("foo(I)I")
 
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
@@ -139,16 +139,15 @@ class Spec extends FunSpec with Matchers {
     it("other method") {
       val obj = new Test.OtherMethod.B
       obj.foo() should be(99)
-      val i = Instance.Native(obj)
+      val i = Instance.Copy(obj)
       val foo = LocalMethodRef("foo()I")
       val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
       ri.instance.foo() should be(99)
     }
     it("real upcast") {
-      pending
       val obj = new Test.Upcast.B
       obj.foo() should be(99)
-      val i = Instance.Native[Test.Upcast.A](obj)
+      val i = Instance.Copy[Test.Upcast.A](obj)
       val foo = LocalMethodRef("foo()I")
       val ri = Transformer.changeBaseClass(classOf[Test.Upcast.A])(i).get
       dotBody("real_upcast.dot", ri.methodBody(foo).get)
@@ -159,7 +158,7 @@ class Spec extends FunSpec with Matchers {
     it("simple dataflow compile") {
       import Test.SimpleDataflow.A
 
-      val i = Instance.Native(new A)
+      val i = Instance.Copy(new A)
       i.instance.foo() should be(2)
 
       val foo = LocalMethodRef("foo()I")

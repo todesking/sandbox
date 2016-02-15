@@ -20,6 +20,26 @@ case class MethodBody(
 ) {
   require(bytecode.nonEmpty)
 
+  // TODO: make maxLocals/maxStackDepth auto calc
+
+  def rewrite(f: PartialFunction[Bytecode, Bytecode]): MethodBody = {
+    val lifted = f.lift
+    bytecode.foldLeft(this) { case (body, bc) =>
+      val newBc = lifted(bc) getOrElse bc
+      body.replaceBytecode(bc.label, newBc)
+    }
+  }
+
+  def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
+    if(newBc.label == l) {
+      this
+    } else {
+      val newBcs = bytecode.map { bc => if(bc.label == l) newBc else bc }
+      val newJts = jumpTargets.map { case (jt, bcl) => if(bcl == l) (jt -> newBc.label) else (jt -> bcl) }
+      MethodBody(isStatic, descriptor, newBcs, newJts, maxLocals, maxStackDepth)
+    }
+  }
+
   lazy val dataflow: Dataflow =
     Dataflow.build(this)
 
@@ -40,6 +60,8 @@ case class MethodBody(
 
   def dataValue(l: DataLabel): Data =
     dataValues(l)
+
+  def dataType(l: DataLabel): TypeRef = dataValues(l).typeRef
 
   def pretty(): String = {
     val lName = Bytecode.Label.namer("L", "")

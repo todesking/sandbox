@@ -13,6 +13,8 @@ import com.todesking.scalapp.syntax._
 sealed abstract class Instance[+A <: AnyRef] {
   type ActualType <: A
 
+  def classRef: ClassRef
+
   def methods: Set[LocalMethodRef]
 
   def hasMethod(name: String, descriptor: String): Boolean =
@@ -49,7 +51,7 @@ sealed abstract class Instance[+A <: AnyRef] {
     else m.getJavaMethod(baseClass).map(_.getModifiers)
 }
 object Instance {
-  case class Native[+A <: AnyRef](value: A) extends Instance[A] {
+  case class Copy[+A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
 
     private[this] val javaClass = value.getClass
@@ -58,6 +60,8 @@ object Instance {
       javaClass.getMethods.find { m => LocalMethodRef.from(m) == ref }
 
     private[this] val methodBodies = mutable.HashMap.empty[LocalMethodRef, Option[MethodBody]]
+
+    override val classRef = ClassRef.newAnonymous(value.getClass.getClassLoader)
 
     override def baseClass = value.getClass.asInstanceOf[Class[ActualType]]
 
@@ -79,12 +83,12 @@ object Instance {
 
   }
 
-  case class New[A <: AnyRef](override val baseClass: Class[A]) extends Instance[A] {
+  case class New[A <: AnyRef](override val baseClass: Class[A], override val classRef: ClassRef) extends Instance[A] {
     try  {
       baseClass.getConstructor()
     } catch {
       case e: NoSuchMethodException =>
-        throw new IllegalArgumentException(s"class ${baseClass} have no 0-ary constructor")
+        throw new IllegalArgumentException(s"class ${baseClass} have not 0-ary constructor")
     }
 
     override type ActualType = A
@@ -106,13 +110,14 @@ object Instance {
       methodBodies: Map[LocalMethodRef, MethodBody] = Map.empty
   ) extends Instance[A] {
     override type ActualType = base.ActualType
-    override def methods = base.methods
+    override def classRef = base.classRef
+    override def methods = base.methods ++ methodBodies.keySet
     override def methodBody(ref: LocalMethodRef) =
       methodBodies.get(ref) orElse base.methodBody(ref)
     override def methodModified(ref: LocalMethodRef) =
-      methodBodies.get(ref).map(_ => true) getOrElse base.methodModified(ref)
+      methodBodies.contains(ref) || base.methodModified(ref)
     override def baseClass = base.baseClass
-    override def instance() = {
+    override lazy val instance = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtConstructor }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
 
@@ -123,7 +128,7 @@ object Instance {
 
       val ctBase = classPool.get(baseClass.getName)
       // TODO make name unique
-      val klass = classPool.makeClass(baseClass.getName + "_rewritten", ctBase)
+      val klass = classPool.makeClass(classRef.name, ctBase)
       val constPool = klass.getClassFile.getConstPool
 
       def ctClass(tr: TypeRef): CtClass = {
@@ -136,7 +141,7 @@ object Instance {
       val ctObject = classPool.get("java.lang.Object")
 
       methods.filter(methodModified) foreach { ref =>
-        methodBody(ref) foreach { body =>
+        methodBody(ref).fold(throw new AssertionError) { body =>
           val out = new JABytecode(constPool, 0, 0)
           val jumps = mutable.HashMap.empty[Int, (Int, JumpTarget)] // jump operand address -> (insn addr -> target)
           val addrs = mutable.HashMap.empty[Bytecode.Label, Int]
@@ -204,7 +209,7 @@ object Instance {
       ctor.setBody("super();")
       klass.addConstructor(ctor)
 
-      klass.toClass(new java.net.URLClassLoader(Array.empty, baseClass.getClassLoader), null).newInstance().asInstanceOf[A]
+      klass.toClass(classRef.classLoader, null).newInstance().asInstanceOf[A]
     }
   }
 }
