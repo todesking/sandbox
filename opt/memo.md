@@ -17,11 +17,11 @@ Instance `x` is _safe rewritable_ to `x'` iff
   * `E(x')` should not contains reference to `x`
 
 
-Field `y` of instance `x` is _fusionable_ to `x` if `E(x)` is qeuals to `E(x')` where `x' = instance_fusion(x, y)`
+Field `x.y` is _fusionable_ if `E(x)` is equals to `E(x')` where `x' = instance_fusion(x, y)`
 
-Field `y` of instance `x` is _fusionable_ to `x` iff
+Field `x.y` is _fusionable_ iff
 
-* `y` is _safe rewritable_ to `y'`
+* `y` is _safe rewritable_
 * All methods in `y` should
   * Not access `x`-invisible members
 
@@ -42,4 +42,9 @@ Field `x.y` is _wirte protectable_ if `x` is _safe rewritable_ to `x'` where `x'
 
 ???
 
+Instance creation `y = new Y` in method `x.f` is _instance inlinable_ iff
+
+* `y` should not escape from `f`
+* Constructor is _inlinable_
+* All invoked method of `y` is _inlinable_
 
