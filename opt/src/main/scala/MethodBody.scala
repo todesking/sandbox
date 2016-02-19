@@ -320,16 +320,25 @@ object MethodBody {
           case 0x60 =>
             onInstruction(index, iadd())
           // TODO
+          case 0xB4 => // getfield
+            val constIndex = it.u16bitAt(index + 1)
+            val className = cpool.getFieldrefClassName(constIndex)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val fieldName = cpool.getFieldrefName(constIndex)
+            val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex))
+            val fieldRef = LocalFieldRef(fieldName, fieldDescriptor)
+            onInstruction(index, getfield(classRef, fieldRef))
+          // TODO
           case 0xB6 => // invokevirtual
             val constIndex = it.u16bitAt(index + 1)
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)
-            val referencedClass = jClass.getClassLoader.loadClass(className)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
             onInstruction(
               index,
               invokevirtual(
-                ClassRef(className, referencedClass.getClassLoader),
+                classRef,
                 LocalMethodRef(methodName, MethodDescriptor.parse(methodType)))
             )
           case unk =>

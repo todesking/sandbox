@@ -5,6 +5,9 @@ sealed abstract class TypeRef {
   def pretty: String = toString
 }
 object TypeRef {
+  def parse(src: String): TypeRef.Public =
+    Parsers.parseTypeRef(src)
+
   def from(c: Class[_]): Public = {
     if (c == java.lang.Integer.TYPE) Int
     else if (c == Long.javaClass) Long

@@ -185,6 +185,8 @@ object Instance {
                 out.add(0xA4)
                 jumps(out.getSize) = (out.getSize - 1) -> target
                 out.add(0x00, 0x03)
+              case getfield(classRef, fieldRef) =>
+                out.addGetfield(classRef.str, fieldRef.name, fieldRef.descriptor.str)
             }
           }
           jumps foreach {

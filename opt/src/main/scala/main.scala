@@ -16,6 +16,14 @@ object Main {
   }
 }
 
+case class FieldDescriptor(typeRef: TypeRef.Public) {
+  def str = typeRef.str
+}
+object FieldDescriptor {
+  def parse(src: String): FieldDescriptor =
+    Parsers.parseFieldDescriptor(src)
+}
+
 object Graphviz {
   def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
   def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""

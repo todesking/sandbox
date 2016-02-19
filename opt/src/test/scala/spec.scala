@@ -60,6 +60,12 @@ object Test {
       def bar(): Int = 10
     }
   }
+  object PrimitiveField {
+    class A {
+      val foo = 10
+    }
+  }
+  // TODO: ref field
 }
 
 class Spec extends FunSpec with Matchers {
@@ -168,6 +174,17 @@ class Spec extends FunSpec with Matchers {
       dotBody("s.dot", ri.methodBody(foo).get)
 
       ri.instance.foo() should be(2)
+    }
+    it("primitive field") {
+      import Test.PrimitiveField.A
+      val foo = LocalMethodRef("foo()I")
+
+      val i = Instance.Native(new A)
+      i.instance.foo should be(10)
+
+      val ri = Instance.Rewritten(i, Map(foo -> i.methodBody(foo).get))
+      println(ri.methodBody(foo).get.pretty)
+      ri.instance.foo should be(10)
     }
   }
 }

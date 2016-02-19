@@ -175,4 +175,15 @@ object Bytecode {
       ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
     }
   }
+  case class getfield(classRef: ClassRef, fieldRef: LocalFieldRef) extends Procedure {
+    val eff: Effect = Effect.fresh()
+    val target = DataLabel.in("objectref")
+    val out = DataLabel.out("field")
+    override def pretty = s"getfield ${fieldRef.str}"
+    override def effect = Some(eff)
+    override def inputs = Seq(target)
+    override def output = Some(out)
+    override def nextFrame(f: Frame) =
+      update(f).pop1(target).push(out -> Data(fieldRef.descriptor.typeRef, None)) // TODO
+  }
 }
