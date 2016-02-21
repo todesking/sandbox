@@ -33,8 +33,8 @@ object Graphviz {
 
 object Opt {
   def optimize[A <: AnyRef: ClassTag](orig: A): A = {
-    val instance = Instance.Native[A](orig)
-    instance.instance()
+    val instance = Instance.of(orig)
+    instance.value
   }
 }
 
@@ -117,6 +117,7 @@ trait Transformer[A <: AnyRef, B <: AnyRef] {
   def apply(orig: Instance[A]): Try[Instance[B]]
 }
 object Transformer {
+  /*
   def changeBaseClass[A <: AnyRef](baseClass: Class[A]): Transformer[A, A] = new Transformer[A, A] {
     override def apply(orig: Instance[A]): Try[Instance[A]] = {
       try {
@@ -167,5 +168,6 @@ object Transformer {
       }.getOrElse { throw new AssertionError() }
     }
   }
+  */
 }
 

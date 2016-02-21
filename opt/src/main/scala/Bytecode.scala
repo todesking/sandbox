@@ -78,6 +78,12 @@ object Bytecode {
     override def output = None
     override def nextFrame(f: Frame) = update(f).ret(in)
   }
+  // Void return
+  sealed abstract class VoidReturn extends Return {
+    override def inputs = Seq.empty
+    override def output = None
+    override def nextFrame(f: Frame) = update(f)
+  }
 
   sealed abstract class if_icmpXX extends Branch {
     val value1: DataLabel.In = DataLabel.in("value1")
@@ -124,6 +130,7 @@ object Bytecode {
   case class pop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f).pop1()
   }
+  case class vreturn() extends VoidReturn
   case class iload(n: Int) extends Load1
   case class aload(n: Int) extends Load1
   case class istore(n: Int) extends Store1
@@ -156,7 +163,7 @@ object Bytecode {
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
   }
-  case class invokevirtual(classRef: ClassRef, methodRef: LocalMethodRef) extends Procedure {
+  case class invokevirtual(classRef: ClassRef, methodRef: MethodRef) extends Procedure {
     override def pretty = s"invokevirtual ${classRef.str}.${methodRef.str}"
     override def effect = Some(eff)
     val eff: Effect = Effect.fresh()
@@ -175,7 +182,7 @@ object Bytecode {
       ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
     }
   }
-  case class getfield(classRef: ClassRef, fieldRef: LocalFieldRef) extends Procedure {
+  case class getfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
     val out = DataLabel.out("field")

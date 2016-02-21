@@ -2,7 +2,8 @@ package com.todesking.hoge
 
 import java.lang.reflect.{ Method => JMethod }
 
-case class LocalMethodRef(name: String, descriptor: MethodDescriptor) {
+// TODO: add ClassRef
+case class MethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str
   def isVoid: Boolean = descriptor.isVoid
   def args: Seq[TypeRef.Public] = descriptor.args
@@ -15,17 +16,17 @@ case class LocalMethodRef(name: String, descriptor: MethodDescriptor) {
         m.getParameterTypes.zip(args.map(_.javaClass)).forall { case (p1, p2) => p1 == p2 }
     }
 }
-object LocalMethodRef {
-  def from(m: JMethod): LocalMethodRef =
-    LocalMethodRef(m.getName, MethodDescriptor.from(m))
-  def apply(src: String): LocalMethodRef =
+object MethodRef {
+  def from(m: JMethod): MethodRef =
+    MethodRef(m.getName, MethodDescriptor.from(m))
+  def parse(src: String): MethodRef =
     Parser.parse(src)
   object Parser {
     lazy val all = """([^(]+)(\(.+)""".r
-    def parse(src: String): LocalMethodRef =
+    def parse(src: String): MethodRef =
       src match {
         case `all`(name, desc) =>
-          LocalMethodRef(name, MethodDescriptor.parse(desc))
+          MethodRef(name, MethodDescriptor.parse(desc))
         case unk =>
           throw new IllegalArgumentException(s"Invalid method ref: ${unk}")
       }

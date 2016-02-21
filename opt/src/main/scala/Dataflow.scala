@@ -373,7 +373,7 @@ object Dataflow {
 
     case class InvokeVirtual(
       classRef: ClassRef,
-      method: LocalMethodRef,
+      method: MethodRef,
       receiver: Data,
       ret: Option[Data],
       args: Data*

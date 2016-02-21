@@ -1,5 +1,6 @@
 package com.todesking.hoge
 
-case class LocalFieldRef(name: String, descriptor: FieldDescriptor) {
+// TODO: Add ClassRef
+case class FieldRef(name: String, descriptor: FieldDescriptor) {
   def str: String = s"${name}: ${descriptor.str}"
 }

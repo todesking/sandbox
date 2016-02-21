@@ -201,6 +201,7 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
         val u = bc.nextFrame(merged)
         updates(bc.label) = u
         bc match {
+          case r: Bytecode.VoidReturn =>
           case r: Bytecode.XReturn =>
           case j: Bytecode.Jump =>
             tasks += (jumpTargets(j.target) -> u.newFrame)
@@ -237,12 +238,15 @@ object MethodBody {
   def parse(jClass: Class[_], m: JMethod): Option[MethodBody] = {
     require(m != null)
 
-    import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod }
+    import javassist.{ ClassPool, ClassClassPath, ByteArrayClassPath, CtClass, CtMethod }
     val classPool = new ClassPool(null)
+    Instance.findMaterializedClasses(jClass.getClassLoader).foreach { case (name, bytes) =>
+      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+    }
     classPool.appendClassPath(new ClassClassPath(jClass))
 
     val ctClass = classPool.get(jClass.getName)
-    val mRef = LocalMethodRef.from(m)
+    val mRef = MethodRef.from(m)
 
     val ctMethod = ctClass.getMethod(mRef.name, mRef.descriptor.str)
 
@@ -255,7 +259,7 @@ object MethodBody {
 
       val codeAttribute = ctMethod.getMethodInfo2.getCodeAttribute
       val it = codeAttribute.iterator
-      val cpool = ctClass.getClassFile2.getConstPool
+      val cpool = ctMethod.getDeclaringClass.getClassFile.getConstPool
       val bcs = mutable.ArrayBuffer.empty[Bytecode]
       val jumpTargets = mutable.HashMap.empty[JumpTarget, Bytecode.Label]
       val addr2jt = JumpTarget.assigner[Int]()
@@ -290,23 +294,25 @@ object MethodBody {
             onInstruction(index, lconst(0))
           // TODO
           case 0x10 => // bipush
-            // TODO: signed?
             onInstruction(index, iconst(it.signedByteAt(index + 1)))
           // TODO
           case 0x1B => // iload_1
             onInstruction(index, iload(1))
           // TODO
-          case 0xA4 => // if_icmple
-            onInstruction(
-              index,
-              if_icmple(addr2jt(index + it.s16bitAt(index + 1)))
-            )
+          case 0x2B => // aload_1
+            onInstruction(index, aload(1))
           // TODO
           case 0x2A => // aload_0
             onInstruction(index, aload(0))
           // TODO
           case 0x3C => // istore_1
             onInstruction(index, istore(1))
+          // TODO
+          case 0xA4 => // if_icmple
+            onInstruction(
+              index,
+              if_icmple(addr2jt(index + it.s16bitAt(index + 1)))
+            )
           // TODO
           case 0xA7 => // goto
             onInstruction(index, goto(addr2jt(index + it.s16bitAt(index + 1))))
@@ -322,12 +328,16 @@ object MethodBody {
           // TODO
           case 0xB4 => // getfield
             val constIndex = it.u16bitAt(index + 1)
+            println(s"getField " + constIndex)
             val className = cpool.getFieldrefClassName(constIndex)
             val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
             val fieldName = cpool.getFieldrefName(constIndex)
             val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex))
-            val fieldRef = LocalFieldRef(fieldName, fieldDescriptor)
+            val fieldRef = FieldRef(fieldName, fieldDescriptor)
             onInstruction(index, getfield(classRef, fieldRef))
+          // TODO
+          case 0xB1 => // return
+            onInstruction(index, vreturn())
           // TODO
           case 0xB6 => // invokevirtual
             val constIndex = it.u16bitAt(index + 1)
@@ -339,7 +349,7 @@ object MethodBody {
               index,
               invokevirtual(
                 classRef,
-                LocalMethodRef(methodName, MethodDescriptor.parse(methodType)))
+                MethodRef(methodName, MethodDescriptor.parse(methodType)))
             )
           case unk =>
             throw new UnsupportedOpcodeException(unk)

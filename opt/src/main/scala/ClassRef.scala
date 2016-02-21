@@ -14,8 +14,13 @@ case class ClassRef(str: String, classLoader: java.lang.ClassLoader) {
 }
 
 object ClassRef {
+  object ThisRef extends ClassRef("<dummy:This>", ClassLoader.getSystemClassLoader) {
+    override lazy val loadClass = throw new IllegalStateException()
+  }
+
   def of(klass: Class[_]): ClassRef =
     ClassRef(klass.getName, klass.getClassLoader)
+
   def newAnonymous(parentCL: ClassLoader, namePrefix: String = "anonymous_"): ClassRef =
     ClassRef(newAnonymousClassName(namePrefix), new java.net.URLClassLoader(Array.empty, parentCL))
 

@@ -25,7 +25,6 @@
     * `m` is abstract
     * `m` takes parameter `_ <<: X`
     * `m` returns `_ <<: X`
-    * `m` leaks `this` as `_ <<: X`
     * `m` has non-this reference `_ <<: X`
 * for each private members `pm` in `x`:
   * rename `pm` to unique name
@@ -33,6 +32,7 @@
   * if `m` defined at `_ <<: X`
     * FAIL if
       * `m` is native
+      * `m` leaks `this` as `_ <<: X`
     * substitute this-reference class in `m` to `x'`
     * substitute private-member references in `m` to renamed
     * add the method to `x'`
