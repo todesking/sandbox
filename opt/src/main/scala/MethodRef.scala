@@ -19,14 +19,14 @@ case class MethodRef(name: String, descriptor: MethodDescriptor) {
 object MethodRef {
   def from(m: JMethod): MethodRef =
     MethodRef(m.getName, MethodDescriptor.from(m))
-  def parse(src: String): MethodRef =
-    Parser.parse(src)
-  object Parser {
+  def parse(src: String, cl: ClassLoader): MethodRef =
+    parser(cl).parse(src)
+  case class parser(classLoader: ClassLoader) {
     lazy val all = """([^(]+)(\(.+)""".r
     def parse(src: String): MethodRef =
       src match {
         case `all`(name, desc) =>
-          MethodRef(name, MethodDescriptor.parse(desc))
+          MethodRef(name, MethodDescriptor.parse(desc, classLoader))
         case unk =>
           throw new IllegalArgumentException(s"Invalid method ref: ${unk}")
       }

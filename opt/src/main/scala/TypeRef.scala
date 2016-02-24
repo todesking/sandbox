@@ -5,8 +5,8 @@ sealed abstract class TypeRef {
   def pretty: String = toString
 }
 object TypeRef {
-  def parse(src: String): TypeRef.Public =
-    Parsers.parseTypeRef(src)
+  def parse(src: String, cl: ClassLoader): TypeRef.Public =
+    Parsers.parseTypeRef(src, cl)
 
   def from(c: Class[_]): Public = {
     if (c == java.lang.Integer.TYPE) Int
@@ -71,11 +71,13 @@ object TypeRef {
   object Double extends Primitive("double", "D", java.lang.Double.TYPE) with DoubleWord
   object Void extends Primitive("void", "V", java.lang.Void.TYPE)
 
-  // TODO: Support CL
   case class Reference(classRef: ClassRef) extends Public {
-    override def str = s"L${classRef.binaryString};"
-    // TODO: Support CL
-    override val javaClass = classRef.loadClass
-    override def pretty = classRef.str
+    override def str = s"L${classRef.pretty};"
+    override def pretty = classRef.pretty
+    // TODO: It smells..
+    override def javaClass = classRef match {
+      case c: ClassRef.Concrete => c.loadClass
+      case c: ClassRef.SomeRef => c.superClass
+    }
   }
 }

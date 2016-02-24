@@ -137,6 +137,7 @@ object Bytecode {
   case class astore(n: Int) extends Store1
   case class ireturn() extends XReturn
   case class lreturn() extends XReturn
+  case class areturn() extends XReturn
   case class iconst(value: Int) extends Const1 {
     override def data = Data(TypeRef.Int, Some(value))
   }
@@ -164,7 +165,7 @@ object Bytecode {
       }
   }
   case class invokevirtual(classRef: ClassRef, methodRef: MethodRef) extends Procedure {
-    override def pretty = s"invokevirtual ${classRef.str}.${methodRef.str}"
+    override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
     override def effect = Some(eff)
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")

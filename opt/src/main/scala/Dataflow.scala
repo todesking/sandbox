@@ -389,7 +389,7 @@ object Dataflow {
       override def inputs = receiverLabel +: argLabels
       override def output = retLabel
       override def effect = Some(eff)
-      override def pretty = s"""invokevirtual ${classRef.binaryString}#${method.str}"""
+      override def pretty = s"""invokevirtual ${classRef.pretty}#${method.str}"""
     }
   }
 }

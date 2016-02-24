@@ -6,13 +6,23 @@
 * Duplicatable instance `x` is _escaped_ if `x` is ANY of:
   * Referenced from another _escaped_ instance's field
   * Referenced from `E(x')`
-  * `this` leaks to other instance
+  * `this` _leaks_ to other instance
+* Instance `x` _leaks_ if:
+  * has a instance method `m` in `x` invokes other instance's method/static methods with `this` as argument
+  * has a instance method `m` that marked as `synchronized` or used `monitorenter`/`monitorexit` instruction to `this`
+  * has a instance method `m` that `putfield`/`putstatic` `this` to some field
 
 `duplicate(x, X, outer_escaped)` is:
 
+* TODO: New interfaces in `_ <<: X`
+* TODO: super methods in `_ <<: X`
+* TODO: X is interface
+* TODO: MethodHandle
+* TODO: static methods
 * FAIL if ANY of
   * `x` has finalizer
   * `X` is final class
+  * `X` have no setter-only constructor(putfield argument or invoke setter-only constructor only)
 * create new class `x' <: X`
 * for each fields `f` in `x`:
   * FAIL if `f` is non-final and `x` is _escaped_
@@ -20,7 +30,7 @@
     * FAIL if
       * `f` has type `_ <<: X`
     * add `f` to `x'`
-* for each ALL methods/constructors `m` in `x`:
+* for each ALL instance methods/constructors `m` in `x`:
   * FAIL if
     * `m` is abstract
     * `m` takes parameter `_ <<: X`
@@ -28,7 +38,7 @@
     * `m` has non-this reference `_ <<: X`
 * for each private members `pm` in `x`:
   * rename `pm` to unique name
-* for each visible or self-referenced non-constructor methods `m` in `x`:
+* for each visible or self-referenced non-constructor instance methods `m` in `x`:
   * if `m` defined at `_ <<: X`
     * FAIL if
       * `m` is native
@@ -40,7 +50,13 @@
   * FAIL if ANY OF
     * `c` is native
     * `c` may have side-effect
-* add field-setter constructor to `x'`
+* add field-setter constructor to `x'`:
+  * create constructor that args = fields
+  * if X have 0-ary setter-only constructor:
+    * put all args to fields
+  * else X must have n-ary setter-only constructor:
+    * call super(a1...an)
+    * put rest args to fields
 * create instance of `x'` with the constructor and field values of `x`
 
 NOTE: I'm not sure "All references should not have type `_ <<: X`" rule is really required or not.
@@ -81,3 +97,11 @@ Method `y.g` is _inlinable_ into `x.f` if `x.f === inline(x.f, y.g)`
 ## Field finalization
 
 ## Instance elimination
+
+## Self tail recursion
+
+## Generic self recursion
+
+## Generic tail recursion
+
+## Generic recursion

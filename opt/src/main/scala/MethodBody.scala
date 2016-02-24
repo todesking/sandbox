@@ -57,7 +57,6 @@ case class MethodBody(
     }
     Frame((thisData.toSeq ++ argData).zipWithIndex.map(_.swap).toMap, List.empty, initialEffect)
   }
-
   def dataValue(l: DataLabel): Data =
     dataValues(l)
 
@@ -235,10 +234,12 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
 }
 
 object MethodBody {
-  def parse(jClass: Class[_], m: JMethod): Option[MethodBody] = {
+  def parse(m: JMethod): Option[MethodBody] = {
     require(m != null)
 
     import javassist.{ ClassPool, ClassClassPath, ByteArrayClassPath, CtClass, CtMethod }
+
+    val jClass = m.getDeclaringClass
     val classPool = new ClassPool(null)
     Instance.findMaterializedClasses(jClass.getClassLoader).foreach { case (name, bytes) =>
       classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
@@ -332,12 +333,15 @@ object MethodBody {
             val className = cpool.getFieldrefClassName(constIndex)
             val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
             val fieldName = cpool.getFieldrefName(constIndex)
-            val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex))
+            val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex), jClass.getClassLoader)
             val fieldRef = FieldRef(fieldName, fieldDescriptor)
             onInstruction(index, getfield(classRef, fieldRef))
           // TODO
           case 0xB1 => // return
             onInstruction(index, vreturn())
+          // TODO
+          case 0xB0 => // areturn
+            onInstruction(index, areturn())
           // TODO
           case 0xB6 => // invokevirtual
             val constIndex = it.u16bitAt(index + 1)
@@ -349,10 +353,10 @@ object MethodBody {
               index,
               invokevirtual(
                 classRef,
-                MethodRef(methodName, MethodDescriptor.parse(methodType)))
+                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
             )
           case unk =>
-            throw new UnsupportedOpcodeException(unk)
+            throw new UnsupportedOpcodeException(unk, m.getName)
         }
       }
       Some(MethodBody(

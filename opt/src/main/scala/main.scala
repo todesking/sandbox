@@ -7,7 +7,7 @@ import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 import scala.util.{Try, Success, Failure}
 
-import java.lang.reflect.{ Method => JMethod }
+import java.lang.reflect.{ Method => JMethod , Modifier}
 
 import com.todesking.scalapp.syntax._
 
@@ -20,8 +20,8 @@ case class FieldDescriptor(typeRef: TypeRef.Public) {
   def str = typeRef.str
 }
 object FieldDescriptor {
-  def parse(src: String): FieldDescriptor =
-    Parsers.parseFieldDescriptor(src)
+  def parse(src: String, cl: ClassLoader): FieldDescriptor =
+    Parsers.parseFieldDescriptor(src, cl)
 }
 
 object Graphviz {
@@ -50,6 +50,41 @@ object Util {
       if(nodep.isEmpty) throw new IllegalArgumentException(s"Cyclic reference found: ${dep}")
       tsort0(dep, deps ++ nodep.map(_._2), sorted ++ nodep.map(_._1))
     }
+}
+
+sealed abstract class MethodAttribute {
+  def |(that: MethodAttribute): MethodAttribute
+  def enabled(flags: Int): Boolean
+}
+object MethodAttribute {
+  def from(m: JMethod): MethodAttribute = {
+    items.filter(_.enabled(m.getModifiers)).reduce[MethodAttribute](_ | _)
+  }
+  case class Multi(attrs: Set[MethodAttribute]) extends MethodAttribute {
+    override def |(that: MethodAttribute): MethodAttribute = that match {
+      case Multi(thats) => Multi(attrs ++ thats)
+      case that => Multi(attrs + that)
+    }
+    override def enabled(flags: Int) = attrs.forall(_.enabled(flags))
+  }
+
+  sealed abstract class Single(flag: Int) extends MethodAttribute {
+    override def |(that: MethodAttribute): MethodAttribute = that match {
+      case Multi(thats) => Multi(thats + this)
+      case that => Multi(Set(this, that))
+    }
+    override def enabled(flags: Int) = (flags & flag) == flag
+  }
+  case object Public extends Single(Modifier.PUBLIC)
+  case object Private extends Single(Modifier.PRIVATE)
+  case object Protected extends Single(Modifier.PROTECTED)
+  case object Native extends Single(Modifier.NATIVE)
+  case object Abstract extends Single(Modifier.ABSTRACT)
+  case object Final extends Single(Modifier.FINAL)
+  case object Synchronized extends Single(Modifier.SYNCHRONIZED)
+  case object Strict extends Single(Modifier.STRICT)
+
+  val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict)
 }
 
 case class Frame(locals: Map[Int, (DataLabel.Out, Data)], stack: List[(DataLabel.Out, Data)], effect: Effect) {

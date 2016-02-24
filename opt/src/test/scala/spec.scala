@@ -65,6 +65,17 @@ object Test {
       val foo = 10
     }
   }
+  object FieldDuplicate {
+    abstract class Base {
+      def foo: Int
+    }
+    class A extends Base {
+      val x = 1000
+      override def foo = x
+    }
+    class B extends A {
+    }
+  }
   // TODO: ref field
 }
 
@@ -78,8 +89,9 @@ class Spec extends FunSpec with Matchers {
     Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
   }
   describe("opt") {
+    val defaultCL = ClassLoader.getSystemClassLoader
     it("dot test") {
-      val foo = MethodRef.parse("foo(I)I")
+      val foo = MethodRef.parse("foo(I)I", defaultCL)
       val i = Instance.of(new Test.Complex)
       dotBody("complex.dot", i.methodBody(foo).get)
     }
@@ -95,10 +107,10 @@ class Spec extends FunSpec with Matchers {
     it("class") {
       val obj = new Test.Const
       val i = Instance.of(obj)
-      i.hasMethod("intMethod()I") should be(true)
+      i.hasVirtualMethod("intMethod()I") should be(true)
 
-      val intMethod = MethodRef.parse("intMethod()I")
-      val longMethod = MethodRef.parse("longMethod()J")
+      val intMethod = MethodRef.parse("intMethod()I", defaultCL)
+      val longMethod = MethodRef.parse("longMethod()J", defaultCL)
       val ri = i.duplicate[Test.Const].materialize()
       ri.value.intMethod() should be(1)
       ri.value.longMethod() should be(0L)
@@ -108,7 +120,7 @@ class Spec extends FunSpec with Matchers {
       d.foo() should be(1)
 
       val i = Instance.of(d)
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
 
       val ri = i.duplicate.materialize()
 
@@ -119,7 +131,7 @@ class Spec extends FunSpec with Matchers {
       d.foo() should be(1)
 
       val i = Instance.of(d)
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
 
       val ri = i.duplicate.materialize()
 
@@ -132,7 +144,7 @@ class Spec extends FunSpec with Matchers {
       d.foo(-11) should be(-100)
 
       val i = Instance.of(d)
-      val foo = MethodRef.parse("foo(I)I")
+      val foo = MethodRef.parse("foo(I)I", defaultCL)
 
       val ri = i.duplicate.materialize()
       ri.value.foo(1) should be(100)
@@ -143,7 +155,7 @@ class Spec extends FunSpec with Matchers {
       val obj = new Test.OtherMethod.B
       obj.foo() should be(99)
       val i = Instance.of(obj)
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
       val ri = i.duplicate.materialize()
       ri.value.foo() should be(99)
     }
@@ -151,7 +163,7 @@ class Spec extends FunSpec with Matchers {
       val obj = new Test.Upcast.B
       obj.foo() should be(99)
       val i = Instance.of[Test.Upcast.A](obj)
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
       val ri = i.duplicate[Test.Upcast.A].materialize()
       dotBody("real_upcast.dot", ri.methodBody(foo).get)
       classOf[Test.Upcast.A].isAssignableFrom(ri.value.getClass) should be(true)
@@ -164,7 +176,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(new A)
       i.value.foo() should be(2)
 
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
 
       val ri = i.duplicate.materialize()
 
@@ -174,7 +186,7 @@ class Spec extends FunSpec with Matchers {
     }
     it("primitive field") {
       import Test.PrimitiveField.A
-      val foo = MethodRef.parse("foo()I")
+      val foo = MethodRef.parse("foo()I", defaultCL)
 
       val i = Instance.of(new A)
       i.value.foo should be(10)
@@ -182,6 +194,31 @@ class Spec extends FunSpec with Matchers {
       val ri = i.duplicate.materialize()
       println(ri.methodBody(foo).get.pretty)
       ri.value.foo should be(10)
+    }
+    it("field duplicate") {
+      pending
+      import Test.FieldDuplicate._
+      val i = Instance.of(new B)
+      i.value.foo should be(1000)
+
+      val ri = i.duplicate[Base].materialize
+      ri.value.foo should be(1000)
+    }
+    it("inner class with primitive field") {
+      pending
+      abstract class Base {
+        def x: Int
+        def foo: Int = x
+      }
+      class A extends Base {
+        override val x = 1
+      }
+
+      val i = Instance.of(new A)
+      i.value.foo should be(1)
+
+      val ri = i.duplicate[Base].materialize
+      ri.value.foo should be(1)
     }
   }
 }
