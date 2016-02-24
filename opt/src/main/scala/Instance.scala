@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{ Method => JMethod, Modifier, Constructor }
+import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier, Constructor }
 
 import com.todesking.scalapp.syntax._
 
@@ -20,12 +20,12 @@ sealed abstract class Instance[A <: AnyRef] {
   def virtualMethods: Map[MethodRef, MethodAttribute]
   def allMethods: Map[(ClassRef, MethodRef), MethodAttribute]
 
+  def allFields: Map[(ClassRef, FieldRef), FieldAttribute]
+
   def hasVirtualMethod(ref: MethodRef): Boolean =
     virtualMethods.contains(ref)
   def hasVirtualMethod(ref: String): Boolean =
     hasVirtualMethod(MethodRef.parse(ref, classLoader))
-
-  // def fields: Set[FieldRef]
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
@@ -33,26 +33,49 @@ object Instance {
   case class Original[A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
 
+    // TODO: make this REAL unique
+    private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
+      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}", fr.descriptor)
+
     def duplicate[B >: A <: AnyRef: ClassTag](): Duplicate[B] = {
       val baseClass = implicitly[ClassTag[B]].runtimeClass.asInstanceOf[Class[B]]
       val baseRef = ClassRef.of(baseClass)
       val thisRef = baseRef.someSubclassRef(baseRef.classLoader)
+      val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
+        allFields
+          .keys
+          .filter { case (c, f) => c < baseRef }
+          .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
+          .toMap
+          val fieldValues =
+            allJFields
+              .filterNot { case (k, v) => fieldMappings.contains(k) }
+              .map { case (k, jf) => k -> jf.get(value) }
       Duplicate[B](this, thisRef, virtualJMethods.flatMap { case (mref, jm) =>
         if(ClassRef.of(jm.getDeclaringClass) < baseRef)
           methodBody(mref).map { b =>
             import Bytecode._
-          // TODO: rewriteClassRef
+          // TODO: make MethodBody.rewriteClassRef
+          // TODO: make MethodBody.rewriteFieldRef
             mref -> b.rewrite {
               // TODO: invokespecial, fields
               case iv @ invokevirtual(cref, mref) if cref < baseRef =>
                 invokevirtual(thisRef, mref)
-              case bc @ getfield(cref, fref) if cref < baseRef =>
-                getfield(thisRef, fref)
+              case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                getfield(thisRef, fieldMappings(cref -> fref))
             }
           }
         else
           None
-      }.toMap)
+        }.toMap,
+        fieldValues,
+        allFields.flatMap { case (cf, fa) =>
+          fieldMappings.get(cf).map { f =>
+            val jf = allJFields(cf)
+            f -> ((fa | FieldAttribute.Private) -> jf.get(value))
+          }
+        }.toMap
+      )
     }
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
@@ -68,35 +91,25 @@ object Instance {
     override lazy val allMethods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
 
+    override lazy val allFields: Map[(ClassRef, FieldRef), FieldAttribute] =
+      allJFields.map { case ((cr, fr), f) => (cr -> fr) -> FieldAttribute.from(f) }
+
     private[this] lazy val jClass = value.getClass
-
-    // TODO: default interface method
-    private[this] lazy val allJMethods: Map[(ClassRef, MethodRef), JMethod] =
-      supers(jClass)
-        .flatMap(_.getDeclaredMethods)
-        .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
-        .toMap
-
-    // TODO: default interface method
-    private[this] lazy val virtualJMethods: Map[MethodRef, JMethod] =
-      supers(jClass)
-        .reverse
-        .flatMap(_.getDeclaredMethods)
-        .filterNot { m => MethodAttribute.Private.enabled(m.getModifiers) }
-        .foldLeft(Map.empty[MethodRef, JMethod]) { case (map, m) =>
-          map + (MethodRef.from(m) -> m)
-        }
-
-    private[this] def supers(klass: Class[_]): Seq[Class[_]] =
-      klass +: Option(klass.getSuperclass).toSeq.flatMap(supers)
+    private[this] lazy val virtualJMethods = Util.virtualJMethods(jClass)
+    private[this] lazy val allJMethods = Util.allJMethods(jClass)
+    private[this] lazy val allJFields = Util.allJFields(jClass)
   }
 
+  // TODO: Do we really need ClassRef.SomeRef ?????
   case class Duplicate[A <: AnyRef](
     orig: Original[_ <: A],
     thisRef: ClassRef.SomeRef,
-    methodBodies: Map[MethodRef, MethodBody]
+    methodBodies: Map[MethodRef, MethodBody],
+    fieldValues: Map[(ClassRef, FieldRef), Any], // super class field values
+    privateFields: Map[FieldRef, (FieldAttribute, Any)]
   ) extends Instance[A] {
     require(orig != null)
+    require(privateFields.forall { case (f, (a, v)) => a.has(FieldAttribute.Private) })
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
       methodBodies.get(ref) orElse orig.methodBody(ref)
@@ -107,6 +120,10 @@ object Instance {
 
     override def virtualMethods = orig.virtualMethods
     override def allMethods = ???
+    override lazy val allFields =
+      Util.allJFields(thisRef.superClass).map { case (k, jf) =>
+        k -> FieldAttribute.from(jf)
+      } ++ privateFields.map { case (f, (a, v)) => (thisRef -> f) -> a }
 
     lazy val visibleSuperConstructors: Set[MethodDescriptor] =
       thisRef.superClass.getDeclaredConstructors()
@@ -139,7 +156,7 @@ object Instance {
       methodBodies.contains(m)
 
     def materialize(): Original[A] = {
-      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtConstructor, ByteArrayClassPath }
+      import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtField, CtConstructor, ByteArrayClassPath }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
 
       def ctClass(tr: TypeRef): CtClass = {
@@ -248,12 +265,16 @@ object Instance {
         }
       }
 
-      // fields.filter { f =>
-      //   fieldModified(f) || fieldDefinitionClass(f).getOrElse(classRef) < classRef
-      // } foreach { f =>
-      // }
+      privateFields.foreach { case (f, (a, v)) =>
+        val field = new CtField(ctClass(f.descriptor.typeRef), f.name, klass)
+        field.setModifiers(a.toModifiers)
+        klass.addField(field)
+      }
 
-      val ctor = new CtConstructor(Array.empty, klass)
+      val ctorArgs: Seq[(ClassRef, FieldRef, Any)] =
+        fieldValues.map { case ((c, f), v) => (c, f, v) }.toSeq ++ privateFields.map { case (f, (a, v)) => (classRef, f, v) }
+
+      val ctor = new CtConstructor(ctorArgs.map(_._2.descriptor.typeRef).map(ctClass).toArray, klass)
       ctor.setBody("super();")
       klass.addConstructor(ctor)
 
@@ -282,7 +303,7 @@ object Instance {
     }
 
     private[this] def makeUniqueName(cl: ClassLoader, klass: Class[_]): String = {
-      // TODO: :(
+      // TODO: make this REAL UNIQUE!!!!
       klass.getName + "_" + System.identityHashCode(this)
     }
 
@@ -314,6 +335,35 @@ object Instance {
       //     * `c` is native
       //     * `c` may have side-effect
     }
+  }
+
+  object Util {
+    // TODO: default interface method
+    def allJMethods(jClass: Class[_]): Map[(ClassRef, MethodRef), JMethod] =
+      supers(jClass)
+        .flatMap(_.getDeclaredMethods)
+        .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
+        .toMap
+
+    // TODO: default interface method
+    def virtualJMethods(jClass: Class[_]): Map[MethodRef, JMethod] =
+      supers(jClass)
+        .reverse
+        .flatMap(_.getDeclaredMethods)
+        .filterNot { m => MethodAttribute.Private.enabled(m.getModifiers) }
+        .foldLeft(Map.empty[MethodRef, JMethod]) { case (map, m) =>
+          map + (MethodRef.from(m) -> m)
+        }
+
+    def allJFields(jClass: Class[_]): Map[(ClassRef, FieldRef), JField] =
+      supers(jClass)
+        .flatMap(_.getDeclaredFields)
+        .map { f => f.setAccessible(true); f } // I believe this it no trigger any bad side-effects
+        .map { f => (ClassRef.of(f.getDeclaringClass) -> FieldRef.from(f)) -> f }
+        .toMap
+
+    def supers(klass: Class[_]): Seq[Class[_]] =
+      klass +: Option(klass.getSuperclass).toSeq.flatMap(supers)
   }
 
   // TODO: Weaken CL

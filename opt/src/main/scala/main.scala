@@ -7,7 +7,7 @@ import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 import scala.util.{Try, Success, Failure}
 
-import java.lang.reflect.{ Method => JMethod , Modifier}
+import java.lang.reflect.{ Method => JMethod , Field => JField, Modifier}
 
 import com.todesking.scalapp.syntax._
 
@@ -20,6 +20,8 @@ case class FieldDescriptor(typeRef: TypeRef.Public) {
   def str = typeRef.str
 }
 object FieldDescriptor {
+  def from(f: JField): FieldDescriptor =
+    FieldDescriptor(TypeRef.from(f.getType))
   def parse(src: String, cl: ClassLoader): FieldDescriptor =
     Parsers.parseFieldDescriptor(src, cl)
 }
@@ -85,6 +87,49 @@ object MethodAttribute {
   case object Strict extends Single(Modifier.STRICT)
 
   val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict)
+}
+// TODO extract AttributeBase
+sealed abstract class FieldAttribute {
+  def |(that: FieldAttribute): FieldAttribute
+  def enabled(flags: Int): Boolean
+  def has(fa: FieldAttribute): Boolean
+  def toModifiers: Int
+}
+object FieldAttribute {
+  def from(m: JField): FieldAttribute = {
+    items.filter(_.enabled(m.getModifiers)).reduce[FieldAttribute](_ | _)
+  }
+  case class Multi(attrs: Set[FieldAttribute.Single]) extends FieldAttribute {
+    override def |(that: FieldAttribute): FieldAttribute = that match {
+      case Multi(thats) => Multi(attrs ++ thats)
+      case that: Single => Multi(attrs + that)
+    }
+    override def enabled(flags: Int) = attrs.forall(_.enabled(flags))
+    override def has(fa: FieldAttribute): Boolean = fa match {
+      case FieldAttribute.Multi(others) => this.attrs == others
+      case a: FieldAttribute.Single => attrs.exists(_ == a)
+    }
+    def toModifiers = attrs.foldLeft[Int](0)(_ | _.flag)
+  }
+
+  sealed abstract class Single(val flag: Int) extends FieldAttribute {
+    override def |(that: FieldAttribute): FieldAttribute = that match {
+      case Multi(thats) => Multi(thats + this)
+      case that: Single => Multi(Set(this, that))
+    }
+    override def enabled(flags: Int) = (flags & flag) == flag
+    override def has(fa: FieldAttribute): Boolean = fa match {
+      case FieldAttribute.Multi(attrs) => attrs.forall(_ == this)
+      case s: FieldAttribute.Single => s == this
+    }
+    override def toModifiers = flag
+  }
+  case object Public extends Single(Modifier.PUBLIC)
+  case object Private extends Single(Modifier.PRIVATE)
+  case object Protected extends Single(Modifier.PROTECTED)
+  case object Final extends Single(Modifier.FINAL)
+
+  val items = Seq(Public, Private, Protected, Final)
 }
 
 case class Frame(locals: Map[Int, (DataLabel.Out, Data)], stack: List[(DataLabel.Out, Data)], effect: Effect) {
