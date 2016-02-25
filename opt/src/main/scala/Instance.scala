@@ -184,83 +184,21 @@ object Instance {
       val klass = classPool.makeClass(className, ctBase)
       val constPool = klass.getClassFile.getConstPool
       val ctObject = classPool.get("java.lang.Object")
-      def concrete(r: ClassRef): ClassRef.Concrete = r match {
-        case c: ClassRef.Concrete => c
-        case unk => throw new AssertionError(s"Not concrete class reference: ${unk}")
-      }
+      import Bytecode._
       virtualMethods.keys.filter { m => methodModified(m) } foreach { ref =>
-        methodBody(ref).fold(throw new AssertionError) { body =>
-          val out = new JABytecode(constPool, 0, 0)
-          val jumps = mutable.HashMap.empty[Int, (Int, JumpTarget)] // jump operand address -> (insn addr -> target)
-          val addrs = mutable.HashMap.empty[Bytecode.Label, Int]
-          import Bytecode._
-          body.rewrite {
-            case invokevirtual(thisRef, m) =>
-              invokevirtual(classRef, m)
+        methodBody(ref).map {
+          _.rewrite {
             case getfield(thisRef, f) =>
               getfield(classRef, f)
-          }.bytecode foreach { bc =>
-            addrs(bc.label) = out.getSize
-            bc match {
-              case nop() =>
-                out.add(0x00)
-              case aconst_null() =>
-                out.addConstZero(ctObject)
-              case vreturn() =>
-                out.addReturn(null)
-              case ireturn() =>
-                out.addReturn(CtClass.intType)
-              case lreturn() =>
-                out.addReturn(CtClass.longType)
-              case areturn() =>
-                out.add(0xB0)
-              case iload(n) =>
-                out.addIload(n)
-              case aload(n) =>
-                out.addAload(n)
-              case istore(n) =>
-                out.addIstore(n)
-              case astore(n) =>
-                out.addAstore(n)
-              case iconst(c) =>
-                out.addIconst(c)
-              case lconst(c) =>
-                out.addLconst(c)
-              case goto(target) =>
-                out.add(0xA7)
-                jumps(out.getSize) = (out.getSize - 1) -> target
-                out.add(0x00, 0x03)
-              case dup() =>
-                out.add(0x59)
-              case pop() =>
-                out.add(0x57)
-              case iadd() =>
-                out.add(0x60)
-              case invokevirtual(classRef, methodRef) =>
-                // TODO: check resolved class
-                out.addInvokevirtual(concrete(classRef).str, methodRef.name, methodRef.descriptor.str)
-              case if_icmple(target) =>
-                out.add(0xA4)
-                jumps(out.getSize) = (out.getSize - 1) -> target
-                out.add(0x00, 0x03)
-              case getfield(classRef, fieldRef) =>
-                println("addGetfield")
-                out.addGetfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
-            }
+            case invokevirtual(thisRef, m) =>
+              invokevirtual(classRef, m)
           }
-          jumps foreach {
-            case (dataIndex, (index, target)) =>
-              val label = body.jumpTargets(target)
-              val targetIndex = addrs(label)
-              out.write16bit(dataIndex, targetIndex - index)
-          }
-          out.setMaxLocals(body.maxLocals)
-          out.setMaxStack(body.maxStackDepth)
-          val ca = out.toCodeAttribute
+        }.fold(throw new AssertionError) { body =>
+          val codeAttribute = Javassist.compile(classPool, constPool, body)
           val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
-          minfo.setCodeAttribute(ca)
+          minfo.setCodeAttribute(codeAttribute)
           val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, minfo)
-          ca.setAttribute(sm)
+          codeAttribute.setAttribute(sm)
           klass.getClassFile.addMethod(minfo)
         }
       }
@@ -277,24 +215,6 @@ object Instance {
       val ctor = new CtConstructor(ctorArgs.map(_._2.descriptor.typeRef).map(ctClass).toArray, klass)
       ctor.setBody("super();")
       klass.addConstructor(ctor)
-
-      // TODO: Move to JavasssitUtil
-      // TODO: Make getItem to public
-      def printcp(cfile: javassist.bytecode.ClassFile): Unit = {
-        val cop = cfile.getConstPool
-        val gi = cop.getClass.getDeclaredMethods.find(_.getName == "getItem").get
-        gi.setAccessible(true)
-        (1 until cop.getSize) foreach { i =>
-          val a = gi.invoke(cop, i.asInstanceOf[java.lang.Integer])
-          val x = a.getClass.getMethods.find(_.getName == "print").get
-          x.setAccessible(true)
-          val pw = new java.io.PrintWriter(System.out)
-          println(s"${i} -> ${a.getClass}")
-          print("  ")
-          x.invoke(a, pw)
-          pw.flush()
-        }
-      }
 
       val value = klass.toClass(classLoader, null).newInstance().asInstanceOf[A]
       val bytes = klass.toBytecode

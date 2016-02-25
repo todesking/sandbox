@@ -185,6 +185,7 @@ class Spec extends FunSpec with Matchers {
       ri.value.foo() should be(2)
     }
     it("primitive field") {
+      pending
       import Test.PrimitiveField.A
       val foo = MethodRef.parse("foo()I", defaultCL)
 
@@ -196,6 +197,7 @@ class Spec extends FunSpec with Matchers {
       ri.value.foo should be(10)
     }
     it("field duplicate") {
+      pending
       import Test.FieldDuplicate._
       val i = Instance.of(new B)
       i.value.foo should be(1000)
