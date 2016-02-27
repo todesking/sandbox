@@ -54,6 +54,48 @@ object Util {
     }
 }
 
+case class Field(
+  classRef: ClassRef,
+  name: String,
+  descriptor: FieldDescriptor,
+  attribute: FieldAttribute,
+  value: FieldValue
+)
+object Field {
+  def from(f: JField, obj: AnyRef): Field =
+    Field(
+      ClassRef.of(f.getDeclaringClass),
+      f.getName,
+      FieldDescriptor.from(f),
+      FieldAttribute.from(f),
+      FieldValue.from(f, obj)
+    )
+}
+sealed abstract class FieldValue {
+  def value: Any
+}
+object FieldValue {
+  def from(f: JField, obj: AnyRef): FieldValue = {
+    val v = f.get(obj)
+    TypeRef.from(f.getType) match {
+      case _: TypeRef.Primitive => Primitive(v.asInstanceOf[AnyVal])
+      case _: TypeRef.Reference if v == null => Null
+      case _: TypeRef.Reference => Reference(Instance.of(v))
+    }
+  }
+
+  case class Mutable(initialValue: Immutable) extends FieldValue {
+    override def value = initialValue.value
+  }
+  sealed abstract class Immutable extends FieldValue
+  case class Primitive(override val value: AnyVal) extends Immutable
+  case class Reference(override val value: Instance[_ <: AnyRef]) extends Immutable
+  case object Null extends Immutable {
+    override val value = null
+  }
+}
+
+
 sealed abstract class MethodAttribute {
   def |(that: MethodAttribute): MethodAttribute
   def enabled(flags: Int): Boolean

@@ -20,7 +20,7 @@ sealed abstract class Instance[A <: AnyRef] {
   def virtualMethods: Map[MethodRef, MethodAttribute]
   def allMethods: Map[(ClassRef, MethodRef), MethodAttribute]
 
-  def allFields: Map[(ClassRef, FieldRef), FieldAttribute]
+  def allFields: Map[(ClassRef, FieldRef), Field]
 
   def hasVirtualMethod(ref: MethodRef): Boolean =
     virtualMethods.contains(ref)
@@ -47,10 +47,10 @@ object Instance {
           .filter { case (c, f) => c < baseRef }
           .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
           .toMap
-          val fieldValues =
-            allJFields
-              .filterNot { case (k, v) => fieldMappings.contains(k) }
-              .map { case (k, jf) => k -> jf.get(value) }
+      val fieldValues =
+        allJFields
+          .filterNot { case (k, v) => fieldMappings.contains(k) }
+          .map { case (k, jf) => k -> Field.from(jf, value) }
       Duplicate[B](this, thisRef, virtualJMethods.flatMap { case (mref, jm) =>
         if(ClassRef.of(jm.getDeclaringClass) < baseRef)
           methodBody(mref).map { b =>
@@ -69,10 +69,11 @@ object Instance {
           None
         }.toMap,
         fieldValues,
-        allFields.flatMap { case (cf, fa) =>
+        allFields.flatMap { case (cf, field) =>
           fieldMappings.get(cf).map { f =>
             val jf = allJFields(cf)
-            f -> ((fa | FieldAttribute.Private) -> jf.get(value))
+            val field = Field.from(jf, value)
+            f -> field.copy(attribute = field.attribute | FieldAttribute.Private)
           }
         }.toMap
       )
@@ -91,8 +92,8 @@ object Instance {
     override lazy val allMethods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
 
-    override lazy val allFields: Map[(ClassRef, FieldRef), FieldAttribute] =
-      allJFields.map { case ((cr, fr), f) => (cr -> fr) -> FieldAttribute.from(f) }
+    override lazy val allFields: Map[(ClassRef, FieldRef), Field] =
+      allJFields.map { case ((cr, fr), f) => (cr -> fr) -> Field.from(f, value) }
 
     private[this] lazy val jClass = value.getClass
     private[this] lazy val virtualJMethods = Util.virtualJMethods(jClass)
@@ -105,11 +106,11 @@ object Instance {
     orig: Original[_ <: A],
     thisRef: ClassRef.SomeRef,
     methodBodies: Map[MethodRef, MethodBody],
-    fieldValues: Map[(ClassRef, FieldRef), Any], // super class field values
-    privateFields: Map[FieldRef, (FieldAttribute, Any)]
+    fieldValues: Map[(ClassRef, FieldRef), Field], // super class field values
+    privateFields: Map[FieldRef, Field]
   ) extends Instance[A] {
     require(orig != null)
-    require(privateFields.forall { case (f, (a, v)) => a.has(FieldAttribute.Private) })
+    require(privateFields.forall { case (ref, field) => field.attribute.has(FieldAttribute.Private) })
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
       methodBodies.get(ref) orElse orig.methodBody(ref)
@@ -120,10 +121,10 @@ object Instance {
 
     override def virtualMethods = orig.virtualMethods
     override def allMethods = ???
-    override lazy val allFields =
+    override lazy val allFields: Map[(ClassRef, FieldRef), Field] =
       Util.allJFields(thisRef.superClass).map { case (k, jf) =>
-        k -> FieldAttribute.from(jf)
-      } ++ privateFields.map { case (f, (a, v)) => (thisRef -> f) -> a }
+        k -> Field.from(jf, orig.value)
+      } ++ privateFields.map { case (r, f) => (thisRef -> r) -> f }
 
     lazy val visibleSuperConstructors: Set[MethodDescriptor] =
       thisRef.superClass.getDeclaredConstructors()
@@ -168,6 +169,7 @@ object Instance {
 
       validate()
 
+      val superClass = thisRef.superClass
       val classLoader = thisRef.classLoader
       val className = makeUniqueName(classLoader, thisRef.superClass)
       val baseRef = ClassRef.of(thisRef.superClass)
@@ -203,16 +205,105 @@ object Instance {
         }
       }
 
-      privateFields.foreach { case (f, (a, v)) =>
-        val field = new CtField(ctClass(f.descriptor.typeRef), f.name, klass)
-        field.setModifiers(a.toModifiers)
-        klass.addField(field)
+      privateFields.foreach { case (ref, field) =>
+        val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)
+        ctf.setModifiers(field.attribute.toModifiers)
+        klass.addField(ctf)
       }
 
-      val ctorArgs: Seq[(ClassRef, FieldRef, Any)] =
-        fieldValues.map { case ((c, f), v) => (c, f, v) }.toSeq ++ privateFields.map { case (f, (a, v)) => (classRef, f, v) }
+      val allFieldValues: Seq[(ClassRef, FieldRef, FieldValue)] =
+        fieldValues.map { case ((c, r), f) => (c, r, f.value) }.toSeq ++ privateFields.map { case (r, f) => (classRef, r, f.value) }
 
-      val ctor = new CtConstructor(ctorArgs.map(_._2.descriptor.typeRef).map(ctClass).toArray, klass)
+      def parseAssigns(ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
+        Javassist.decompile(ctor).map { b =>
+        import Bytecode._
+        println(ctor)
+        b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) { case (assigns, bc) =>
+          println(bc.pretty)
+            bc match {
+              case bc: Shuffle => assigns
+              case bc: Jump => assigns
+              case bc: Return => assigns
+              case bc: Branch => return None
+              case bc: ConstX => assigns
+              case bc @ invokespecial(classRef, methodRef)
+              if b.dataValue(bc.receiver).typeRef == TypeRef.This && methodRef.name == "<init>" =>
+                val klass = classRef match { case cr @ ClassRef.Concrete(_, _) => cr.loadClass ; case unk => throw new AssertionError(s"${unk}")}
+                val ctor = klass.getDeclaredConstructors.find { c => MethodRef.from(c) == methodRef }.get
+                parseAssigns(ctor).map { as => assigns ++ as } getOrElse { return None }
+              case bc @ putfield(classRef, fieldRef) if b.dataValue(bc.target).typeRef == TypeRef.This =>
+                assigns + (
+                  b.dataValue(bc.value).value.map { v =>
+                    (classRef -> fieldRef) -> Right(v) // constant
+                  } getOrElse {
+                    def argNum(label: DataLabel.Out): Option[Int] = {
+                      val index = b.argLabels.indexOf(label)
+                      if(index == -1) None else Some(index)
+                    }
+                    val l = b.dataBinding(bc.value)
+                    argNum(l).map { i => (classRef -> fieldRef) -> Left(i) } getOrElse { return None }
+                  }
+                )
+              case bc: Procedure => return None
+            }
+          }
+        }
+      }
+
+      def mapZip[A, B, C](a: Map[A, B], b: Map[A, C]): (Map[A, (B, C)], Map[A, B], Map[A, C]) = {
+        val aOnly = a.keySet -- b.keySet
+        val bOnly = b.keySet -- a.keySet
+        val common = a.keySet -- aOnly
+        Tuple3(
+          common.map { k => k -> (a(k) -> b(k)) }.toMap,
+          a.filterKeys(aOnly),
+          b.filterKeys(bOnly)
+        )
+      }
+
+      val superCtors: Map[MethodDescriptor, Constructor[_]] = superClass
+        .getDeclaredConstructors
+        .filterNot { c => MethodAttribute.Private.enabled(c.getModifiers) }
+        .map { c => MethodDescriptor.from(c) -> c }
+        .toMap
+
+      val ctorAssigns: Map[MethodDescriptor, Map[(ClassRef, FieldRef), Either[Int, Any]]] =
+        superCtors
+          .mapValues(parseAssigns)
+          .collect { case (k, Some(v)) => (k -> v) }
+
+      println(superClass.getName)
+      ctorAssigns.foreach { case (k, v) =>
+        println(k.str)
+        println(v)
+      }
+
+
+      val (superCtor, assigns) =
+        ctorAssigns.find { case (ctor, assigns) =>
+          val (common, unkFieldValues, unkAssigns) = mapZip(fieldValues.mapValues(_.value.value), assigns)
+          if(unkFieldValues.nonEmpty) {
+            throw new RuntimeException(s"Unknown field values: ${unkFieldValues}")
+          }
+          if(unkAssigns.nonEmpty) {
+            throw new RuntimeException(s"Unknown assigns in constructor: ${unkAssigns}")
+          }
+          common.forall {
+            case ((classRef, fieldRef), (v1, Right(v2))) =>
+              fieldRef.descriptor.typeRef match {
+                case p: TypeRef.Primitive => v1 == v2
+                case r: TypeRef.Reference => v1.asInstanceOf[AnyRef] eq v2.asInstanceOf[AnyRef] // TODO: care String
+              }
+            case ((classRef, fieldRef), (v1, Left(n))) =>
+              true
+          }
+        }.getOrElse {
+          throw new RuntimeException(s"Usable constructor not found")
+        }
+
+      val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
+
+      val ctor = new CtConstructor(argAssigns.map(_._1._2.descriptor.typeRef).map(ctClass).toArray, klass)
       ctor.setBody("super();")
       klass.addConstructor(ctor)
 

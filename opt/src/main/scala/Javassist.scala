@@ -1,8 +1,8 @@
 package com.todesking.hoge
 
-import javassist.{ClassPool, CtClass}
+import javassist.{ClassPool, CtClass, CtBehavior}
 import javassist.bytecode.{CodeAttribute, ConstPool, Bytecode => JABytecode, MethodInfo}
-import java.lang.reflect.{Method => JMethod}
+import java.lang.reflect.{Method => JMethod, Constructor}
 
 import scala.collection.mutable
 
@@ -57,6 +57,9 @@ object Javassist {
         case invokevirtual(classRef, methodRef) =>
           // TODO: check resolved class
           out.addInvokevirtual(concrete(classRef).str, methodRef.name, methodRef.descriptor.str)
+        case invokespecial(classRef, methodRef) =>
+          // TODO: check resolved class
+          out.addInvokespecial(concrete(classRef).str, methodRef.name, methodRef.descriptor.str)
         case if_icmple(target) =>
           out.add(0xA4)
           jumps(out.getSize) = (out.getSize - 1) -> target
@@ -64,6 +67,8 @@ object Javassist {
         case getfield(classRef, fieldRef) =>
           println("addGetfield")
           out.addGetfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
+        case putfield(classRef, fieldRef) =>
+          out.addPutfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
       }
     }
     jumps foreach {
@@ -80,23 +85,39 @@ object Javassist {
   def decompile(m: JMethod): Option[MethodBody] = {
     require(m != null)
 
-    import javassist.{ ClassPool, ClassClassPath, ByteArrayClassPath, CtClass, CtMethod }
-
     val jClass = m.getDeclaringClass
-    val classPool = new ClassPool(null)
-    Instance.findMaterializedClasses(jClass.getClassLoader).foreach { case (name, bytes) =>
-      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
-    }
-    classPool.appendClassPath(new ClassClassPath(jClass))
+    val classPool = buildPool(jClass)
 
     val ctClass = classPool.get(jClass.getName)
     val mRef = MethodRef.from(m)
 
     val ctMethod = ctClass.getMethod(mRef.name, mRef.descriptor.str)
 
-    if (ctMethod.isEmpty) { // "abstract or native"(from CtClass doc)
-      None
-    } else if (ctMethod.getMethodInfo2.getCodeAttribute == null) { // ??? but it happens
+    decompile0(jClass, mRef, ctMethod)
+  }
+
+  def decompile(m: Constructor[_]): Option[MethodBody] = {
+    val classPool = buildPool(m.getDeclaringClass)
+    val jClass = m.getDeclaringClass
+    val ctClass = classPool.get(jClass.getName)
+    val mRef = MethodRef.from(m)
+    val ctMethod = ctClass.getConstructor(mRef.descriptor.str)
+    decompile0(jClass, mRef, ctMethod)
+  }
+
+  private[this] def buildPool(jClass: Class[_]): ClassPool = {
+    import javassist.{ ClassClassPath, ByteArrayClassPath }
+
+    val classPool = new ClassPool(null)
+    Instance.findMaterializedClasses(jClass.getClassLoader).foreach { case (name, bytes) =>
+      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+    }
+    classPool.appendClassPath(new ClassClassPath(jClass))
+    classPool
+  }
+
+  private[this] def decompile0(jClass: Class[_], mRef: MethodRef, ctMethod: CtBehavior): Option[MethodBody] = {
+    if (ctMethod.getMethodInfo2.getCodeAttribute == null) {
       None
     } else {
       val isStatic = (ctMethod.getMethodInfo2.getAccessFlags & 0x08) == 0x08
@@ -170,22 +191,27 @@ object Javassist {
           case 0x60 =>
             onInstruction(index, iadd())
           // TODO
+          case 0xB0 => // areturn
+            onInstruction(index, areturn())
+          case 0xB1 => // return
+            onInstruction(index, vreturn())
+          // TODO
           case 0xB4 => // getfield
             val constIndex = it.u16bitAt(index + 1)
-            println(s"getField " + constIndex)
             val className = cpool.getFieldrefClassName(constIndex)
             val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
             val fieldName = cpool.getFieldrefName(constIndex)
             val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex), jClass.getClassLoader)
             val fieldRef = FieldRef(fieldName, fieldDescriptor)
             onInstruction(index, getfield(classRef, fieldRef))
-          // TODO
-          case 0xB1 => // return
-            onInstruction(index, vreturn())
-          // TODO
-          case 0xB0 => // areturn
-            onInstruction(index, areturn())
-          // TODO
+          case 0xB5 => // putfield
+            val constIndex = it.u16bitAt(index + 1)
+            val className = cpool.getFieldrefClassName(constIndex)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val fieldName = cpool.getFieldrefName(constIndex)
+            val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex), jClass.getClassLoader)
+            val fieldRef = FieldRef(fieldName, fieldDescriptor)
+            onInstruction(index, putfield(classRef, fieldRef))
           case 0xB6 => // invokevirtual
             val constIndex = it.u16bitAt(index + 1)
             val className = cpool.getMethodrefClassName(constIndex)
@@ -198,8 +224,20 @@ object Javassist {
                 classRef,
                 MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
             )
+          case 0xB7 => // invokespecial
+            val constIndex = it.u16bitAt(index + 1)
+            val className = cpool.getMethodrefClassName(constIndex)
+            val methodName = cpool.getMethodrefName(constIndex)
+            val methodType = cpool.getMethodrefType(constIndex)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            onInstruction(
+              index,
+              invokespecial(
+                classRef,
+                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
+            )
           case unk =>
-            throw new UnsupportedOpcodeException(unk, m.getName)
+            throw new UnsupportedOpcodeException(unk, mRef.name)
         }
       }
       Some(MethodBody(

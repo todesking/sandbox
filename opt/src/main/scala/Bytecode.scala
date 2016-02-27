@@ -164,8 +164,9 @@ object Bytecode {
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
   }
-  case class invokevirtual(classRef: ClassRef, methodRef: MethodRef) extends Procedure {
-    override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
+  sealed abstract class InvokeInstance extends Procedure {
+    def classRef: ClassRef
+    def methodRef: MethodRef
     override def effect = Some(eff)
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")
@@ -183,6 +184,12 @@ object Bytecode {
       ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
     }
   }
+  case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
+    override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
+  }
+  case class invokespecial(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
+    override def pretty = s"invokespecial ${classRef.pretty}.${methodRef.str}"
+  }
   case class getfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
@@ -192,6 +199,17 @@ object Bytecode {
     override def inputs = Seq(target)
     override def output = Some(out)
     override def nextFrame(f: Frame) =
-      update(f).pop1(target).push(out -> Data(fieldRef.descriptor.typeRef, None)) // TODO
+      update(f).pop1(target).push(out -> Data(fieldRef.descriptor.typeRef, None)) // TODO: set actual value if final
+  }
+  case class putfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
+    val eff: Effect = Effect.fresh()
+    val target = DataLabel.in("objectref")
+    val value = DataLabel.in("value")
+    override def pretty = s"putfield ${fieldRef.str}"
+    override def effect = Some(eff)
+    override def inputs = Seq(target)
+    override def output = None
+    override def nextFrame(f: Frame) =
+      update(f).pop(fieldRef.descriptor.typeRef, value).pop1(target)
   }
 }

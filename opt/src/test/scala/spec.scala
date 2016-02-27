@@ -185,7 +185,6 @@ class Spec extends FunSpec with Matchers {
       ri.value.foo() should be(2)
     }
     it("primitive field") {
-      pending
       import Test.PrimitiveField.A
       val foo = MethodRef.parse("foo()I", defaultCL)
 

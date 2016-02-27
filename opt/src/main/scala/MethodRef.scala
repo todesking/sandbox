@@ -1,6 +1,6 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{ Method => JMethod }
+import java.lang.reflect.{ Method => JMethod, Constructor }
 
 // TODO: add ClassRef
 case class MethodRef(name: String, descriptor: MethodDescriptor) {
@@ -17,6 +17,9 @@ case class MethodRef(name: String, descriptor: MethodDescriptor) {
     }
 }
 object MethodRef {
+  def from(m: Constructor[_]): MethodRef =
+    MethodRef("<init>", MethodDescriptor(TypeRef.Void, m.getParameterTypes.map(TypeRef.from)))
+
   def from(m: JMethod): MethodRef =
     MethodRef(m.getName, MethodDescriptor.from(m))
   def parse(src: String, cl: ClassLoader): MethodRef =

@@ -43,13 +43,17 @@ case class MethodBody(
   lazy val dataflow: Dataflow =
     Dataflow.build(this)
 
+  def argLabels: Seq[DataLabel.Out] =
+    descriptor.args
+      .zipWithIndex
+      .map { case (t, i) => DataLabel.out(s"arg_${i}") }
+
   lazy val initialFrame: Frame = {
     val initialEffect = Effect.fresh()
     val thisData = if(isStatic) None else Some(DataLabel.out("this") -> Data(TypeRef.This, None))
-    val argData = descriptor.args.zipWithIndex.flatMap {
-      case (t, i) =>
+    val argData = descriptor.args.zipWithIndex.zip(argLabels).flatMap {
+      case ((t, i), label) =>
         val data = Data(t, None)
-        val label = DataLabel.out(s"arg_${i}")
         if(t.isDoubleWord)
           Seq((DataLabel.out(s"second word of ${label.name}") -> data.secondWordData), (label -> data))
         else

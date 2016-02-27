@@ -32,17 +32,31 @@ case class FrameUpdate(
   private[this] def makeSecondWord(d: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
     (DataLabel.out(s"second word of ${d._1.name}") -> d._2.secondWordData)
 
-  def pop1(in: DataLabel.In): FrameUpdate = {
-    requireSingleWord(newFrame.stackTop)
-    val (out, d) = newFrame.stackTop
-    pop0(in, out, d, newFrame.stack.drop(1))
-  }
+  def pop(t: TypeRef): FrameUpdate =
+    if(t.isDoubleWord) pop2()
+    else pop1()
 
   def pop1(): FrameUpdate = {
     requireSingleWord(newFrame.stackTop)
     copy(
       newFrame = newFrame.copy(stack = newFrame.stack.drop(1))
     )
+  }
+
+  def pop(t: TypeRef, in: DataLabel.In): FrameUpdate =
+    if(t.isDoubleWord) pop2(in)
+    else pop1(in)
+
+  def pop1(in: DataLabel.In): FrameUpdate = {
+    requireSingleWord(newFrame.stackTop)
+    val (out, d) = newFrame.stackTop
+    pop0(in, out, d, newFrame.stack.drop(1))
+  }
+
+  def pop2(): FrameUpdate = {
+    requireSecondWord(newFrame.stack(0))
+    requireDoubleWord(newFrame.stack(1))
+    copy(newFrame = newFrame.copy(stack = newFrame.stack.drop(2)))
   }
 
   def pop2(in: DataLabel.In): FrameUpdate = {
