@@ -5,6 +5,7 @@ import scala.language.higherKinds
 
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
+import scala.collection.JavaConversions._
 
 import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier, Constructor }
 
@@ -217,9 +218,7 @@ object Instance {
       def parseAssigns(ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
         Javassist.decompile(ctor).map { b =>
         import Bytecode._
-        println(ctor)
         b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) { case (assigns, bc) =>
-          println(bc.pretty)
             bc match {
               case bc: Shuffle => assigns
               case bc: Jump => assigns
@@ -230,6 +229,7 @@ object Instance {
               if b.dataValue(bc.receiver).typeRef == TypeRef.This && methodRef.name == "<init>" =>
                 val klass = classRef match { case cr @ ClassRef.Concrete(_, _) => cr.loadClass ; case unk => throw new AssertionError(s"${unk}")}
                 val ctor = klass.getDeclaredConstructors.find { c => MethodRef.from(c) == methodRef }.get
+                // TODO: FIXME: WRONG.
                 parseAssigns(ctor).map { as => assigns ++ as } getOrElse { return None }
               case bc @ putfield(classRef, fieldRef) if b.dataValue(bc.target).typeRef == TypeRef.This =>
                 assigns + (
@@ -272,13 +272,6 @@ object Instance {
           .mapValues(parseAssigns)
           .collect { case (k, Some(v)) => (k -> v) }
 
-      println(superClass.getName)
-      ctorAssigns.foreach { case (k, v) =>
-        println(k.str)
-        println(v)
-      }
-
-
       val (superCtor, assigns) =
         ctorAssigns.find { case (ctor, assigns) =>
           val (common, unkFieldValues, unkAssigns) = mapZip(fieldValues.mapValues(_.value.value), assigns)
@@ -301,13 +294,66 @@ object Instance {
           throw new RuntimeException(s"Usable constructor not found")
         }
 
-      val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
+      // TODO: set private field values via ctor
+      // TODO: set non-const field values via ctor
 
-      val ctor = new CtConstructor(argAssigns.map(_._1._2.descriptor.typeRef).map(ctClass).toArray, klass)
-      ctor.setBody("super();")
+      if(superCtor.args.size > 0)
+        ???
+
+      val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
+      val superCtorArgs: Seq[Int] = Seq.empty
+
+      val privateFieldSeq: Seq[(FieldRef, Field)] = privateFields.toSeq
+      val ctorArgs: Seq[(TypeRef.Public, Any)] = privateFieldSeq.map { case (r, f) => (f.descriptor.typeRef -> f.value.value) }
+
+      val fieldAssigns: Map[FieldRef, Int] =
+        privateFieldSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }.toMap
+
+      val ctorDescriptor = MethodDescriptor(TypeRef.Void, ctorArgs.map(_._1))
+
+      val ctor = new CtConstructor(ctorArgs.map(_._1).map(ctClass).toArray, klass)
       klass.addConstructor(ctor)
 
-      val value = klass.toClass(classLoader, null).newInstance().asInstanceOf[A]
+      val ctorMethodInfo =
+        klass
+          .getClassFile
+          .getMethods
+          .map(_.asInstanceOf[MethodInfo])
+          .find(_.getName == "<init>")
+          .get
+
+      val ctorCA = Javassist.compile(classPool, constPool, MethodBody(
+        isStatic = false,
+        descriptor = ctorDescriptor,
+        jumpTargets = Map.empty,
+        maxLocals = 100,
+        maxStackDepth = 100,
+        bytecode =
+          Seq(
+            aload(0),
+            // TODO: call with args
+            invokespecial(
+              ClassRef.of(superClass),
+              MethodRef("<init>", MethodDescriptor(TypeRef.Void, Seq.empty)))
+          ) ++ fieldAssigns.flatMap { case (fr, i) =>
+            import Bytecode._
+            Seq(
+              aload(0),
+              load(fr.descriptor.typeRef, i),
+              putfield(classRef, fr)
+            )
+          }.toSeq ++ Seq(vreturn())
+      ))
+
+      ctorMethodInfo.setCodeAttribute(ctorCA)
+      val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, ctorMethodInfo)
+      ctorCA.setAttribute(sm)
+
+      val concreteClass = klass.toClass(classLoader, null)
+      val value = concreteClass
+        .getDeclaredConstructor(ctorArgs.map(_._1.javaClass).toArray: _*)
+        .newInstance(ctorArgs.map(_._2.asInstanceOf[Object]).toArray: _*)
+        .asInstanceOf[A]
       val bytes = klass.toBytecode
       Instance.registerMaterialized(classLoader, klass.getName, bytes)
       Instance.of(value)

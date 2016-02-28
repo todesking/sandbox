@@ -65,7 +65,6 @@ object Javassist {
           jumps(out.getSize) = (out.getSize - 1) -> target
           out.add(0x00, 0x03)
         case getfield(classRef, fieldRef) =>
-          println("addGetfield")
           out.addGetfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
         case putfield(classRef, fieldRef) =>
           out.addPutfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)

@@ -192,11 +192,9 @@ class Spec extends FunSpec with Matchers {
       i.value.foo should be(10)
 
       val ri = i.duplicate.materialize()
-      println(ri.methodBody(foo).get.pretty)
       ri.value.foo should be(10)
     }
     it("field duplicate") {
-      pending
       import Test.FieldDuplicate._
       val i = Instance.of(new B)
       i.value.foo should be(1000)

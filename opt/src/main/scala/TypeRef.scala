@@ -2,6 +2,7 @@ package com.todesking.hoge
 
 sealed abstract class TypeRef {
   def isDoubleWord: Boolean = false
+  def wordSize: Int = if(isDoubleWord) 2 else 1
   def pretty: String = toString
 }
 object TypeRef {
@@ -65,8 +66,8 @@ object TypeRef {
   object Boolean extends Primitive("bool", "Z", java.lang.Boolean.TYPE)
   object Char extends Primitive("char", "C", java.lang.Character.TYPE)
   object Short extends Primitive("short", "S", java.lang.Short.TYPE)
-  object Int extends Primitive("int", "I", java.lang.Byte.TYPE)
-  object Float extends Primitive("float", "F", java.lang.Integer.TYPE)
+  object Int extends Primitive("int", "I", java.lang.Integer.TYPE)
+  object Float extends Primitive("float", "F", java.lang.Float.TYPE)
   object Long extends Primitive("long", "J", java.lang.Long.TYPE) with DoubleWord
   object Double extends Primitive("double", "D", java.lang.Double.TYPE) with DoubleWord
   object Void extends Primitive("void", "V", java.lang.Void.TYPE)
