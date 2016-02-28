@@ -150,6 +150,13 @@ object Bytecode {
   case class goto(override val target: JumpTarget) extends Jump {
   }
   case class if_icmple(override val target: JumpTarget) extends if_icmpXX
+  case class ifnonnull(override val target: JumpTarget) extends Branch {
+    val value: DataLabel.In = DataLabel.in("value")
+    override def pretty = "ifnonnull"
+    override def inputs = Seq(value)
+    override def output = None
+    override def nextFrame(f: Frame) = update(f).pop1(value)
+  }
   case class iadd() extends Procedure {
     val value1 = DataLabel.in("value1")
     val value2 = DataLabel.in("value2")
@@ -211,5 +218,13 @@ object Bytecode {
     override def output = None
     override def nextFrame(f: Frame) =
       update(f).pop(fieldRef.descriptor.typeRef, value).pop1(target)
+  }
+  case class athrow() extends Control {
+    val objectref = DataLabel.in("objectref")
+    override def pretty = s"athrow"
+    override def inputs = Seq(objectref)
+    override def output = None
+    override def nextFrame(f: Frame) =
+      update(f).athrow(objectref)
   }
 }

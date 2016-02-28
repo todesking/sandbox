@@ -4,6 +4,7 @@ import scala.language.existentials
 
 sealed abstract class ClassRef {
   def pretty: String
+  def str: String
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
 }
@@ -27,7 +28,7 @@ object ClassRef {
   }
   case class Concrete(name: String, classLoader: java.lang.ClassLoader) extends ClassRef {
     override def pretty = s"${name}@${System.identityHashCode(classLoader)}"
-    def str = name
+    override def str = binaryString
     def binaryName = binaryString
     def binaryString: String = name.replaceAll("\\.", "/")
     // TODO: Is this really correct?
@@ -41,6 +42,7 @@ object ClassRef {
   // TODO: interface
   case class SomeRef(superClass: Class[_], classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"_ <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
+    override def str = pretty
   }
 
   def of(klass: Class[_]): Concrete =

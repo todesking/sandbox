@@ -56,16 +56,18 @@ object Instance {
         if(ClassRef.of(jm.getDeclaringClass) < baseRef)
           methodBody(mref).map { b =>
             import Bytecode._
-          // TODO: make MethodBody.rewriteClassRef
-          // TODO: make MethodBody.rewriteFieldRef
-            mref -> b.rewrite {
-              // TODO: invokespecial, fields
-              case iv @ invokevirtual(cref, mref) if cref < baseRef =>
-                invokevirtual(thisRef, mref)
-              case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
-                getfield(thisRef, fieldMappings(cref -> fref))
-            }
-          }
+            // TODO: make MethodBody.rewriteClassRef
+            // TODO: make MethodBody.rewriteFieldRef
+            Some(
+              mref -> b.rewrite {
+                // TODO: invokespecial, fields
+                case iv @ invokevirtual(cref, mref) if cref < baseRef =>
+                  invokevirtual(thisRef, mref)
+                case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                  getfield(thisRef, fieldMappings(cref -> fref))
+              }
+            )
+          } getOrElse { throw new RuntimeException(s"Method ${jm.getDeclaringClass.getName}.${mref.str} is abstract or native") }
         else
           None
         }.toMap,
@@ -161,12 +163,7 @@ object Instance {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtField, CtConstructor, ByteArrayClassPath }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
 
-      def ctClass(tr: TypeRef): CtClass = {
-        tr match {
-          case TypeRef.Int => CtClass.intType
-          case unk => throw new NotImplementedError(s"${unk}")
-        }
-      }
+      import Javassist.ctClass
 
       validate()
 
@@ -217,13 +214,24 @@ object Instance {
 
       def parseAssigns(ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
         Javassist.decompile(ctor).map { b =>
-        import Bytecode._
-        b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) { case (assigns, bc) =>
+          def isThrowNull(l: Bytecode.Label): Boolean = {
+            import Bytecode._
+            b.labelToBytecode(l) match {
+              case bc @ aconst_null() =>
+                isThrowNull(b.fallThroughs(bc.label))
+              case athrow() =>
+                true
+              case other =>
+                false
+            }
+          }
+          import Bytecode._
+          // TODO: MethodBody.basicBlocks
+          b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) { case (assigns, bc) =>
             bc match {
               case bc: Shuffle => assigns
               case bc: Jump => assigns
               case bc: Return => assigns
-              case bc: Branch => return None
               case bc: ConstX => assigns
               case bc @ invokespecial(classRef, methodRef)
               if b.dataValue(bc.receiver).typeRef == TypeRef.This && methodRef.name == "<init>" =>
@@ -244,6 +252,14 @@ object Instance {
                     argNum(l).map { i => (classRef -> fieldRef) -> Left(i) } getOrElse { return None }
                   }
                 )
+              case athrow() => return None
+              case bc @ ifnonnull(target) if isThrowNull(b.fallThroughs(bc.label)) =>
+                // TODO: NIMPL
+                // TODO: exception handler
+                // TODO: mark the value as non-nullable
+                // assigns
+                return None
+              case bc: Branch => return None
               case bc: Procedure => return None
             }
           }

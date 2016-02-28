@@ -21,6 +21,10 @@ case class MethodBody(
   require(bytecode.nonEmpty)
 
   // TODO: make maxLocals/maxStackDepth auto calc
+  // TODO: Exception handler
+
+  def labelToBytecode(l: Bytecode.Label): Bytecode =
+    bytecode.find(_.label == l).getOrElse { throw new IllegalArgumentException(s"Bytecode ${l} not found") }
 
   def rewrite(f: PartialFunction[Bytecode, Bytecode]): MethodBody = {
     val lifted = f.lift
@@ -215,6 +219,8 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
           case _: Bytecode.Procedure | _: Bytecode.Shuffle =>
             tasks += (bseq(1).label -> u.newFrame)
             fallThroughs(bc.label) = bseq(1).label
+          case Bytecode.athrow() =>
+            // TODO: Exception handler
         }
       }
     }

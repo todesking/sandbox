@@ -135,4 +135,12 @@ case class FrameUpdate(
       dataValues + (retval -> d)
     )
   }
+
+  def athrow(objectref: DataLabel.In): FrameUpdate =
+    FrameUpdate(
+      newFrame.copy(stack = newFrame.stack.take(1)),
+      binding + (objectref -> newFrame.stack.head._1),
+      effectDependencies,
+      dataValues
+    )
 }

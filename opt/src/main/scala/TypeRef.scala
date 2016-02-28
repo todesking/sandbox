@@ -73,7 +73,7 @@ object TypeRef {
   object Void extends Primitive("void", "V", java.lang.Void.TYPE)
 
   case class Reference(classRef: ClassRef) extends Public {
-    override def str = s"L${classRef.pretty};"
+    override def str = s"L${classRef.str};"
     override def pretty = classRef.pretty
     // TODO: It smells..
     override def javaClass = classRef match {

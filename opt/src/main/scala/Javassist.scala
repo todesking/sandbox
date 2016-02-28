@@ -7,6 +7,16 @@ import java.lang.reflect.{Method => JMethod, Constructor}
 import scala.collection.mutable
 
 object Javassist {
+  def ctClass(tr: TypeRef): CtClass = {
+    tr match {
+      case TypeRef.Int => CtClass.intType
+      case TypeRef.Reference(ClassRef.Concrete(name, cl)) =>
+        val pool = buildPool(cl)
+        pool.get(name)
+      case unk => throw new NotImplementedError(s"${unk}")
+    }
+  }
+
   def compile(classPool: ClassPool, constPool: ConstPool, body: MethodBody): CodeAttribute = {
     val ctObject = classPool.get("java.lang.Object")
     val out = new JABytecode(constPool, 0, 0)
@@ -64,6 +74,12 @@ object Javassist {
           out.add(0xA4)
           jumps(out.getSize) = (out.getSize - 1) -> target
           out.add(0x00, 0x03)
+        case ifnonnull(target) =>
+          out.add(0xC7)
+          jumps(out.getSize) = (out.getSize - 1) -> target
+          out.add(0x00, 0x03)
+        case athrow() =>
+          out.add(0xBF)
         case getfield(classRef, fieldRef) =>
           out.addGetfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
         case putfield(classRef, fieldRef) =>
@@ -112,6 +128,17 @@ object Javassist {
       classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
     }
     classPool.appendClassPath(new ClassClassPath(jClass))
+    classPool
+  }
+
+  private[this] def buildPool(cl: ClassLoader): ClassPool = {
+    import javassist.{ LoaderClassPath, ByteArrayClassPath }
+
+    val classPool = new ClassPool(null)
+    Instance.findMaterializedClasses(cl).foreach { case (name, bytes) =>
+      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+    }
+    classPool.appendClassPath(new LoaderClassPath(cl))
     classPool
   }
 
@@ -235,6 +262,10 @@ object Javassist {
                 classRef,
                 MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
             )
+          case 0xBF => // athrow
+            onInstruction(index, athrow())
+          case 0xC7 => // ifnonnull
+            onInstruction(index, ifnonnull(addr2jt(index + it.s16bitAt(index + 1))))
           case unk =>
             throw new UnsupportedOpcodeException(unk, mRef.name)
         }
