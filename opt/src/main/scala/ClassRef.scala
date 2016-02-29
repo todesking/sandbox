@@ -7,6 +7,7 @@ sealed abstract class ClassRef {
   def str: String
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
+  def classLoader: ClassLoader
 }
 object ClassRef {
   // Some(n): Determinable
@@ -26,7 +27,7 @@ object ClassRef {
     case (l: SomeRef, r: SomeRef) =>
       None
   }
-  case class Concrete(name: String, classLoader: java.lang.ClassLoader) extends ClassRef {
+  case class Concrete(name: String, override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"${name}@${System.identityHashCode(classLoader)}"
     override def str = binaryString
     def binaryName = binaryString
@@ -40,7 +41,7 @@ object ClassRef {
   }
 
   // TODO: interface
-  case class SomeRef(superClass: Class[_], classLoader: ClassLoader) extends ClassRef {
+  case class SomeRef(superClass: Class[_], override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"_ <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
     override def str = pretty
   }

@@ -16,7 +16,7 @@ sealed abstract class Instance[A <: AnyRef] {
   def methodBody(ref: MethodRef): Option[MethodBody]
   def methodBody(classRef: ClassRef, methodRef: MethodRef): Option[MethodBody]
 
-  def classLoader: ClassLoader
+  def thisRef: ClassRef
 
   def methods: Map[(ClassRef, MethodRef), MethodAttribute]
 
@@ -25,7 +25,7 @@ sealed abstract class Instance[A <: AnyRef] {
   def hasVirtualMethod(ref: MethodRef): Boolean =
     methods.exists { case ((c, m), a) => m == ref && a.isVirtual }
   def hasVirtualMethod(ref: String): Boolean =
-    hasVirtualMethod(MethodRef.parse(ref, classLoader))
+    hasVirtualMethod(MethodRef.parse(ref, thisRef.classLoader))
 
   def materialized: Instance.Original[A]
 }
@@ -36,6 +36,8 @@ object Instance {
     require(value != null)
 
     override def materialized = this
+
+    override val thisRef = ClassRef.of(value.getClass)
 
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
@@ -94,8 +96,6 @@ object Instance {
 
     override def methodBody(cr: ClassRef, mr: MethodRef) = MethodBody.parse(allJMethods(cr -> mr))
 
-    override def classLoader = value.getClass.getClassLoader
-
     override lazy val methods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
 
@@ -123,8 +123,6 @@ object Instance {
       thisMethods.get(ref) orElse orig.methodBody(ref)
 
     override def methodBody(cr: ClassRef, mr: MethodRef) = ???
-
-    override def classLoader = orig.classLoader
 
     override def methods = ???
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
