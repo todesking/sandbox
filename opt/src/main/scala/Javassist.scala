@@ -23,10 +23,6 @@ object Javassist {
     val jumps = mutable.HashMap.empty[Int, (Int, JumpTarget)] // jump operand address -> (insn addr -> target)
     val addrs = mutable.HashMap.empty[Bytecode.Label, Int]
     import Bytecode._
-    def concrete(r: ClassRef): ClassRef.Concrete = r match {
-      case c: ClassRef.Concrete => c
-      case unk => throw new AssertionError(s"Not concrete class reference: ${unk}")
-    }
     body.bytecode foreach { bc =>
       addrs(bc.label) = out.getSize
       bc match {
@@ -66,10 +62,10 @@ object Javassist {
           out.add(0x60)
         case invokevirtual(classRef, methodRef) =>
           // TODO: check resolved class
-          out.addInvokevirtual(concrete(classRef).str, methodRef.name, methodRef.descriptor.str)
+          out.addInvokevirtual(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
         case invokespecial(classRef, methodRef) =>
           // TODO: check resolved class
-          out.addInvokespecial(concrete(classRef).str, methodRef.name, methodRef.descriptor.str)
+          out.addInvokespecial(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
         case if_icmple(target) =>
           out.add(0xA4)
           jumps(out.getSize) = (out.getSize - 1) -> target
@@ -81,9 +77,9 @@ object Javassist {
         case athrow() =>
           out.add(0xBF)
         case getfield(classRef, fieldRef) =>
-          out.addGetfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
+          out.addGetfield(classRef.binaryName, fieldRef.name, fieldRef.descriptor.str)
         case putfield(classRef, fieldRef) =>
-          out.addPutfield(concrete(classRef).str, fieldRef.name, fieldRef.descriptor.str)
+          out.addPutfield(classRef.binaryName, fieldRef.name, fieldRef.descriptor.str)
       }
     }
     jumps foreach {

@@ -37,7 +37,7 @@ object Instance {
 
     override def materialized = this
 
-    override val thisRef = ClassRef.of(value.getClass)
+    override val thisRef = ClassRef.of(jClass)
 
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
@@ -46,7 +46,8 @@ object Instance {
     def duplicate[B >: A <: AnyRef: ClassTag](): Duplicate[B] = {
       val baseClass = implicitly[ClassTag[B]].runtimeClass.asInstanceOf[Class[B]]
       val baseRef = ClassRef.of(baseClass)
-      val thisRef = baseRef.someSubclassRef(baseRef.classLoader)
+      val className = Util.makeUniqueName(baseRef.classLoader, jClass)
+      val newThisRef = baseRef.extend(className, baseRef.classLoader)
       val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
         fields
           .keys
@@ -59,7 +60,7 @@ object Instance {
           .map { case (k, jf) => k -> Field.from(jf, value) }
       Duplicate[B](
         this,
-        thisRef,
+        newThisRef,
         methods.filterNot { case ((c, m), a) => c < baseRef },
         virtualJMethods.flatMap { case (mref, jm) =>
         if(ClassRef.of(jm.getDeclaringClass) < baseRef)
@@ -71,9 +72,9 @@ object Instance {
               mref -> b.rewrite {
                 // TODO: invokespecial, fields
                 case iv @ invokevirtual(cref, mref) if cref < baseRef =>
-                  invokevirtual(thisRef, mref)
+                  invokevirtual(newThisRef, mref)
                 case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
-                  getfield(thisRef, fieldMappings(cref -> fref))
+                  getfield(newThisRef, fieldMappings(cref -> fref))
               }
             )
           } getOrElse { throw new RuntimeException(s"Method ${jm.getDeclaringClass.getName}.${mref.str} is abstract or native") }
@@ -108,10 +109,9 @@ object Instance {
     private[this] lazy val allJFields = Util.allJFields(jClass)
   }
 
-  // TODO: Do we really need ClassRef.SomeRef ?????
   case class Duplicate[A <: AnyRef](
     orig: Original[_ <: A],
-    thisRef: ClassRef.SomeRef,
+    override val thisRef: ClassRef.Extend,
     superMethods: Map[(ClassRef, MethodRef), MethodAttribute],
     thisMethods: Map[MethodRef, MethodBody],
     superFields: Map[(ClassRef, FieldRef), Field], // super class field values
@@ -165,9 +165,7 @@ object Instance {
 
       val superClass = thisRef.superClass
       val classLoader = thisRef.classLoader
-      val className = makeUniqueName(classLoader, thisRef.superClass)
       val baseRef = ClassRef.of(thisRef.superClass)
-      val classRef = ClassRef.Concrete(className, classLoader)
 
       val classPool = new ClassPool(null)
       Instance.findMaterializedClasses(classLoader).foreach { case (name, bytes) =>
@@ -177,19 +175,12 @@ object Instance {
 
       val ctBase = classPool.get(thisRef.superClass.getName)
 
-      val klass = classPool.makeClass(className, ctBase)
+      val klass = classPool.makeClass(thisRef.name, ctBase)
       val constPool = klass.getClassFile.getConstPool
       val ctObject = classPool.get("java.lang.Object")
       import Bytecode._
       thisMethods
-        .map { case (ref, body) =>
-          ref -> body.rewrite {
-            case getfield(thisRef, f) =>
-              getfield(classRef, f)
-            case invokevirtual(thisRef, m) =>
-              invokevirtual(classRef, m)
-          }
-        }.foreach { case (ref, body) =>
+        .foreach { case (ref, body) =>
           val codeAttribute = Javassist.compile(classPool, constPool, body)
           val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
           minfo.setCodeAttribute(codeAttribute)
@@ -348,7 +339,7 @@ object Instance {
             Seq(
               aload(0),
               load(fr.descriptor.typeRef, i),
-              putfield(classRef, fr)
+              putfield(thisRef, fr)
             )
           }.toSeq ++ Seq(vreturn())
       ))
@@ -365,11 +356,6 @@ object Instance {
       val bytes = klass.toBytecode
       Instance.registerMaterialized(classLoader, klass.getName, bytes)
       Instance.of(value)
-    }
-
-    private[this] def makeUniqueName(cl: ClassLoader, klass: Class[_]): String = {
-      // TODO: make this REAL UNIQUE!!!!
-      klass.getName + "_" + System.identityHashCode(this)
     }
 
     private[this] def validate(): Unit = {
@@ -429,6 +415,11 @@ object Instance {
 
     def supers(klass: Class[_]): Seq[Class[_]] =
       klass +: Option(klass.getSuperclass).toSeq.flatMap(supers)
+
+    def makeUniqueName(cl: ClassLoader, klass: Class[_]): String = {
+      // TODO: make this REAL UNIQUE!!!!
+      klass.getName + "_" + System.identityHashCode(this)
+    }
   }
 
   // TODO: Weaken CL

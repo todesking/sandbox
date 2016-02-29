@@ -4,10 +4,11 @@ import scala.language.existentials
 
 sealed abstract class ClassRef {
   def pretty: String
-  def str: String
+  def name: String
+  def classLoader: ClassLoader
+  def binaryName: String = name.replaceAll("\\.", "/")
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
-  def classLoader: ClassLoader
 }
 object ClassRef {
   // Some(n): Determinable
@@ -18,47 +19,30 @@ object ClassRef {
       else if(l.loadClass.isAssignableFrom(r.loadClass)) Some(1)
       else if(r.loadClass.isAssignableFrom(l.loadClass)) Some(-1)
       else None
-    case (l: Concrete, r: SomeRef) =>
+    case (l: Concrete, r: Extend) =>
       if(l.loadClass.isAssignableFrom(r.superClass)) Some(1)
       else None
-    case (l: SomeRef, r: Concrete) =>
+    case (l: Extend, r: Concrete) =>
       if(r.loadClass.isAssignableFrom(l.superClass)) Some(-1)
       else None
-    case (l: SomeRef, r: SomeRef) =>
+    case (l: Extend, r: Extend) =>
       None
   }
-  case class Concrete(name: String, override val classLoader: ClassLoader) extends ClassRef {
+  case class Concrete(override val name: String, override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"${name}@${System.identityHashCode(classLoader)}"
-    override def str = binaryString
-    def binaryName = binaryString
-    def binaryString: String = name.replaceAll("\\.", "/")
     // TODO: Is this really correct?
     lazy val loadClass: Class[_] =
       (if(classLoader == null) ClassLoader.getSystemClassLoader else classLoader).loadClass(name)
 
-    def someSubclassRef(cl: ClassLoader): SomeRef =
-      SomeRef(loadClass, cl)
+    def extend(name: String, cl: ClassLoader): Extend =
+      Extend(loadClass, name, cl)
   }
 
   // TODO: interface
-  case class SomeRef(superClass: Class[_], override val classLoader: ClassLoader) extends ClassRef {
-    override def pretty = s"_ <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
-    override def str = pretty
+  case class Extend(superClass: Class[_], override val name: String, override val classLoader: ClassLoader) extends ClassRef {
+    override def pretty = s"${name} <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
   }
 
   def of(klass: Class[_]): Concrete =
     ClassRef.Concrete(klass.getName, klass.getClassLoader)
-
-  def some(superClass: Class[_], cl: ClassLoader): SomeRef =
-    ClassRef.SomeRef(superClass, cl)
-
-  // TODO: remove
-  def newAnonymous(parentCL: ClassLoader, namePrefix: String = "anonymous_"): ClassRef =
-    ClassRef.Concrete(newAnonymousClassName(namePrefix), new java.net.URLClassLoader(Array.empty, parentCL))
-
-  private[this] var anonId: Int = 0
-  private[this] def newAnonymousClassName(namePrefix: String): String = synchronized {
-    anonId += 1
-    namePrefix + anonId.toString
-  }
 }
