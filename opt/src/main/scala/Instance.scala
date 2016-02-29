@@ -18,13 +18,12 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def classLoader: ClassLoader
 
-  def virtualMethods: Map[MethodRef, MethodAttribute]
-  def allMethods: Map[(ClassRef, MethodRef), MethodAttribute]
+  def methods: Map[(ClassRef, MethodRef), MethodAttribute]
 
   def fields: Map[(ClassRef, FieldRef), Field]
 
   def hasVirtualMethod(ref: MethodRef): Boolean =
-    virtualMethods.contains(ref)
+    methods.exists { case ((c, m), a) => m == ref && a.isVirtual }
   def hasVirtualMethod(ref: String): Boolean =
     hasVirtualMethod(MethodRef.parse(ref, classLoader))
 
@@ -56,7 +55,11 @@ object Instance {
         allJFields
           .filterNot { case (k, v) => fieldMappings.contains(k) }
           .map { case (k, jf) => k -> Field.from(jf, value) }
-      Duplicate[B](this, thisRef, virtualJMethods.flatMap { case (mref, jm) =>
+      Duplicate[B](
+        this,
+        thisRef,
+        methods.filterNot { case ((c, m), a) => c < baseRef },
+        virtualJMethods.flatMap { case (mref, jm) =>
         if(ClassRef.of(jm.getDeclaringClass) < baseRef)
           methodBody(mref).map { b =>
             import Bytecode._
@@ -93,10 +96,7 @@ object Instance {
 
     override def classLoader = value.getClass.getClassLoader
 
-    override lazy val virtualMethods: Map[MethodRef, MethodAttribute] =
-      virtualJMethods.map { case (r, m) => r -> MethodAttribute.from(m) }
-
-    override lazy val allMethods: Map[(ClassRef, MethodRef), MethodAttribute] =
+    override lazy val methods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
 
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
@@ -112,21 +112,21 @@ object Instance {
   case class Duplicate[A <: AnyRef](
     orig: Original[_ <: A],
     thisRef: ClassRef.SomeRef,
-    methodBodies: Map[MethodRef, MethodBody],
+    superMethods: Map[(ClassRef, MethodRef), MethodAttribute],
+    thisMethods: Map[MethodRef, MethodBody],
     superFields: Map[(ClassRef, FieldRef), Field], // super class field values
     thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
     require(orig != null)
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
-      methodBodies.get(ref) orElse orig.methodBody(ref)
+      thisMethods.get(ref) orElse orig.methodBody(ref)
 
     override def methodBody(cr: ClassRef, mr: MethodRef) = ???
 
     override def classLoader = orig.classLoader
 
-    override def virtualMethods = orig.virtualMethods
-    override def allMethods = ???
+    override def methods = ???
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
 
@@ -157,9 +157,6 @@ object Instance {
       }.toMap
     }
 
-    def methodModified(m: MethodRef): Boolean =
-      methodBodies.contains(m)
-
     override lazy val materialized: Original[A] = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtField, CtConstructor, ByteArrayClassPath }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
@@ -186,15 +183,15 @@ object Instance {
       val constPool = klass.getClassFile.getConstPool
       val ctObject = classPool.get("java.lang.Object")
       import Bytecode._
-      virtualMethods.keys.filter { m => methodModified(m) } foreach { ref =>
-        methodBody(ref).map {
-          _.rewrite {
+      thisMethods
+        .map { case (ref, body) =>
+          ref -> body.rewrite {
             case getfield(thisRef, f) =>
               getfield(classRef, f)
             case invokevirtual(thisRef, m) =>
               invokevirtual(classRef, m)
           }
-        }.fold(throw new AssertionError) { body =>
+        }.foreach { case (ref, body) =>
           val codeAttribute = Javassist.compile(classPool, constPool, body)
           val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
           minfo.setCodeAttribute(codeAttribute)
@@ -202,7 +199,6 @@ object Instance {
           codeAttribute.setAttribute(sm)
           klass.getClassFile.addMethod(minfo)
         }
-      }
 
       thisFields.foreach { case (ref, field) =>
         val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)

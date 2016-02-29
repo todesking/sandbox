@@ -97,25 +97,33 @@ object FieldValue {
 sealed abstract class MethodAttribute {
   def |(that: MethodAttribute): MethodAttribute
   def enabled(flags: Int): Boolean
+  def enabled(flags: MethodAttribute): Boolean
+  def isVirtual: Boolean =
+    !MethodAttribute.Private.enabled(this) && !MethodAttribute.Static.enabled(this)
 }
 object MethodAttribute {
   def from(m: JMethod): MethodAttribute = {
     items.filter(_.enabled(m.getModifiers)).reduce[MethodAttribute](_ | _)
   }
-  case class Multi(attrs: Set[MethodAttribute]) extends MethodAttribute {
+  case class Multi(attrs: Set[MethodAttribute.Single]) extends MethodAttribute {
     override def |(that: MethodAttribute): MethodAttribute = that match {
       case Multi(thats) => Multi(attrs ++ thats)
-      case that => Multi(attrs + that)
+      case that: Single => Multi(attrs + that)
     }
     override def enabled(flags: Int) = attrs.forall(_.enabled(flags))
+    override def enabled(flags: MethodAttribute) = attrs.forall(_.enabled(flags))
   }
 
   sealed abstract class Single(flag: Int) extends MethodAttribute {
     override def |(that: MethodAttribute): MethodAttribute = that match {
       case Multi(thats) => Multi(thats + this)
-      case that => Multi(Set(this, that))
+      case that: Single => Multi(Set(this, that))
     }
     override def enabled(flags: Int) = (flags & flag) == flag
+    override def enabled(flags: MethodAttribute) = flags match {
+      case Multi(attrs) => attrs.forall(_.enabled(this))
+      case single: Single => this == single
+    }
   }
   case object Public extends Single(Modifier.PUBLIC)
   case object Private extends Single(Modifier.PRIVATE)
@@ -125,6 +133,7 @@ object MethodAttribute {
   case object Final extends Single(Modifier.FINAL)
   case object Synchronized extends Single(Modifier.SYNCHRONIZED)
   case object Strict extends Single(Modifier.STRICT)
+  case object Static extends Single(Modifier.STATIC)
 
   val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict)
 }
