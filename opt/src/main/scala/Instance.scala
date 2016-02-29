@@ -21,7 +21,7 @@ sealed abstract class Instance[A <: AnyRef] {
   def virtualMethods: Map[MethodRef, MethodAttribute]
   def allMethods: Map[(ClassRef, MethodRef), MethodAttribute]
 
-  def allFields: Map[(ClassRef, FieldRef), Field]
+  def fields: Map[(ClassRef, FieldRef), Field]
 
   def hasVirtualMethod(ref: MethodRef): Boolean =
     virtualMethods.contains(ref)
@@ -47,7 +47,7 @@ object Instance {
       val baseRef = ClassRef.of(baseClass)
       val thisRef = baseRef.someSubclassRef(baseRef.classLoader)
       val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
-        allFields
+        fields
           .keys
           .filter { case (c, f) => c < baseRef }
           .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
@@ -76,7 +76,7 @@ object Instance {
           None
         }.toMap,
         fieldValues,
-        allFields.flatMap { case (cf, field) =>
+        fields.flatMap { case (cf, field) =>
           fieldMappings.get(cf).map { f =>
             val jf = allJFields(cf)
             val field = Field.from(jf, value)
@@ -99,7 +99,7 @@ object Instance {
     override lazy val allMethods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
 
-    override lazy val allFields: Map[(ClassRef, FieldRef), Field] =
+    override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       allJFields.map { case ((cr, fr), f) => (cr -> fr) -> Field.from(f, value) }
 
     private[this] lazy val jClass = value.getClass
@@ -113,11 +113,10 @@ object Instance {
     orig: Original[_ <: A],
     thisRef: ClassRef.SomeRef,
     methodBodies: Map[MethodRef, MethodBody],
-    fieldValues: Map[(ClassRef, FieldRef), Field], // super class field values
-    privateFields: Map[FieldRef, Field]
+    superFields: Map[(ClassRef, FieldRef), Field], // super class field values
+    thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
     require(orig != null)
-    require(privateFields.forall { case (ref, field) => field.attribute.has(FieldAttribute.Private) })
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
       methodBodies.get(ref) orElse orig.methodBody(ref)
@@ -128,10 +127,8 @@ object Instance {
 
     override def virtualMethods = orig.virtualMethods
     override def allMethods = ???
-    override lazy val allFields: Map[(ClassRef, FieldRef), Field] =
-      Util.allJFields(thisRef.superClass).map { case (k, jf) =>
-        k -> Field.from(jf, orig.value)
-      } ++ privateFields.map { case (r, f) => (thisRef -> r) -> f }
+    override lazy val fields: Map[(ClassRef, FieldRef), Field] =
+      superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
 
     lazy val visibleSuperConstructors: Set[MethodDescriptor] =
       thisRef.superClass.getDeclaredConstructors()
@@ -207,14 +204,11 @@ object Instance {
         }
       }
 
-      privateFields.foreach { case (ref, field) =>
+      thisFields.foreach { case (ref, field) =>
         val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)
         ctf.setModifiers(field.attribute.toModifiers)
         klass.addField(ctf)
       }
-
-      val allFieldValues: Seq[(ClassRef, FieldRef, FieldValue)] =
-        fieldValues.map { case ((c, r), f) => (c, r, f.value) }.toSeq ++ privateFields.map { case (r, f) => (classRef, r, f.value) }
 
       def parseAssigns(ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
         Javassist.decompile(ctor).map { b =>
@@ -294,7 +288,7 @@ object Instance {
 
       val (superCtor, assigns) =
         ctorAssigns.find { case (ctor, assigns) =>
-          val (common, unkFieldValues, unkAssigns) = mapZip(fieldValues.mapValues(_.value.value), assigns)
+          val (common, unkFieldValues, unkAssigns) = mapZip(superFields.mapValues(_.value.value), assigns)
           if(unkFieldValues.nonEmpty) {
             throw new RuntimeException(s"Unknown field values: ${unkFieldValues}")
           }
@@ -323,11 +317,11 @@ object Instance {
       val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
       val superCtorArgs: Seq[Int] = Seq.empty
 
-      val privateFieldSeq: Seq[(FieldRef, Field)] = privateFields.toSeq
-      val ctorArgs: Seq[(TypeRef.Public, Any)] = privateFieldSeq.map { case (r, f) => (f.descriptor.typeRef -> f.value.value) }
+      val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
+      val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.value.value) }
 
       val fieldAssigns: Map[FieldRef, Int] =
-        privateFieldSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }.toMap
+        thisFieldsSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }.toMap
 
       val ctorDescriptor = MethodDescriptor(TypeRef.Void, ctorArgs.map(_._1))
 
