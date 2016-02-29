@@ -111,7 +111,7 @@ class Spec extends FunSpec with Matchers {
 
       val intMethod = MethodRef.parse("intMethod()I", defaultCL)
       val longMethod = MethodRef.parse("longMethod()J", defaultCL)
-      val ri = i.duplicate[Test.Const].materialize()
+      val ri = i.duplicate[Test.Const].materialized
       ri.value.intMethod() should be(1)
       ri.value.longMethod() should be(0L)
     }
@@ -122,7 +122,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(d)
       val foo = MethodRef.parse("foo()I", defaultCL)
 
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
 
       ri.value.foo() should be(1)
     }
@@ -133,7 +133,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(d)
       val foo = MethodRef.parse("foo()I", defaultCL)
 
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
 
       ri.value.foo() should be(1)
     }
@@ -146,7 +146,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(d)
       val foo = MethodRef.parse("foo(I)I", defaultCL)
 
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
       ri.value.foo(1) should be(100)
       ri.value.foo(-1) should be(-10)
       ri.value.foo(-11) should be(-100)
@@ -156,7 +156,7 @@ class Spec extends FunSpec with Matchers {
       obj.foo() should be(99)
       val i = Instance.of(obj)
       val foo = MethodRef.parse("foo()I", defaultCL)
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
       ri.value.foo() should be(99)
     }
     it("real upcast") {
@@ -164,7 +164,7 @@ class Spec extends FunSpec with Matchers {
       obj.foo() should be(99)
       val i = Instance.of[Test.Upcast.A](obj)
       val foo = MethodRef.parse("foo()I", defaultCL)
-      val ri = i.duplicate[Test.Upcast.A].materialize()
+      val ri = i.duplicate[Test.Upcast.A].materialized
       dotBody("real_upcast.dot", ri.methodBody(foo).get)
       classOf[Test.Upcast.A].isAssignableFrom(ri.value.getClass) should be(true)
       classOf[Test.Upcast.B].isAssignableFrom(ri.value.getClass) should be(false)
@@ -178,7 +178,7 @@ class Spec extends FunSpec with Matchers {
 
       val foo = MethodRef.parse("foo()I", defaultCL)
 
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
 
       dotBody("s.dot", ri.methodBody(foo).get)
 
@@ -191,7 +191,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(new A)
       i.value.foo should be(10)
 
-      val ri = i.duplicate.materialize()
+      val ri = i.duplicate.materialized
       ri.value.foo should be(10)
     }
     it("field duplicate") {
@@ -199,7 +199,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(new B)
       i.value.foo should be(1000)
 
-      val ri = i.duplicate[Base].materialize
+      val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1000)
     }
     it("inner class with primitive field") {
@@ -215,7 +215,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of(new A)
       i.value.foo should be(1)
 
-      val ri = i.duplicate[Base].materialize
+      val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1)
     }
   }

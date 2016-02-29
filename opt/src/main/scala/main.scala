@@ -84,13 +84,11 @@ object FieldValue {
     }
   }
 
-  case class Mutable(initialValue: Immutable) extends FieldValue {
-    override def value = initialValue.value
+  case class Primitive(override val value: AnyVal) extends FieldValue
+  case class Reference(instance: Instance[_ <: AnyRef]) extends FieldValue {
+    override def value = instance.materialized.value
   }
-  sealed abstract class Immutable extends FieldValue
-  case class Primitive(override val value: AnyVal) extends Immutable
-  case class Reference(override val value: Instance[_ <: AnyRef]) extends Immutable
-  case object Null extends Immutable {
+  case object Null extends FieldValue {
     override val value = null
   }
 }

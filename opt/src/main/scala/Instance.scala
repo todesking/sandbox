@@ -27,12 +27,16 @@ sealed abstract class Instance[A <: AnyRef] {
     virtualMethods.contains(ref)
   def hasVirtualMethod(ref: String): Boolean =
     hasVirtualMethod(MethodRef.parse(ref, classLoader))
+
+  def materialized: Instance.Original[A]
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
 
   case class Original[A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
+
+    override def materialized = this
 
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
@@ -159,7 +163,7 @@ object Instance {
     def methodModified(m: MethodRef): Boolean =
       methodBodies.contains(m)
 
-    def materialize(): Original[A] = {
+    override lazy val materialized: Original[A] = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtField, CtConstructor, ByteArrayClassPath }
       import javassist.bytecode.{ Bytecode => JABytecode, MethodInfo }
 
