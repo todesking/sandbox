@@ -166,7 +166,7 @@ object Instance {
 
       thisFields.foreach { case (ref, field) =>
         val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)
-        ctf.setModifiers(field.attribute.toModifiers)
+        ctf.setModifiers(field.attribute.toInt)
         klass.addField(ctf)
       }
 
