@@ -16,15 +16,6 @@ object Main {
   }
 }
 
-case class FieldDescriptor(typeRef: TypeRef.Public) {
-  def str = typeRef.str
-}
-object FieldDescriptor {
-  def from(f: JField): FieldDescriptor =
-    FieldDescriptor(TypeRef.from(f.getType))
-  def parse(src: String, cl: ClassLoader): FieldDescriptor =
-    Parsers.parseFieldDescriptor(src, cl)
-}
 
 object Graphviz {
   def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
@@ -54,56 +45,59 @@ object Util {
     }
 }
 
-case class Field(
-  classRef: ClassRef,
-  name: String,
-  descriptor: FieldDescriptor,
-  attribute: FieldAttribute,
-  value: FieldValue
-)
-object Field {
-  def from(f: JField, obj: AnyRef): Field =
-    Field(
-      ClassRef.of(f.getDeclaringClass),
-      f.getName,
-      FieldDescriptor.from(f),
-      FieldAttribute.from(f),
-      FieldValue.from(f, obj)
-    )
+
+trait Flags[Type <: Flags[Type]] {
+  def |(that: Flags[Type]): Type
+  def enabledIn(flags: Int): Boolean
+  def has(flags: Flags[Type]): Boolean
+  def toInt: Int
 }
-sealed abstract class FieldValue {
-  def value: Any
-}
-object FieldValue {
-  def from(f: JField, obj: AnyRef): FieldValue = {
-    val v = f.get(obj)
-    TypeRef.from(f.getType) match {
-      case _: TypeRef.Primitive => Primitive(v.asInstanceOf[AnyVal])
-      case _: TypeRef.Reference if v == null => Null
-      case _: TypeRef.Reference => Reference(Instance.of(v))
+
+trait FlagsCompanion[Type <: Flags[Type]] {
+  def multi(items: Set[SingleFlag]): Type
+
+  trait MultiFlags extends Flags[Type] {
+    def items: Set[SingleFlag]
+
+    override def |(that: Flags[Type]): Type = that match {
+      case that: MultiFlags => multi(items ++ that.items)
+      case that: SingleFlag => multi(items + that)
+    }
+
+    override def enabledIn(flags: Int) = items.forall(_.enabledIn(flags))
+
+    override def has(flags: Flags[Type]) = flags match {
+      case that: MultiFlags => that.items.subsetOf(this.items)
+      case that: SingleFlag => items.contains(that)
+    }
+
+    override def toString = s"${items.mkString(", ")}"
+
+    override def toInt = items.foldLeft[Int](0)(_ | _.toInt)
+  }
+  trait SingleFlag extends Flags[Type] {
+    override def |(that: Flags[Type]): Type = that match {
+      case that: MultiFlags => multi(that.items + this)
+      case that: SingleFlag => multi(Set(this, that))
+    }
+
+    override def enabledIn(flags: Int) =
+      (flags & toInt) == toInt
+
+    override def has(flags: Flags[Type]): Boolean = flags match {
+      case that: MultiFlags => that.items.forall(has(_))
+      case that: SingleFlag => this == that
     }
   }
-
-  case class Primitive(override val value: AnyVal) extends FieldValue
-  case class Reference(instance: Instance[_ <: AnyRef]) extends FieldValue {
-    override def value = instance.materialized.value
-  }
-  case object Null extends FieldValue {
-    override val value = null
-  }
 }
 
-
-sealed abstract class MethodAttribute {
-  def |(that: MethodAttribute): MethodAttribute
-  def enabledIn(flags: Int): Boolean
-  def has(flags: MethodAttribute): Boolean
+sealed abstract class MethodAttribute extends Flags[MethodAttribute] {
   def isVirtual: Boolean =
     !this.has(MethodAttribute.Private) && !this.has(MethodAttribute.Static)
   def isStatic: Boolean =
     this.has(MethodAttribute.Static)
 }
-object MethodAttribute {
+object MethodAttribute extends FlagsCompanion[MethodAttribute] {
   def from(m: JMethod): MethodAttribute =
     from(m.getModifiers)
 
@@ -112,33 +106,13 @@ object MethodAttribute {
 
   val empty = Multi(Set.empty)
 
-  case class Multi(attrs: Set[MethodAttribute.Single]) extends MethodAttribute {
-    override def |(that: MethodAttribute): MethodAttribute = that match {
-      case Multi(thats) => Multi(attrs ++ thats)
-      case that: Single => Multi(attrs + that)
-    }
+  override def multi(items: Set[SingleFlag]): MethodAttribute =
+    Multi(items)
 
-    override def enabledIn(flags: Int) = attrs.forall(_.enabledIn(flags))
+  case class Multi(override val items: Set[SingleFlag]) extends MethodAttribute with MultiFlags
 
-    override def has(flags: MethodAttribute) = flags match {
-      case Multi(flags) => flags.subsetOf(attrs)
-      case flag: Single => attrs.contains(flag)
-    }
+  sealed abstract class Single(override val toInt: Int) extends MethodAttribute with SingleFlag
 
-    override def toString = s"${attrs.mkString(", ")}"
-  }
-
-  sealed abstract class Single(flag: Int) extends MethodAttribute {
-    override def |(that: MethodAttribute): MethodAttribute = that match {
-      case Multi(thats) => Multi(thats + this)
-      case that: Single => Multi(Set(this, that))
-    }
-    override def enabledIn(flags: Int) = (flags & flag) == flag
-    override def has(flags: MethodAttribute) = flags match {
-      case Multi(attrs) => attrs.forall(has(_))
-      case single: Single => this == single
-    }
-  }
   case object Public extends Single(Modifier.PUBLIC)
   case object Private extends Single(Modifier.PRIVATE)
   case object Protected extends Single(Modifier.PROTECTED)
@@ -152,41 +126,24 @@ object MethodAttribute {
   val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict, Static)
 }
 // TODO extract AttributeBase
-sealed abstract class FieldAttribute {
-  def |(that: FieldAttribute): FieldAttribute
-  def enabled(flags: Int): Boolean
-  def has(fa: FieldAttribute): Boolean
+sealed abstract class FieldAttribute extends Flags[FieldAttribute] {
   def toModifiers: Int
 }
-object FieldAttribute {
-  def from(m: JField): FieldAttribute = {
-    items.filter(_.enabled(m.getModifiers)).reduce[FieldAttribute](_ | _)
-  }
-  case class Multi(attrs: Set[FieldAttribute.Single]) extends FieldAttribute {
-    override def |(that: FieldAttribute): FieldAttribute = that match {
-      case Multi(thats) => Multi(attrs ++ thats)
-      case that: Single => Multi(attrs + that)
-    }
-    override def enabled(flags: Int) = attrs.forall(_.enabled(flags))
-    override def has(fa: FieldAttribute): Boolean = fa match {
-      case FieldAttribute.Multi(others) => this.attrs == others
-      case a: FieldAttribute.Single => attrs.exists(_ == a)
-    }
-    def toModifiers = attrs.foldLeft[Int](0)(_ | _.flag)
+object FieldAttribute extends FlagsCompanion[FieldAttribute] {
+  def from(m: JField): FieldAttribute =
+    items.filter(_.enabledIn(m.getModifiers)).reduce[FieldAttribute](_ | _)
+
+  override def multi(items: Set[SingleFlag]): FieldAttribute =
+    Multi(items)
+
+  case class Multi(override val items: Set[SingleFlag]) extends FieldAttribute with MultiFlags {
+    def toModifiers = items.foldLeft[Int](0)(_ | _.toInt)
   }
 
-  sealed abstract class Single(val flag: Int) extends FieldAttribute {
-    override def |(that: FieldAttribute): FieldAttribute = that match {
-      case Multi(thats) => Multi(thats + this)
-      case that: Single => Multi(Set(this, that))
-    }
-    override def enabled(flags: Int) = (flags & flag) == flag
-    override def has(fa: FieldAttribute): Boolean = fa match {
-      case FieldAttribute.Multi(attrs) => attrs.forall(_ == this)
-      case s: FieldAttribute.Single => s == this
-    }
-    override def toModifiers = flag
+  sealed abstract class Single(val toInt: Int) extends FieldAttribute with SingleFlag {
+    override def toModifiers = toInt
   }
+
   case object Public extends Single(Modifier.PUBLIC)
   case object Private extends Single(Modifier.PRIVATE)
   case object Protected extends Single(Modifier.PROTECTED)
