@@ -81,7 +81,7 @@ object Instance {
   ) extends Instance[A] {
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
-      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}", fr.descriptor)
+      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${scala.util.Random.nextInt}", fr.descriptor)
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
