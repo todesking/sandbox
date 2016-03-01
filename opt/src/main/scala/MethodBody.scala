@@ -36,6 +36,11 @@ case class MethodBody(
     }
   }
 
+  def rewriteClassRef(from: ClassRef, to: ClassRef): MethodBody = {
+    import Bytecode._
+    rewrite { case bc => bc.rewriteClassRef(from, to) }
+  }
+
   def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
     if(newBc.label == l) {
       this

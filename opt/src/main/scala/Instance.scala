@@ -30,6 +30,8 @@ sealed abstract class Instance[A <: AnyRef] {
     hasVirtualMethod(MethodRef.parse(ref, thisRef.classLoader))
 
   def materialized: Instance.Original[A]
+
+  def duplicate[B >: A <: AnyRef: ClassTag]: Instance.Duplicate[B]
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
@@ -45,7 +47,7 @@ object Instance {
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
       FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}", fr.descriptor)
 
-    def duplicate[B >: A <: AnyRef: ClassTag](): Duplicate[B] = {
+    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val baseClass = implicitly[ClassTag[B]].runtimeClass.asInstanceOf[Class[B]]
       val baseRef = ClassRef.of(baseClass)
       val className = Util.makeUniqueName(baseRef.classLoader, jClass)
@@ -119,6 +121,17 @@ object Instance {
     superFields: Map[(ClassRef, FieldRef), Field], // super class field values
     thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
+    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] =
+      ???
+      // rewriteThisRef(thisRef.anotherUniqueName)
+
+    // TODO: should we replace thisRef in method/field signature?
+    def rewriteThisRef(newRef: ClassRef.Extend): Duplicate[A] =
+      copy(
+        thisRef = newRef,
+        thisMethods = thisMethods.map { case (ref, body) => ref -> body.rewriteClassRef(thisRef, newRef) }
+      )
+
     override def methodBody(cr: ClassRef, mr: MethodRef) =
       if(cr == thisRef) thisMethods.get(mr)
       else if(thisRef < cr) orig.methodBody(cr, mr)
@@ -238,6 +251,10 @@ object Instance {
       val bytes = klass.toBytecode
       Instance.registerMaterialized(classLoader, klass.getName, bytes)
       Instance.of(value)
+    }
+
+    def fieldFusion(cr: ClassRef, fr: FieldRef): Duplicate[A] = {
+      this
     }
 
     private[this] def validate(): Unit = {

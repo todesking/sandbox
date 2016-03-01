@@ -9,6 +9,8 @@ sealed abstract class ClassRef {
   def binaryName: String = name.replaceAll("\\.", "/")
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
+
+  // TODO: override equals(name and classLoader)
 }
 object ClassRef {
   // Some(n): Determinable
@@ -41,6 +43,9 @@ object ClassRef {
   // TODO: interface
   case class Extend(superClass: Class[_], override val name: String, override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"${name} <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
+    // TODO: Make this REAL unique
+    def anotherUniqueName: Extend =
+      copy(name = name + "_")
   }
 
   def of(klass: Class[_]): Concrete =

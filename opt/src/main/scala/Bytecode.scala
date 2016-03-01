@@ -17,6 +17,8 @@ sealed abstract class Bytecode {
   def effect: Option[Effect]
   def pretty: String = toString
 
+  def rewriteClassRef(from: ClassRef, to: ClassRef): Bytecode
+
   protected def update(frame: Frame): FrameUpdate =
     FrameUpdate(
       frame.copy(effect = this.effect getOrElse frame.effect),
@@ -51,11 +53,13 @@ object Bytecode {
   sealed abstract class Control extends Bytecode {
     val eff: Effect = Effect.fresh()
     override def effect = Some(eff)
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
   }
   sealed abstract class Shuffle extends Bytecode {
     override def inputs = Seq.empty
     override def output = None
     override def effect = None
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
   }
   sealed abstract class Procedure extends Bytecode
 
@@ -109,6 +113,7 @@ object Bytecode {
     override def inputs = Seq.empty
     override def output = Some(out)
     override def effect = None
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
   }
 
   sealed abstract class Const1 extends ConstX {
@@ -170,6 +175,7 @@ object Bytecode {
           update(f).pop1(value2).pop1(value1).push(out -> Data(TypeRef.Int, v1.flatMap { v1 => v2.map { v2 => v1.asInstanceOf[Int] + v2.asInstanceOf[Int] }}))
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
   }
   sealed abstract class InvokeInstance extends Procedure {
     def classRef: ClassRef
@@ -193,9 +199,15 @@ object Bytecode {
   }
   case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
     override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) =
+      if(classRef == from) copy(classRef = to)
+      else this
   }
   case class invokespecial(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
     override def pretty = s"invokespecial ${classRef.pretty}.${methodRef.str}"
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) =
+      if(classRef == from) copy(classRef = to)
+      else this
   }
   case class getfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
     val eff: Effect = Effect.fresh()
@@ -207,6 +219,9 @@ object Bytecode {
     override def output = Some(out)
     override def nextFrame(f: Frame) =
       update(f).pop1(target).push(out -> Data(fieldRef.descriptor.typeRef, None)) // TODO: set actual value if final
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) =
+      if(classRef == from) copy(classRef = to)
+      else this
   }
   case class putfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
     val eff: Effect = Effect.fresh()
@@ -218,6 +233,9 @@ object Bytecode {
     override def output = None
     override def nextFrame(f: Frame) =
       update(f).pop(fieldRef.descriptor.typeRef, value).pop1(target)
+    override def rewriteClassRef(from: ClassRef, to: ClassRef) =
+      if(classRef == from) copy(classRef = to)
+      else this
   }
   case class athrow() extends Control {
     val objectref = DataLabel.in("objectref")
