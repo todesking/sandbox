@@ -119,8 +119,6 @@ object Instance {
     superFields: Map[(ClassRef, FieldRef), Field], // super class field values
     thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
-    require(orig != null)
-
     override def methodBody(cr: ClassRef, mr: MethodRef) =
       if(cr == thisRef) thisMethods.get(mr)
       else if(thisRef < cr) orig.methodBody(cr, mr)
@@ -131,33 +129,6 @@ object Instance {
 
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
-
-    lazy val visibleSuperConstructors: Set[MethodDescriptor] =
-      thisRef.superClass.getDeclaredConstructors()
-        .filterNot { m => (m.getModifiers & Modifier.PRIVATE) == Modifier.PRIVATE }
-        .map(MethodDescriptor.from)
-        .toSet
-
-    lazy val setterOnlyBaseConstructors: Map[MethodDescriptor, Map[FieldRef, Int]] = {
-      // TODO: accept const field
-      visibleSuperConstructors.flatMap { d =>
-        methodBody(MethodRef("<init>", d)).filter { c =>
-          import Bytecode._
-          c.bytecode.forall {
-            case bc: Shuffle => true
-            case bc: Jump => true
-            case bc: Return => true
-            case bc: ConstX => false
-            // case pf @ putfield(cref, fref) => c.initialFrame.locals.values.filterNot(_._1 == 0).values.map(_._1).contains(c.binding(pf.in))
-            case bc => throw new NotImplementedError(bc.toString)
-          }
-        }.map { c =>
-          val argFields = ???
-
-          d -> argFields
-        }
-      }.toMap
-    }
 
     override lazy val materialized: Original[A] = {
       import javassist.{ ClassPool, ClassClassPath, CtClass, CtMethod, CtField, CtConstructor, ByteArrayClassPath }
