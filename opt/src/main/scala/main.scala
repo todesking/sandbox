@@ -96,22 +96,36 @@ object FieldValue {
 
 sealed abstract class MethodAttribute {
   def |(that: MethodAttribute): MethodAttribute
-  def enabled(flags: Int): Boolean
-  def enabled(flags: MethodAttribute): Boolean
+  def enabledIn(flags: Int): Boolean
+  def has(flags: MethodAttribute): Boolean
   def isVirtual: Boolean =
-    !MethodAttribute.Private.enabled(this) && !MethodAttribute.Static.enabled(this)
+    !this.has(MethodAttribute.Private) && !this.has(MethodAttribute.Static)
+  def isStatic: Boolean =
+    this.has(MethodAttribute.Static)
 }
 object MethodAttribute {
-  def from(m: JMethod): MethodAttribute = {
-    items.filter(_.enabled(m.getModifiers)).reduce[MethodAttribute](_ | _)
-  }
+  def from(m: JMethod): MethodAttribute =
+    from(m.getModifiers)
+
+  def from(flags: Int): MethodAttribute =
+    items.filter(_.enabledIn(flags)).foldLeft[MethodAttribute](empty)(_ | _)
+
+  val empty = Multi(Set.empty)
+
   case class Multi(attrs: Set[MethodAttribute.Single]) extends MethodAttribute {
     override def |(that: MethodAttribute): MethodAttribute = that match {
       case Multi(thats) => Multi(attrs ++ thats)
       case that: Single => Multi(attrs + that)
     }
-    override def enabled(flags: Int) = attrs.forall(_.enabled(flags))
-    override def enabled(flags: MethodAttribute) = attrs.forall(_.enabled(flags))
+
+    override def enabledIn(flags: Int) = attrs.forall(_.enabledIn(flags))
+
+    override def has(flags: MethodAttribute) = flags match {
+      case Multi(flags) => flags.subsetOf(attrs)
+      case flag: Single => attrs.contains(flag)
+    }
+
+    override def toString = s"${attrs.mkString(", ")}"
   }
 
   sealed abstract class Single(flag: Int) extends MethodAttribute {
@@ -119,9 +133,9 @@ object MethodAttribute {
       case Multi(thats) => Multi(thats + this)
       case that: Single => Multi(Set(this, that))
     }
-    override def enabled(flags: Int) = (flags & flag) == flag
-    override def enabled(flags: MethodAttribute) = flags match {
-      case Multi(attrs) => attrs.forall(_.enabled(this))
+    override def enabledIn(flags: Int) = (flags & flag) == flag
+    override def has(flags: MethodAttribute) = flags match {
+      case Multi(attrs) => attrs.forall(has(_))
       case single: Single => this == single
     }
   }
@@ -135,7 +149,7 @@ object MethodAttribute {
   case object Strict extends Single(Modifier.STRICT)
   case object Static extends Single(Modifier.STATIC)
 
-  val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict)
+  val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict, Static)
 }
 // TODO extract AttributeBase
 sealed abstract class FieldAttribute {

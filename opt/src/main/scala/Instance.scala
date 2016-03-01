@@ -13,7 +13,9 @@ import com.todesking.scalapp.syntax._
 
 sealed abstract class Instance[A <: AnyRef] {
   // TODO: return Success/Abstract/Native/UnSupportedOp
-  def methodBody(ref: MethodRef): Option[MethodBody]
+  def methodBody(ref: MethodRef): Option[MethodBody] =
+    methodBody(thisRef, ref)
+
   def methodBody(classRef: ClassRef, methodRef: MethodRef): Option[MethodBody]
 
   def thisRef: ClassRef
@@ -119,12 +121,14 @@ object Instance {
   ) extends Instance[A] {
     require(orig != null)
 
-    override def methodBody(ref: MethodRef): Option[MethodBody] =
-      thisMethods.get(ref) orElse orig.methodBody(ref)
+    override def methodBody(cr: ClassRef, mr: MethodRef) =
+      if(cr == thisRef) thisMethods.get(mr)
+      else if(thisRef < cr) orig.methodBody(cr, mr)
+      else throw new IllegalArgumentException(s"Method not found: ${cr.pretty}.${mr.str}")
 
-    override def methodBody(cr: ClassRef, mr: MethodRef) = ???
+    override def methods =
+      superMethods ++ thisMethods.map { case (k, v) => (thisRef -> k) -> v.attribute }
 
-    override def methods = ???
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
 
@@ -262,7 +266,7 @@ object Instance {
 
       val superCtors: Map[MethodDescriptor, Constructor[_]] = superClass
         .getDeclaredConstructors
-        .filterNot { c => MethodAttribute.Private.enabled(c.getModifiers) }
+        .filterNot { c => MethodAttribute.Private.enabledIn(c.getModifiers) }
         .map { c => MethodDescriptor.from(c) -> c }
         .toMap
 
@@ -322,8 +326,8 @@ object Instance {
           .get
 
       val ctorCA = Javassist.compile(classPool, constPool, MethodBody(
-        isStatic = false,
         descriptor = ctorDescriptor,
+        MethodAttribute.from(ctorMethodInfo.getAccessFlags),
         jumpTargets = Map.empty,
         maxLocals = 100,
         maxStackDepth = 100,
@@ -401,7 +405,7 @@ object Instance {
       supers(jClass)
         .reverse
         .flatMap(_.getDeclaredMethods)
-        .filterNot { m => MethodAttribute.Private.enabled(m.getModifiers) }
+        .filterNot { m => MethodAttribute.Private.enabledIn(m.getModifiers) }
         .foldLeft(Map.empty[MethodRef, JMethod]) { case (map, m) =>
           map + (MethodRef.from(m) -> m)
         }

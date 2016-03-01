@@ -201,7 +201,7 @@ object Bytecode {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
     val out = DataLabel.out("field")
-    override def pretty = s"getfield ${fieldRef.str}"
+    override def pretty = s"getfield ${fieldRef.pretty}"
     override def effect = Some(eff)
     override def inputs = Seq(target)
     override def output = Some(out)
@@ -212,7 +212,7 @@ object Bytecode {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
     val value = DataLabel.in("value")
-    override def pretty = s"putfield ${fieldRef.str}"
+    override def pretty = s"putfield ${fieldRef.pretty}"
     override def effect = Some(eff)
     override def inputs = Seq(target)
     override def output = None

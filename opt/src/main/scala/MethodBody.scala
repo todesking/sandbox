@@ -11,14 +11,16 @@ import java.lang.reflect.{ Method => JMethod }
 import com.todesking.scalapp.syntax._
 
 case class MethodBody(
-  isStatic: Boolean,
   descriptor: MethodDescriptor,
+  attribute: MethodAttribute,
   bytecode: Seq[Bytecode],
   jumpTargets: Map[JumpTarget, Bytecode.Label],
   maxLocals: Int,
   maxStackDepth: Int
 ) {
   require(bytecode.nonEmpty)
+
+  def isStatic: Boolean = attribute.isStatic
 
   // TODO: make maxLocals/maxStackDepth auto calc
   // TODO: Exception handler
@@ -40,12 +42,9 @@ case class MethodBody(
     } else {
       val newBcs = bytecode.map { bc => if(bc.label == l) newBc else bc }
       val newJts = jumpTargets.map { case (jt, bcl) => if(bcl == l) (jt -> newBc.label) else (jt -> bcl) }
-      MethodBody(isStatic, descriptor, newBcs, newJts, maxLocals, maxStackDepth)
+      MethodBody(descriptor, attribute, newBcs, newJts, maxLocals, maxStackDepth)
     }
   }
-
-  lazy val dataflow: Dataflow =
-    Dataflow.build(this)
 
   def argLabels: Seq[DataLabel.Out] =
     descriptor.args
@@ -70,9 +69,9 @@ case class MethodBody(
 
   def dataType(l: DataLabel): TypeRef = dataValues(l).typeRef
 
-  def pretty(): String = {
+  def pretty: String = {
     val lName = Bytecode.Label.namer("L", "")
-    s"""${descriptor.str}${if(isStatic) "(static)" else ""}
+    s"""${descriptor.str} ${attribute}
 ${
   bytecode.map { bc =>
     val l = f"L${bc.label.innerId}%-5s "
@@ -82,7 +81,7 @@ ${
       case b: Bytecode.Branch =>
         s"${b} # L${jumpTargets(b.target).innerId}"
       case b =>
-        b.toString
+        b.pretty
     })
   }.mkString("\n")
 }
@@ -185,6 +184,9 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
         effectMerges.merge(f1.effect, f2.effect)
       )
     }
+
+    println("===========")
+    println(pretty)
 
     val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
     val updates = mutable.HashMap.empty[Bytecode.Label, FrameUpdate]
