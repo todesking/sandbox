@@ -43,57 +43,15 @@ object Instance {
 
     override val thisRef = ClassRef.of(jClass)
 
-    // TODO: make this REAL unique
-    private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
-      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}", fr.descriptor)
-
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
-      val baseClass = implicitly[ClassTag[B]].runtimeClass.asInstanceOf[Class[B]]
-      val baseRef = ClassRef.of(baseClass)
-      val className = Util.makeUniqueName(baseRef.classLoader, jClass)
-      val newThisRef = baseRef.extend(className, baseRef.classLoader)
-      val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
-        fields
-          .keys
-          .filter { case (c, f) => c < baseRef }
-          .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
-          .toMap
-      val fieldValues =
-        allJFields
-          .filterNot { case (k, v) => fieldMappings.contains(k) }
-          .map { case (k, jf) => k -> Field.from(jf, value) }
-      Duplicate[B](
+      Duplicate[A](
         this,
-        newThisRef,
-        methods.filterNot { case ((c, m), a) => c < baseRef },
-        virtualJMethods.flatMap { case (mref, jm) =>
-        if(ClassRef.of(jm.getDeclaringClass) < baseRef)
-          methodBody(mref).map { b =>
-            import Bytecode._
-            // TODO: make MethodBody.rewriteClassRef
-            // TODO: make MethodBody.rewriteFieldRef
-            Some(
-              mref -> b.rewrite {
-                // TODO: invokespecial, fields
-                case iv @ invokevirtual(cref, mref) if cref < baseRef =>
-                  invokevirtual(newThisRef, mref)
-                case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
-                  getfield(newThisRef, fieldMappings(cref -> fref))
-              }
-            )
-          } getOrElse { throw new RuntimeException(s"Method ${jm.getDeclaringClass.getName}.${mref.str} is abstract or native") }
-        else
-          None
-        }.toMap,
-        fieldValues,
-        fields.flatMap { case (cf, field) =>
-          fieldMappings.get(cf).map { f =>
-            val jf = allJFields(cf)
-            val field = Field.from(jf, value)
-            f -> field.copy(attribute = field.attribute | FieldAttribute.Private)
-          }
-        }.toMap
-      )
+        thisRef.extend(Util.makeUniqueName(thisRef.classLoader, jClass), thisRef.classLoader),
+        methods,
+        Map.empty,
+        fields,
+        Map.empty
+      ).duplicate[B]
     }
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
@@ -121,9 +79,54 @@ object Instance {
     superFields: Map[(ClassRef, FieldRef), Field], // super class field values
     thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
-    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] =
-      ???
-      // rewriteThisRef(thisRef.anotherUniqueName)
+    // TODO: make this REAL unique
+    private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
+      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}", fr.descriptor)
+
+    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
+      val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
+      // TODO: Unique name facility
+      val className = thisRef.name + "_"
+      val newRef = newSuperRef.extend(className, thisRef.classLoader)
+      val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
+        fields
+          .keys
+          .filter { case (c, f) => c < newSuperRef }
+          .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
+          .toMap
+      val newThisFields =
+        fields
+          .flatMap { case (cf, field) =>
+            fieldMappings.get(cf).map { fr =>
+              fr -> field.copy(attribute = field.attribute | FieldAttribute.Private)
+            }
+          }
+      // TODO: support super methods
+      val newThisMethods =
+        methods
+          .filter { case ((cr, mr), ma) => cr < newSuperRef }
+          .map { case ((cr, mr), ma) =>
+            import Bytecode._
+            mr -> orig.methodBody(cr, mr).map { body =>
+              body.rewrite {
+                case iv @ invokevirtual(cref, mref) if cref < newSuperRef =>
+                  invokevirtual(newRef, mref)
+                case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                  getfield(newRef, fieldMappings(cref -> fref))
+                case bc @ putfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                  putfield(newRef, fieldMappings(cref -> fref))
+              }
+            }.getOrElse {
+              throw new RuntimeException(s"Method ${cr.pretty}.${mr.str} can't rewrite: It's abstract or native")
+            }
+          }
+      rewriteThisRef(newRef).copy(
+        superMethods = superMethods.filterNot { case ((cr, mr), ma) => cr < newSuperRef },
+        superFields = superFields.filterNot { case ((cr, fr), f) => cr < newSuperRef},
+        thisMethods = thisMethods ++ newThisMethods,
+        thisFields = thisFields ++ newThisFields
+      )
+    }
 
     // TODO: should we replace thisRef in method/field signature?
     def rewriteThisRef(newRef: ClassRef.Extend): Duplicate[A] =
