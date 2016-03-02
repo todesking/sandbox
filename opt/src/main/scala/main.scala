@@ -80,8 +80,8 @@ object Transformer {
     instance.fields.get(classRef, fieldRef).fold {
       throw new IllegalArgumentException(s"Field not found: ${classRef.pretty}.${fieldRef.pretty}")
     } { field =>
-      field.value match {
-        case FieldValue.Reference(instance) =>
+      field.data match {
+        case Data.Reference(t, instance) =>
           if (!instance.fields.values.forall(_.attribute.isStatic))
             throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
           val targetMethodBodies =

@@ -247,8 +247,19 @@ object Bytecode {
     override def effect = Some(eff)
     override def inputs = Seq(target)
     override def output = Some(out)
-    override def nextFrame(f: Frame) =
-      update(f).pop1(target).push(out -> Data.Unsure(fieldRef.descriptor.typeRef)) // TODO: set actual value if final
+    override def nextFrame(f: Frame) = {
+      val self = f.stack(0)._2
+      val data =
+        self match {
+          case Data.Reference(_, instance) =>
+            val field = instance.fields(classRef -> fieldRef)
+            if(field.isFinal) field.data
+            else Data.Unsure(fieldRef.descriptor.typeRef)
+          case _ =>
+            Data.Unsure(fieldRef.descriptor.typeRef)
+        }
+      update(f).pop1(target).push(out -> data)
+    }
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
       if (classRef == from) copy(classRef = to)
       else this

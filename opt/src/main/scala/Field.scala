@@ -10,8 +10,10 @@ case class Field(
   name: String,
   descriptor: FieldDescriptor,
   attribute: FieldAttribute,
-  value: FieldValue
-)
+  data: Data.Concrete
+) {
+  def isFinal: Boolean = attribute.isFinal
+}
 object Field {
   def from(f: JField, obj: AnyRef): Field =
     Field(
@@ -19,6 +21,15 @@ object Field {
       f.getName,
       FieldDescriptor.from(f),
       FieldAttribute.from(f),
-      FieldValue.from(f, obj)
+      data(f, obj)
     )
+
+  private[this] def data(f: JField, obj: AnyRef): Data.Concrete = {
+    val v = f.get(obj)
+    TypeRef.from(f.getType) match {
+      case t: TypeRef.Primitive => Data.Primitive(t, v.asInstanceOf[AnyVal])
+      case t: TypeRef.Reference if v == null => Data.Null
+      case t: TypeRef.Reference => Data.Reference(t, Instance.of(v))
+    }
+  }
 }

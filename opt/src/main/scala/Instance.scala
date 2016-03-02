@@ -212,7 +212,7 @@ object Instance {
       val superCtorArgs: Seq[Int] = Seq.empty
 
       val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
-      val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.value.value) }
+      val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) }
 
       val fieldAssigns: Map[FieldRef, Int] =
         thisFieldsSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }.toMap
@@ -371,7 +371,7 @@ object Instance {
 
       ctorAssigns.find {
         case (ctor, assigns) =>
-          val (common, unkFieldValues, unkAssigns) = Util.mapZip(fields.mapValues(_.value.value), assigns)
+          val (common, unkFieldValues, unkAssigns) = Util.mapZip(fields.mapValues(_.data.concreteValue), assigns)
           if (unkFieldValues.nonEmpty) {
             throw new RuntimeException(s"Unknown field values: ${unkFieldValues}")
           }

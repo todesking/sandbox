@@ -59,7 +59,7 @@ case class MethodBody(
     new MethodBody.DataFlow(this, Data.Reference(self.thisRef.toTypeRef, self))
 
   lazy val defaultDataflow =
-    new MethodBody.DataFlow(this, Data.Null) // TODO: this will cause trouble in some future
+    new MethodBody.DataFlow(this, Data.Unsure(ClassRef.Object.toTypeRef)) // TODO: this will cause trouble in some future
 
   def maxLocals = defaultDataflow.maxLocals
   def maxStackDepth = defaultDataflow.maxStackDepth
