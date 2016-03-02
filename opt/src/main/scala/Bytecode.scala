@@ -141,15 +141,16 @@ object Bytecode {
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
-    val ret: Option[DataLabel.Out] = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))
+    val ret: Option[DataLabel.Out] = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
     override final def inputs = receiver +: args
     override final def output = ret
     override def nextFrame(f: Frame) = {
       require(f.stack.size >= methodRef.args.size)
       val popped =
-        args.zip(methodRef.args).foldRight(update(f)) { case ((a, t), u) =>
-          if(t.isDoubleWord) u.pop2(a)
-          else u.pop1(a)
+        args.zip(methodRef.args).foldRight(update(f)) {
+          case ((a, t), u) =>
+            if (t.isDoubleWord) u.pop2(a)
+            else u.pop1(a)
         }.pop1(receiver)
       ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
     }
@@ -213,12 +214,14 @@ object Bytecode {
             .pop1(value2)
             .pop1(value1)
             .push(
-              out -> (d1.value.flatMap { v1 => d2.value.map { v2 =>
-                Data.Primitive(
-                  TypeRef.Int,
-                  v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
-                )
-              }}).getOrElse { Data.Unsure(TypeRef.Int) }
+              out -> (d1.value.flatMap { v1 =>
+                d2.value.map { v2 =>
+                  Data.Primitive(
+                    TypeRef.Int,
+                    v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
+                  )
+                }
+              }).getOrElse { Data.Unsure(TypeRef.Int) }
             )
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
@@ -227,13 +230,13 @@ object Bytecode {
   case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstanceMethod {
     override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
-      if(classRef == from) copy(classRef = to)
+      if (classRef == from) copy(classRef = to)
       else this
   }
   case class invokespecial(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstanceMethod {
     override def pretty = s"invokespecial ${classRef.pretty}.${methodRef.str}"
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
-      if(classRef == from) copy(classRef = to)
+      if (classRef == from) copy(classRef = to)
       else this
   }
   case class getfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
@@ -247,7 +250,7 @@ object Bytecode {
     override def nextFrame(f: Frame) =
       update(f).pop1(target).push(out -> Data.Unsure(fieldRef.descriptor.typeRef)) // TODO: set actual value if final
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
-      if(classRef == from) copy(classRef = to)
+      if (classRef == from) copy(classRef = to)
       else this
   }
   case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
@@ -261,7 +264,7 @@ object Bytecode {
     override def nextFrame(f: Frame) =
       update(f).pop(fieldRef.descriptor.typeRef, value).pop1(target)
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
-      if(classRef == from) copy(classRef = to)
+      if (classRef == from) copy(classRef = to)
       else this
   }
   case class athrow() extends Control {

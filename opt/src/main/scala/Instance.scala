@@ -76,12 +76,12 @@ object Instance {
   }
 
   case class Duplicate[A <: AnyRef](
-    orig: Original[_ <: A],
-    override val thisRef: ClassRef.Extend,
-    superMethods: Map[(ClassRef, MethodRef), MethodAttribute],
-    thisMethods: Map[MethodRef, MethodBody],
-    superFields: Map[(ClassRef, FieldRef), Field], // super class field values
-    thisFields: Map[FieldRef, Field]
+      orig: Original[_ <: A],
+      override val thisRef: ClassRef.Extend,
+      superMethods: Map[(ClassRef, MethodRef), MethodAttribute],
+      thisMethods: Map[MethodRef, MethodBody],
+      superFields: Map[(ClassRef, FieldRef), Field], // super class field values
+      thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
@@ -102,33 +102,35 @@ object Instance {
           .toMap
       val newThisFields =
         fields
-          .flatMap { case (cf, field) =>
-            fieldMappings.get(cf).map { fr =>
-              fr -> field.copy(attribute = field.attribute | FieldAttribute.Private)
-            }
+          .flatMap {
+            case (cf, field) =>
+              fieldMappings.get(cf).map { fr =>
+                fr -> field.copy(attribute = field.attribute | FieldAttribute.Private)
+              }
           }
       // TODO: support super methods
       val newThisMethods =
         methods
           .filter { case ((cr, mr), ma) => cr < newSuperRef }
-          .map { case ((cr, mr), ma) =>
-            import Bytecode._
-            mr -> orig.methodBody(cr, mr).map { body =>
-              body.rewrite {
-                case iv @ invokevirtual(cref, mref) if cref < newSuperRef =>
-                  invokevirtual(newRef, mref)
-                case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
-                  getfield(newRef, fieldMappings(cref -> fref))
-                case bc @ putfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
-                  putfield(newRef, fieldMappings(cref -> fref))
+          .map {
+            case ((cr, mr), ma) =>
+              import Bytecode._
+              mr -> orig.methodBody(cr, mr).map { body =>
+                body.rewrite {
+                  case iv @ invokevirtual(cref, mref) if cref < newSuperRef =>
+                    invokevirtual(newRef, mref)
+                  case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                    getfield(newRef, fieldMappings(cref -> fref))
+                  case bc @ putfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
+                    putfield(newRef, fieldMappings(cref -> fref))
+                }
+              }.getOrElse {
+                throw new RuntimeException(s"Method ${cr.pretty}.${mr.str} can't rewrite: It's abstract or native")
               }
-            }.getOrElse {
-              throw new RuntimeException(s"Method ${cr.pretty}.${mr.str} can't rewrite: It's abstract or native")
-            }
           }
       rewriteThisRef(newRef).copy(
         superMethods = superMethods.filterNot { case ((cr, mr), ma) => cr < newSuperRef },
-        superFields = superFields.filterNot { case ((cr, fr), f) => cr < newSuperRef},
+        superFields = superFields.filterNot { case ((cr, fr), f) => cr < newSuperRef },
         thisMethods = thisMethods ++ newThisMethods,
         thisFields = thisFields ++ newThisFields
       )
@@ -142,8 +144,8 @@ object Instance {
       )
 
     override def methodBody(cr: ClassRef, mr: MethodRef) =
-      if(cr == thisRef) thisMethods.get(mr)
-      else if(thisRef < cr) orig.methodBody(cr, mr)
+      if (cr == thisRef) thisMethods.get(mr)
+      else if (thisRef < cr) orig.methodBody(cr, mr)
       else throw new IllegalArgumentException(s"Method not found: ${cr.pretty}.${mr.str}")
 
     override def methods =
@@ -165,8 +167,9 @@ object Instance {
       val baseRef = ClassRef.of(thisRef.superClass)
 
       val classPool = new ClassPool(null)
-      Instance.findMaterializedClasses(classLoader).foreach { case (name, bytes) =>
-        classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+      Instance.findMaterializedClasses(classLoader).foreach {
+        case (name, bytes) =>
+          classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
       }
       classPool.appendClassPath(new ClassClassPath(thisRef.superClass))
 
@@ -177,19 +180,21 @@ object Instance {
       val ctObject = classPool.get("java.lang.Object")
       import Bytecode._
       thisMethods
-        .foreach { case (ref, body) =>
-          val codeAttribute = Javassist.compile(classPool, constPool, body)
-          val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
-          minfo.setCodeAttribute(codeAttribute)
-          val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, minfo)
-          codeAttribute.setAttribute(sm)
-          klass.getClassFile.addMethod(minfo)
+        .foreach {
+          case (ref, body) =>
+            val codeAttribute = Javassist.compile(classPool, constPool, body)
+            val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
+            minfo.setCodeAttribute(codeAttribute)
+            val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, minfo)
+            codeAttribute.setAttribute(sm)
+            klass.getClassFile.addMethod(minfo)
         }
 
-      thisFields.foreach { case (ref, field) =>
-        val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)
-        ctf.setModifiers(field.attribute.toInt)
-        klass.addField(ctf)
+      thisFields.foreach {
+        case (ref, field) =>
+          val ctf = new CtField(ctClass(ref.descriptor.typeRef), ref.name, klass)
+          ctf.setModifiers(field.attribute.toInt)
+          klass.addField(ctf)
       }
 
       val (superCtor, assigns) =
@@ -200,7 +205,7 @@ object Instance {
       // TODO: set private field values via ctor
       // TODO: set non-const field values via ctor
 
-      if(superCtor.args.size > 0)
+      if (superCtor.args.size > 0)
         ???
 
       val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
@@ -235,15 +240,17 @@ object Instance {
             // TODO: call with args
             invokespecial(
               ClassRef.of(superClass),
-              MethodRef("<init>", MethodDescriptor(TypeRef.Void, Seq.empty)))
-          ) ++ fieldAssigns.flatMap { case (fr, i) =>
-            import Bytecode._
-            Seq(
-              aload(0),
-              load(fr.descriptor.typeRef, i),
-              putfield(thisRef, fr)
+              MethodRef("<init>", MethodDescriptor(TypeRef.Void, Seq.empty))
             )
-          }.toSeq ++ Seq(vreturn())
+          ) ++ fieldAssigns.flatMap {
+              case (fr, i) =>
+                import Bytecode._
+                Seq(
+                  aload(0),
+                  load(fr.descriptor.typeRef, i),
+                  putfield(thisRef, fr)
+                )
+            }.toSeq ++ Seq(vreturn())
       ))
 
       ctorMethodInfo.setCodeAttribute(ctorCA)
@@ -264,7 +271,7 @@ object Instance {
       def fail(msg: String) =
         throw new IllegalStateException(msg)
 
-      if((thisRef.superClass.getModifiers & Modifier.FINAL) == Modifier.FINAL)
+      if ((thisRef.superClass.getModifiers & Modifier.FINAL) == Modifier.FINAL)
         fail("base is final class")
       // TODO: check finalizer
       // * for each fields `f` in `x`:
@@ -291,31 +298,31 @@ object Instance {
   }
 
   object Analyzer {
-      def setterAssigns(self: Instance[_ <: AnyRef], ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
-        Javassist.decompile(ctor).map { b =>
-          val df = b.dataflow(self)
-          def isThrowNull(l: Bytecode.Label): Boolean = {
-            import Bytecode._
-            b.labelToBytecode(l) match {
-              case bc @ aconst_null() =>
-                isThrowNull(df.fallThroughs(bc.label))
-              case athrow() =>
-                true
-              case other =>
-                false
-            }
-          }
+    def setterAssigns(self: Instance[_ <: AnyRef], ctor: Constructor[_]): Option[Map[(ClassRef, FieldRef), Either[Int, Any]]] = {
+      Javassist.decompile(ctor).map { b =>
+        val df = b.dataflow(self)
+        def isThrowNull(l: Bytecode.Label): Boolean = {
           import Bytecode._
-          // TODO: MethodBody.basicBlocks
-          b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) { case (assigns, bc) =>
+          b.labelToBytecode(l) match {
+            case bc @ aconst_null() =>
+              isThrowNull(df.fallThroughs(bc.label))
+            case athrow() =>
+              true
+            case other =>
+              false
+          }
+        }
+        import Bytecode._
+        // TODO: MethodBody.basicBlocks
+        b.bytecode.foldLeft(Map.empty[(ClassRef, FieldRef), Either[Int, Any]]) {
+          case (assigns, bc) =>
             bc match {
               case bc: Shuffle => assigns
               case bc: Jump => assigns
               case bc: Return => assigns
               case bc: ConstX => assigns
-              case bc @ invokespecial(classRef, methodRef)
-              if df.dataValue(bc.receiver).isInstance(self) && methodRef.isInit =>
-                val klass = classRef match { case cr @ ClassRef.Concrete(_, _) => cr.loadClass ; case unk => throw new AssertionError(s"${unk}")}
+              case bc @ invokespecial(classRef, methodRef) if df.dataValue(bc.receiver).isInstance(self) && methodRef.isInit =>
+                val klass = classRef match { case cr @ ClassRef.Concrete(_, _) => cr.loadClass; case unk => throw new AssertionError(s"${unk}") }
                 val ctor = klass.getDeclaredConstructors.find { c => MethodRef.from(c) == methodRef }.get
                 // TODO: FIXME: WRONG.
                 setterAssigns(self, ctor).map { as => assigns ++ as } getOrElse { return None }
@@ -326,7 +333,7 @@ object Instance {
                   } getOrElse {
                     def argNum(label: DataLabel.Out): Option[Int] = {
                       val index = df.argLabels.indexOf(label)
-                      if(index == -1) None else Some(index)
+                      if (index == -1) None else Some(index)
                     }
                     val l = df.dataBinding(bc.value)
                     argNum(l).map { i => (classRef -> fieldRef) -> Left(i) } getOrElse { return None }
@@ -342,14 +349,14 @@ object Instance {
               case bc: Branch => return None
               case bc: Procedure => return None
             }
-          }
         }
       }
+    }
 
-      def findSetterConstructor[A](
-        self: Instance[_ <: AnyRef],
-        klass: Class[A], fields: Map[(ClassRef, FieldRef), Field]
-      ): Option[(MethodDescriptor, Map[(ClassRef, FieldRef), Either[Int, Any]])] = {
+    def findSetterConstructor[A](
+      self: Instance[_ <: AnyRef],
+      klass: Class[A], fields: Map[(ClassRef, FieldRef), Field]
+    ): Option[(MethodDescriptor, Map[(ClassRef, FieldRef), Either[Int, Any]])] = {
       val ctors: Map[MethodDescriptor, Constructor[_]] =
         klass
           .getDeclaredConstructors
@@ -362,12 +369,13 @@ object Instance {
           .mapValues(Analyzer.setterAssigns(self, _))
           .collect { case (k, Some(v)) => (k -> v) }
 
-        ctorAssigns.find { case (ctor, assigns) =>
+      ctorAssigns.find {
+        case (ctor, assigns) =>
           val (common, unkFieldValues, unkAssigns) = Util.mapZip(fields.mapValues(_.value.value), assigns)
-          if(unkFieldValues.nonEmpty) {
+          if (unkFieldValues.nonEmpty) {
             throw new RuntimeException(s"Unknown field values: ${unkFieldValues}")
           }
-          if(unkAssigns.nonEmpty) {
+          if (unkAssigns.nonEmpty) {
             throw new RuntimeException(s"Unknown assigns in constructor: ${unkAssigns}")
           }
           common.forall {
@@ -379,8 +387,8 @@ object Instance {
             case ((classRef, fieldRef), (v1, Left(n))) =>
               true
           }
-        }
       }
+    }
 
   }
 
@@ -398,8 +406,9 @@ object Instance {
         .reverse
         .flatMap(_.getDeclaredMethods)
         .filterNot { m => MethodAttribute.Private.enabledIn(m.getModifiers) }
-        .foldLeft(Map.empty[MethodRef, JMethod]) { case (map, m) =>
-          map + (MethodRef.from(m) -> m)
+        .foldLeft(Map.empty[MethodRef, JMethod]) {
+          case (map, m) =>
+            map + (MethodRef.from(m) -> m)
         }
 
     def allJFields(jClass: Class[_]): Map[(ClassRef, FieldRef), JField] =
@@ -417,29 +426,29 @@ object Instance {
       klass.getName + "_" + System.identityHashCode(this)
     }
 
-      def mapZip[A, B, C](a: Map[A, B], b: Map[A, C]): (Map[A, (B, C)], Map[A, B], Map[A, C]) = {
-        val aOnly = a.keySet -- b.keySet
-        val bOnly = b.keySet -- a.keySet
-        val common = a.keySet -- aOnly
-        Tuple3(
-          common.map { k => k -> (a(k) -> b(k)) }.toMap,
-          a.filterKeys(aOnly),
-          b.filterKeys(bOnly)
-        )
-      }
+    def mapZip[A, B, C](a: Map[A, B], b: Map[A, C]): (Map[A, (B, C)], Map[A, B], Map[A, C]) = {
+      val aOnly = a.keySet -- b.keySet
+      val bOnly = b.keySet -- a.keySet
+      val common = a.keySet -- aOnly
+      Tuple3(
+        common.map { k => k -> (a(k) -> b(k)) }.toMap,
+        a.filterKeys(aOnly),
+        b.filterKeys(bOnly)
+      )
+    }
 
   }
 
   // TODO: Weaken CL
   private[this] val materializedClasses = mutable.HashMap.empty[(ClassLoader, String), Array[Byte]]
   def registerMaterialized(cl: ClassLoader, name: String, bytes: Array[Byte]): Unit = synchronized {
-    if(materializedClasses.contains(cl -> name))
+    if (materializedClasses.contains(cl -> name))
       throw new IllegalArgumentException(s"${name} is already defined in ${cl}")
     materializedClasses(cl -> name) = bytes
   }
   // TODO: Resolve name conflict
   def findMaterializedClasses(cl: ClassLoader): Seq[(String, Array[Byte])] = synchronized {
-    if(cl == null) {
+    if (cl == null) {
       Seq.empty
     } else {
       materializedClasses.collect { case ((l, n), b) if l == cl => (n -> b) }.toSeq ++

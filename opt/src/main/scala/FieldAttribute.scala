@@ -1,6 +1,6 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{Field => JField, Modifier}
+import java.lang.reflect.{ Field => JField, Modifier }
 
 sealed abstract class FieldAttribute extends Flags[FieldAttribute] {
   def isStatic: Boolean = has(FieldAttribute.Static)

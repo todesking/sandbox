@@ -8,14 +8,15 @@ case class MethodDescriptor(ret: TypeRef.Public, args: Seq[TypeRef.Public]) {
   def isVoid: Boolean = ret == TypeRef.Void
 
   def argToLocalIndex(arg: Int, isStatic: Boolean): Int =
-    (if(isStatic) 0 else 1) + argToLocalTable(arg)
+    (if (isStatic) 0 else 1) + argToLocalTable(arg)
 
   private[this] lazy val argToLocalTable: Seq[Int] = {
     var n = 0
     val t = scala.collection.mutable.ArrayBuffer.empty[Int]
-    args.zipWithIndex foreach { case (arg, i) =>
-      t(i) = n
-      n += arg.wordSize
+    args.zipWithIndex foreach {
+      case (arg, i) =>
+        t(i) = n
+        n += arg.wordSize
     }
     t.toSeq
   }

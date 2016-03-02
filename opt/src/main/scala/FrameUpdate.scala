@@ -5,35 +5,35 @@ import scala.language.higherKinds
 
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
-import scala.util.{Try, Success, Failure}
+import scala.util.{ Try, Success, Failure }
 
 import java.lang.reflect.{ Method => JMethod }
 
 import com.todesking.scalapp.syntax._
 
 case class FrameUpdate(
-  newFrame: Frame,
-  binding: Map[DataLabel.In, DataLabel.Out],
-  effectDependencies: Map[Bytecode.Label, Effect],
-  dataValues: Map[DataLabel, Data]
+    newFrame: Frame,
+    binding: Map[DataLabel.In, DataLabel.Out],
+    effectDependencies: Map[Bytecode.Label, Effect],
+    dataValues: Map[DataLabel, Data]
 ) {
   private[this] def requireSecondWord(ld: (DataLabel.Out, Data)): Unit =
-    if(ld._2.typeRef != TypeRef.SecondWord)
+    if (ld._2.typeRef != TypeRef.SecondWord)
       throw new RuntimeException(s"second word expected but ${ld}")
 
   private[this] def requireSingleWord(ld: (DataLabel.Out, Data)): Unit =
-    if(ld._2.typeRef.isDoubleWord || ld._2.typeRef == TypeRef.SecondWord || ld._2.typeRef == TypeRef.Undefined)
+    if (ld._2.typeRef.isDoubleWord || ld._2.typeRef == TypeRef.SecondWord || ld._2.typeRef == TypeRef.Undefined)
       throw new RuntimeException(s"single word expected but ${ld}")
 
   private[this] def requireDoubleWord(ld: (DataLabel.Out, Data)): Unit =
-    if(!ld._2.typeRef.isDoubleWord || ld._2.typeRef == TypeRef.SecondWord || ld._2.typeRef == TypeRef.Undefined)
+    if (!ld._2.typeRef.isDoubleWord || ld._2.typeRef == TypeRef.SecondWord || ld._2.typeRef == TypeRef.Undefined)
       throw new RuntimeException(s"double word expected but ${ld}")
 
   private[this] def makeSecondWord(d: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
     (DataLabel.out(s"second word of ${d._1.name}") -> d._2.secondWordData)
 
   def pop(t: TypeRef): FrameUpdate =
-    if(t.isDoubleWord) pop2()
+    if (t.isDoubleWord) pop2()
     else pop1()
 
   def pop1(): FrameUpdate = {
@@ -44,7 +44,7 @@ case class FrameUpdate(
   }
 
   def pop(t: TypeRef, in: DataLabel.In): FrameUpdate =
-    if(t.isDoubleWord) pop2(in)
+    if (t.isDoubleWord) pop2(in)
     else pop1(in)
 
   def pop1(in: DataLabel.In): FrameUpdate = {
@@ -75,7 +75,7 @@ case class FrameUpdate(
     )
 
   def push(d: (DataLabel.Out, Data)): FrameUpdate =
-    if(d._2.typeRef.isDoubleWord) push2(d)
+    if (d._2.typeRef.isDoubleWord) push2(d)
     else push1(d)
 
   def push1(d: (DataLabel.Out, Data)): FrameUpdate = {
@@ -98,7 +98,7 @@ case class FrameUpdate(
 
   def setLocal(n: Int, data: (DataLabel.Out, Data)): FrameUpdate = {
     val locals =
-      if(data._2.typeRef.isDoubleWord)
+      if (data._2.typeRef.isDoubleWord)
         newFrame.locals.updated(n, data).updated(n + 1, makeSecondWord(data))
       else
         newFrame.locals.updated(n, data)
@@ -126,7 +126,7 @@ case class FrameUpdate(
 
   def ret(retval: DataLabel.In): FrameUpdate = {
     val (l, d) =
-      if(newFrame.stackTop._2.typeRef == TypeRef.SecondWord) newFrame.stack(1)
+      if (newFrame.stackTop._2.typeRef == TypeRef.SecondWord) newFrame.stack(1)
       else newFrame.stackTop
     FrameUpdate(
       Frame(Map.empty, List.empty, newFrame.effect),

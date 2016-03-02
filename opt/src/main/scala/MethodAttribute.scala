@@ -1,6 +1,6 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{Method => JMethod, Modifier}
+import java.lang.reflect.{ Method => JMethod, Modifier }
 
 sealed abstract class MethodAttribute extends Flags[MethodAttribute] {
   def isVirtual: Boolean =

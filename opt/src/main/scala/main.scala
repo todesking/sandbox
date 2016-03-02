@@ -5,9 +5,9 @@ import scala.language.higherKinds
 
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
-import scala.util.{Try, Success, Failure}
+import scala.util.{ Try, Success, Failure }
 
-import java.lang.reflect.{ Method => JMethod , Field => JField, Modifier}
+import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
 import com.todesking.scalapp.syntax._
 
@@ -17,7 +17,7 @@ object Main {
 }
 
 object Graphviz {
-  def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
+  def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\"" }.mkString(", ")}]"""
   def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""
   def drawEdge(from: String, to: String, attr: (Symbol, String)*) =
     s"""${from} -> ${to} ${drawAttr(attr)}"""
@@ -39,11 +39,10 @@ object Util {
       sorted
     } else {
       val (nodep, dep) = in.partition { case (a, b, bs) => bs.forall(deps.contains) }
-      if(nodep.isEmpty) throw new IllegalArgumentException(s"Cyclic reference found: ${dep}")
+      if (nodep.isEmpty) throw new IllegalArgumentException(s"Cyclic reference found: ${dep}")
       tsort0(dep, deps ++ nodep.map(_._2), sorted ++ nodep.map(_._1))
     }
 }
-
 
 final class InstructionLabel private () extends AbstractLabel
 object InstructionLabel {
@@ -73,7 +72,6 @@ object Effect extends AbstractLabel.NamerProvider[Effect] {
   def fresh() = new Effect
 }
 
-
 trait Transformer[A <: AnyRef, B <: AnyRef] {
   def apply(orig: Instance[A]): Try[Instance[B]]
 }
@@ -84,15 +82,16 @@ object Transformer {
     } { field =>
       field.value match {
         case FieldValue.Reference(instance) =>
-          if(!instance.fields.values.forall(_.attribute.isStatic))
+          if (!instance.fields.values.forall(_.attribute.isStatic))
             throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
           val targetMethodBodies =
             instance.methods
               .filterNot { case ((cr, _), _) => cr == ClassRef.Object }
-              .map { case ((cr, mr), a) =>
-                instance.methodBody(cr, mr) getOrElse {
-                  throw new IllegalArgumentException(s"Cant rewrite method ${cr.pretty}.${mr.pretty}")
-                }
+              .map {
+                case ((cr, mr), a) =>
+                  instance.methodBody(cr, mr) getOrElse {
+                    throw new IllegalArgumentException(s"Cant rewrite method ${cr.pretty}.${mr.pretty}")
+                  }
               }
           import Bytecode._
           // val methodsUsed = targetMethodBodies.flatMap { body =>

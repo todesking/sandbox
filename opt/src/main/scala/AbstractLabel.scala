@@ -59,18 +59,18 @@ object AbstractLabel {
       }
 
     private[this] def merge0(l1: L, l2: L): L =
-      if(l1 == l2) {
+      if (l1 == l2) {
         l1
-      } else if(merges.contains(l1)) {
-        if(merges.contains(l2)) throw new AssertionError
+      } else if (merges.contains(l1)) {
+        if (merges.contains(l2)) throw new AssertionError
         merges.addBinding(l1, l2)
         l1
-      } else if(merges.contains(l2)) {
+      } else if (merges.contains(l2)) {
         merges.addBinding(l2, l1)
         l2
-      } else if(merges.find(_._1 == l1).map(_._2.contains(l2)) getOrElse false) {
+      } else if (merges.find(_._1 == l1).map(_._2.contains(l2)) getOrElse false) {
         l1
-      } else if(merges.find(_._1 == l2).map(_._2.contains(l1)) getOrElse false) {
+      } else if (merges.find(_._1 == l2).map(_._2.contains(l1)) getOrElse false) {
         l2
       } else {
         val m = fresh

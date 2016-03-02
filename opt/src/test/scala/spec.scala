@@ -2,14 +2,14 @@ package com.todesking.hoge
 
 import com.todesking.scalapp.syntax._
 
-import org.scalatest.{FunSpec, Matchers}
+import org.scalatest.{ FunSpec, Matchers }
 
 object Test {
   class Complex {
     @scala.annotation.tailrec
     final def foo(a: Int): Int =
-      if(a > 0) 100
-      else if(a > -10) bar(a)
+      if (a > 0) 100
+      else if (a > -10) bar(a)
       else foo(a + 100)
     def bar(a: Int) = a
   }
@@ -28,8 +28,8 @@ object Test {
   }
   class If {
     def foo(a: Int): Int =
-      if(a > 0) 100
-      else if(a > -10) -10
+      if (a > 0) 100
+      else if (a > -10) -10
       else -100
   }
   object OtherMethod {
@@ -56,7 +56,7 @@ object Test {
   }
   object SimpleDataflow {
     class A {
-      def foo(): Int = if(bar > 20) 1 else 2
+      def foo(): Int = if (bar > 20) 1 else 2
       def bar(): Int = 10
     }
   }

@@ -11,12 +11,12 @@ sealed abstract class Data {
 
   def pretty: String = s"""${typeRef.pretty}${value.map { v => s" = ${valueString}" } getOrElse ""}"""
   def secondWordData: Data =
-    if(!typeRef.isDoubleWord) throw new IllegalArgumentException()
+    if (!typeRef.isDoubleWord) throw new IllegalArgumentException()
     else Data.Unsure(TypeRef.SecondWord)
 }
 object Data {
   def merge(d1: Data, d2: Data): Data = {
-    if(d1 eq d2) d1
+    if (d1 eq d2) d1
     else (d1, d2) match {
       case (Unsure(t), rhs) =>
         Unsure(TypeRef.common(t, rhs.typeRef))

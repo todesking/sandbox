@@ -2,7 +2,7 @@ package com.todesking.hoge
 
 sealed abstract class TypeRef {
   def isDoubleWord: Boolean = false
-  def wordSize: Int = if(isDoubleWord) 2 else 1
+  def wordSize: Int = if (isDoubleWord) 2 else 1
   def pretty: String = toString
 }
 object TypeRef {

@@ -28,15 +28,15 @@ object ClassRef {
   // None: Not sure
   def compare(lhs: ClassRef, rhs: ClassRef): Option[Int] = (lhs, rhs) match {
     case (l: Concrete, r: Concrete) =>
-      if(l.loadClass == r.loadClass) Some(0)
-      else if(l.loadClass.isAssignableFrom(r.loadClass)) Some(1)
-      else if(r.loadClass.isAssignableFrom(l.loadClass)) Some(-1)
+      if (l.loadClass == r.loadClass) Some(0)
+      else if (l.loadClass.isAssignableFrom(r.loadClass)) Some(1)
+      else if (r.loadClass.isAssignableFrom(l.loadClass)) Some(-1)
       else None
     case (l: Concrete, r: Extend) =>
-      if(l.loadClass.isAssignableFrom(r.superClass)) Some(1)
+      if (l.loadClass.isAssignableFrom(r.superClass)) Some(1)
       else None
     case (l: Extend, r: Concrete) =>
-      if(r.loadClass.isAssignableFrom(l.superClass)) Some(-1)
+      if (r.loadClass.isAssignableFrom(l.superClass)) Some(-1)
       else None
     case (l: Extend, r: Extend) =>
       None
@@ -48,7 +48,7 @@ object ClassRef {
     override def pretty = s"${name}@${System.identityHashCode(classLoader)}"
     // TODO: Is this really correct?
     lazy val loadClass: Class[_] =
-      (if(classLoader == null) ClassLoader.getSystemClassLoader else classLoader).loadClass(name)
+      (if (classLoader == null) ClassLoader.getSystemClassLoader else classLoader).loadClass(name)
 
     def extend(name: String, cl: ClassLoader): Extend =
       Extend(loadClass, name, cl)

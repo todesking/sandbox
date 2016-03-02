@@ -1,8 +1,8 @@
 package com.todesking.hoge
 
-import javassist.{ClassPool, CtClass, CtBehavior}
-import javassist.bytecode.{CodeAttribute, ConstPool, Bytecode => JABytecode, MethodInfo}
-import java.lang.reflect.{Method => JMethod, Constructor}
+import javassist.{ ClassPool, CtClass, CtBehavior }
+import javassist.bytecode.{ CodeAttribute, ConstPool, Bytecode => JABytecode, MethodInfo }
+import java.lang.reflect.{ Method => JMethod, Constructor }
 
 import scala.collection.mutable
 
@@ -120,8 +120,9 @@ object Javassist {
     import javassist.{ ClassClassPath, ByteArrayClassPath }
 
     val classPool = new ClassPool(null)
-    Instance.findMaterializedClasses(jClass.getClassLoader).foreach { case (name, bytes) =>
-      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+    Instance.findMaterializedClasses(jClass.getClassLoader).foreach {
+      case (name, bytes) =>
+        classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
     }
     classPool.appendClassPath(new ClassClassPath(jClass))
     classPool
@@ -131,8 +132,9 @@ object Javassist {
     import javassist.{ LoaderClassPath, ByteArrayClassPath }
 
     val classPool = new ClassPool(null)
-    Instance.findMaterializedClasses(cl).foreach { case (name, bytes) =>
-      classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
+    Instance.findMaterializedClasses(cl).foreach {
+      case (name, bytes) =>
+        classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
     }
     classPool.appendClassPath(new LoaderClassPath(cl))
     classPool
@@ -244,7 +246,8 @@ object Javassist {
               index,
               invokevirtual(
                 classRef,
-                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
+                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader))
+              )
             )
           case 0xB7 => // invokespecial
             val constIndex = it.u16bitAt(index + 1)
@@ -256,7 +259,8 @@ object Javassist {
               index,
               invokespecial(
                 classRef,
-                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader)))
+                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader))
+              )
             )
           case 0xBF => // athrow
             onInstruction(index, athrow())

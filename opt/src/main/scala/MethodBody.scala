@@ -11,10 +11,10 @@ import java.lang.reflect.{ Method => JMethod }
 import com.todesking.scalapp.syntax._
 
 case class MethodBody(
-  descriptor: MethodDescriptor,
-  attribute: MethodAttribute,
-  bytecode: Seq[Bytecode],
-  jumpTargets: Map[JumpTarget, Bytecode.Label]
+    descriptor: MethodDescriptor,
+    attribute: MethodAttribute,
+    bytecode: Seq[Bytecode],
+    jumpTargets: Map[JumpTarget, Bytecode.Label]
 ) {
   require(bytecode.nonEmpty)
 
@@ -33,9 +33,10 @@ case class MethodBody(
 
   def rewrite(f: PartialFunction[Bytecode, Bytecode]): MethodBody = {
     val lifted = f.lift
-    bytecode.foldLeft(this) { case (body, bc) =>
-      val newBc = lifted(bc) getOrElse bc
-      body.replaceBytecode(bc.label, newBc)
+    bytecode.foldLeft(this) {
+      case (body, bc) =>
+        val newBc = lifted(bc) getOrElse bc
+        body.replaceBytecode(bc.label, newBc)
     }
   }
 
@@ -45,11 +46,11 @@ case class MethodBody(
   }
 
   def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
-    if(newBc.label == l) {
+    if (newBc.label == l) {
       this
     } else {
-      val newBcs = bytecode.map { bc => if(bc.label == l) newBc else bc }
-      val newJts = jumpTargets.map { case (jt, bcl) => if(bcl == l) (jt -> newBc.label) else (jt -> bcl) }
+      val newBcs = bytecode.map { bc => if (bc.label == l) newBc else bc }
+      val newJts = jumpTargets.map { case (jt, bcl) => if (bcl == l) (jt -> newBc.label) else (jt -> bcl) }
       MethodBody(descriptor, attribute, newBcs, newJts)
     }
   }
@@ -76,11 +77,11 @@ object MethodBody {
 
     lazy val initialFrame: Frame = {
       val initialEffect = Effect.fresh()
-      val thisData = if(body.isStatic) None else Some(DataLabel.out("this") -> self)
+      val thisData = if (body.isStatic) None else Some(DataLabel.out("this") -> self)
       val argData = body.descriptor.args.zipWithIndex.zip(argLabels).flatMap {
         case ((t, i), label) =>
           val data = Data.Unsure(t)
-          if(t.isDoubleWord)
+          if (t.isDoubleWord)
             Seq((DataLabel.out(s"second word of ${label.name}") -> data.secondWordData), (label -> data))
           else
             Seq(label -> data)
@@ -96,18 +97,18 @@ object MethodBody {
       val lName = Bytecode.Label.namer("L", "")
       s"""${body.descriptor.str} ${body.attribute}
   ${
-    body.bytecode.map { bc =>
-      val l = f"L${bc.label.innerId}%-5s "
-      l + (bc match {
-        case j: Bytecode.Jump =>
-          s"${j} # L${body.jumpTargets(j.target).innerId}"
-        case b: Bytecode.Branch =>
-          s"${b} # L${body.jumpTargets(b.target).innerId}"
-        case b =>
-          b.pretty
-      })
-    }.mkString("\n")
-  }
+        body.bytecode.map { bc =>
+          val l = f"L${bc.label.innerId}%-5s "
+          l + (bc match {
+            case j: Bytecode.Jump =>
+              s"${j} # L${body.jumpTargets(j.target).innerId}"
+            case b: Bytecode.Branch =>
+              s"${b} # L${body.jumpTargets(b.target).innerId}"
+            case b =>
+              b.pretty
+          })
+        }.mkString("\n")
+      }
   """
     }
 
@@ -123,13 +124,14 @@ object MethodBody {
   ${bcName.id(body.bytecode.head.label)} -> start
   ${eName.id(initialFrame.effect)} -> start [style="dotted"]
       ${
-      body.bytecode.map { bc =>
-        drawNode(bcName.id(bc.label), 'label -> bc.pretty, 'shape -> "rectangle")
-      }.mkString("\n")
+        body.bytecode.map { bc =>
+          drawNode(bcName.id(bc.label), 'label -> bc.pretty, 'shape -> "rectangle")
+        }.mkString("\n")
       }
       ${
-        fallThroughs.map { case (src, d) =>
-          drawEdge(bcName.id(d), bcName.id(src))
+        fallThroughs.map {
+          case (src, d) =>
+            drawEdge(bcName.id(d), bcName.id(src))
         }.mkString("\n")
       }
       ${
@@ -143,42 +145,49 @@ object MethodBody {
         }.mkString("\n")
       }
       ${
-        dataValues.collect { case (l: DataLabel.Out, data) =>
-          drawNode(dName.id(l), 'label -> s"${l.name}: ${data.pretty}")
+        dataValues.collect {
+          case (l: DataLabel.Out, data) =>
+            drawNode(dName.id(l), 'label -> s"${l.name}: ${data.pretty}")
         }.mkString("\n")
       }
       ${
         body.bytecode.flatMap { bc =>
           bc.inputs.flatMap { i =>
-            dataBinding.get(i).map(i ->_)
-          }.map { case (i, o) =>
-            drawEdge(bcName.id(bc.label), dName.id(o), 'style -> "dotted", 'label -> i.name)
+            dataBinding.get(i).map(i -> _)
+          }.map {
+            case (i, o) =>
+              drawEdge(bcName.id(bc.label), dName.id(o), 'style -> "dotted", 'label -> i.name)
           }
         }.mkString("\n")
       }
       ${
-        body.bytecode.flatMap { bc => bc.output.map(bc -> _) }.map { case (bc, o) =>
-          drawEdge(dName.id(o), bcName.id(bc.label), 'style -> "dotted", 'label -> o.name)
+        body.bytecode.flatMap { bc => bc.output.map(bc -> _) }.map {
+          case (bc, o) =>
+            drawEdge(dName.id(o), bcName.id(bc.label), 'style -> "dotted", 'label -> o.name)
         }.mkString("\n")
       }
       ${
-        dataMerges.flatMap { case (m, ds) =>
-          ds.map { d => drawEdge(dName.id(m), dName.id(d), 'style -> "dotted") }
+        dataMerges.flatMap {
+          case (m, ds) =>
+            ds.map { d => drawEdge(dName.id(m), dName.id(d), 'style -> "dotted") }
         }.mkString("\n")
       }
       ${
-        effectMerges.flatMap { case (m, es) =>
-          es.map { e => drawEdge(eName.id(m), eName.id(e), 'style -> "dotted") }
+        effectMerges.flatMap {
+          case (m, es) =>
+            es.map { e => drawEdge(eName.id(m), eName.id(e), 'style -> "dotted") }
         }.mkString("\n")
       }
       ${
-        effectDependencies.map { case (bcl, e) =>
-          drawEdge(bcName.id(bcl), eName.id(e), 'style -> "dotted")
+        effectDependencies.map {
+          case (bcl, e) =>
+            drawEdge(bcName.id(bcl), eName.id(e), 'style -> "dotted")
         }.mkString("\n")
       }
       ${
-        body.bytecode.flatMap { bc => bc.effect.map(bc -> _) }.map { case (bc, e) =>
-          drawEdge(eName.id(e), bcName.id(bc.label), 'style -> "dotted")
+        body.bytecode.flatMap { bc => bc.effect.map(bc -> _) }.map {
+          case (bc, e) =>
+            drawEdge(eName.id(e), bcName.id(bc.label), 'style -> "dotted")
         }.mkString("\n")
       }
   }"""
@@ -195,7 +204,7 @@ object MethodBody {
       fallThroughs: Map[Bytecode.Label, Bytecode.Label],
       maxLocals: Int,
       maxStackDepth: Int
-    ) = {
+      ) = {
       val dataMerges = new AbstractLabel.Merger[DataLabel.Out](DataLabel.out("merged"))
       val effectMerges = new AbstractLabel.Merger[Effect](Effect.fresh())
       def mergeData(d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
@@ -203,9 +212,9 @@ object MethodBody {
       def merge(f1: Frame, f2: Frame): Frame = {
         Frame(
           (f1.locals.keySet ++ f2.locals.keySet)
-            .filter { k => f1.locals.contains(k) && f2.locals.contains(k) }
-            .map { k => (k -> mergeData(f1.locals(k), f2.locals(k))) }.toMap,
-          f1.stack.zip(f2.stack).map { case(a, b) => mergeData(a, b) },
+          .filter { k => f1.locals.contains(k) && f2.locals.contains(k) }
+          .map { k => (k -> mergeData(f1.locals(k), f2.locals(k))) }.toMap,
+          f1.stack.zip(f2.stack).map { case (a, b) => mergeData(a, b) },
           effectMerges.merge(f1.effect, f2.effect)
         )
       }
@@ -220,11 +229,11 @@ object MethodBody {
       val tasks = mutable.Set.empty[(Bytecode.Label, Frame)]
       tasks += (body.bytecode.head.label -> initialFrame)
 
-      while(tasks.nonEmpty) {
+      while (tasks.nonEmpty) {
         val (pos, frame) = tasks.head
         tasks.remove(pos -> frame)
         val merged = preFrames.get(pos).map(merge(_, frame)) getOrElse frame
-        if(preFrames.get(pos).map(_ != merged) getOrElse true) {
+        if (preFrames.get(pos).map(_ != merged) getOrElse true) {
           preFrames(pos) = merged
           val bseq = body.bytecode.dropWhile(_.label != pos)
           val bc = bseq.head
@@ -236,7 +245,7 @@ object MethodBody {
             case r: Bytecode.XReturn =>
             case j: Bytecode.Jump =>
               tasks += (body.jumpTargets(j.target) -> u.newFrame)
-            case b:  Bytecode.Branch =>
+            case b: Bytecode.Branch =>
               tasks += (body.jumpTargets(b.target) -> u.newFrame)
               tasks += (bseq(1).label -> u.newFrame)
               fallThroughs(b.label) = bseq(1).label
@@ -244,15 +253,16 @@ object MethodBody {
               tasks += (bseq(1).label -> u.newFrame)
               fallThroughs(bc.label) = bseq(1).label
             case Bytecode.athrow() =>
-              // TODO: Exception handler
+            // TODO: Exception handler
           }
         }
       }
 
       val dataValues = mutable.HashMap.empty[DataLabel, Data]
       (preFrames.values.toSeq :+ initialFrame) foreach { frame =>
-        (frame.locals.values ++ frame.stack) foreach { case (l, d) =>
-          dataValues(l) = d
+        (frame.locals.values ++ frame.stack) foreach {
+          case (l, d) =>
+            dataValues(l) = d
         }
       }
       val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]

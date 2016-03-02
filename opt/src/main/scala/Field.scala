@@ -3,7 +3,7 @@ package com.todesking.hoge
 import scala.language.existentials
 import scala.language.higherKinds
 
-import java.lang.reflect.{ Method => JMethod , Field => JField, Modifier}
+import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
 case class Field(
   classRef: ClassRef,
