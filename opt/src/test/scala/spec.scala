@@ -91,20 +91,16 @@ object Test {
 }
 
 class Spec extends FunSpec with Matchers {
-  def dotBody(filename: String, b: MethodBody): Unit = {
+  def dotBody(filename: String, self: Instance[_ <: AnyRef], b: MethodBody): Unit = {
     import java.nio.file._
-    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
-  }
-  def dotFlow(filename: String, b: MethodBody): Unit = {
-    import java.nio.file._
-    Files.write(Paths.get(filename), b.toDot.getBytes("UTF-8"))
+    Files.write(Paths.get(filename), b.dataflow(self).toDot.getBytes("UTF-8"))
   }
   describe("opt") {
     val defaultCL = ClassLoader.getSystemClassLoader
     it("dot test") {
       val foo = MethodRef.parse("foo(I)I", defaultCL)
       val i = Instance.of(new Test.Complex)
-      dotBody("complex.dot", i.methodBody(foo).get)
+      dotBody("complex.dot", i, i.methodBody(foo).get)
     }
     it("const") {
       val orig = new Test.Const
@@ -176,7 +172,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of[Test.Upcast.A](obj)
       val foo = MethodRef.parse("foo()I", defaultCL)
       val ri = i.duplicate[Test.Upcast.A].materialized
-      dotBody("real_upcast.dot", ri.methodBody(foo).get)
+      dotBody("real_upcast.dot", ri, ri.methodBody(foo).get)
       classOf[Test.Upcast.A].isAssignableFrom(ri.value.getClass) should be(true)
       classOf[Test.Upcast.B].isAssignableFrom(ri.value.getClass) should be(false)
       ri.value.foo() should be(99)
@@ -191,7 +187,7 @@ class Spec extends FunSpec with Matchers {
 
       val ri = i.duplicate.materialized
 
-      dotBody("s.dot", ri.methodBody(foo).get)
+      dotBody("s.dot", ri, ri.methodBody(foo).get)
 
       ri.value.foo() should be(2)
     }

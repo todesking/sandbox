@@ -39,7 +39,6 @@ object Bytecode {
     t match {
       case TypeRef.Int => iload(n)
       case TypeRef.Reference(_) => aload(n)
-      case TypeRef.This => aload(n)
       case unk =>
         throw new IllegalArgumentException(s"Unsupported load instruction for ${unk}")
     }
@@ -47,7 +46,6 @@ object Bytecode {
   def store(t: TypeRef, n: Int): Bytecode =
     t match {
       case TypeRef.Int => istore(n)
-      case TypeRef.This => astore(n)
       case unk =>
         throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
     }
@@ -153,7 +151,7 @@ object Bytecode {
           if(t.isDoubleWord) u.pop2(a)
           else u.pop1(a)
         }.pop1(receiver)
-      ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
+      ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
     }
   }
 
@@ -181,13 +179,13 @@ object Bytecode {
   case class lreturn() extends XReturn
   case class areturn() extends XReturn
   case class iconst(value: Int) extends Const1 {
-    override def data = Data(TypeRef.Int, Some(value))
+    override def data = Data.Primitive(TypeRef.Int, value)
   }
   case class lconst(value: Long) extends Const2 {
-    override def data = Data(TypeRef.Long, Some(value))
+    override def data = Data.Primitive(TypeRef.Long, value)
   }
   case class aconst_null() extends Const1 {
-    override def data = Data(TypeRef.Null, Some(null))
+    override def data = Data.Null
   }
   case class goto(override val target: JumpTarget) extends Jump {
   }
@@ -210,8 +208,18 @@ object Bytecode {
     override def effect = None
     override def nextFrame(f: Frame) =
       (f.stack(0), f.stack(1)) match {
-        case ((_, Data(TypeRef.Int, v1)), (_, Data(TypeRef.Int, v2))) =>
-          update(f).pop1(value2).pop1(value1).push(out -> Data(TypeRef.Int, v1.flatMap { v1 => v2.map { v2 => v1.asInstanceOf[Int] + v2.asInstanceOf[Int] }}))
+        case ((_, d1), (_, d2)) if d1.typeRef == TypeRef.Int && d2.typeRef == TypeRef.Int =>
+          update(f)
+            .pop1(value2)
+            .pop1(value1)
+            .push(
+              out -> (d1.value.flatMap { v1 => d2.value.map { v2 =>
+                Data.Primitive(
+                  TypeRef.Int,
+                  v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
+                )
+              }}).getOrElse { Data.Unsure(TypeRef.Int) }
+            )
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
     override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
@@ -237,7 +245,7 @@ object Bytecode {
     override def inputs = Seq(target)
     override def output = Some(out)
     override def nextFrame(f: Frame) =
-      update(f).pop1(target).push(out -> Data(fieldRef.descriptor.typeRef, None)) // TODO: set actual value if final
+      update(f).pop1(target).push(out -> Data.Unsure(fieldRef.descriptor.typeRef)) // TODO: set actual value if final
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
       if(classRef == from) copy(classRef = to)
       else this

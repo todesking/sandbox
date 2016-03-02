@@ -32,6 +32,9 @@ object TypeRef {
       case (ref @ Reference(_), Null) => ref
       case (r1 @ Reference(_), r2 @ Reference(_)) =>
         ???
+      case (_: Primitive, _: Primitive) => Undefined
+      case (SecondWord, _) => Undefined
+      case (_, SecondWord) => Undefined
     }
 
   trait DoubleWord extends TypeRef {
@@ -43,9 +46,6 @@ object TypeRef {
   }
   case object SecondWord extends TypeRef {
     override def pretty = "second word"
-  }
-  case object This extends TypeRef {
-    override def pretty = "this"
   }
   case object Null extends TypeRef {
     override def pretty = "null"

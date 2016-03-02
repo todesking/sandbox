@@ -73,6 +73,7 @@ object Effect extends AbstractLabel.NamerProvider[Effect] {
   def fresh() = new Effect
 }
 
+
 trait Transformer[A <: AnyRef, B <: AnyRef] {
   def apply(orig: Instance[A]): Try[Instance[B]]
 }

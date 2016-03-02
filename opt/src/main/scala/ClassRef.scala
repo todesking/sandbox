@@ -11,6 +11,7 @@ sealed abstract class ClassRef {
   def binaryName: String = name.replaceAll("\\.", "/")
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
+  def toTypeRef: TypeRef.Reference = TypeRef.Reference(this)
 
   override def hashCode = Objects.hashCode(name) ^ Objects.hashCode(classLoader)
 
