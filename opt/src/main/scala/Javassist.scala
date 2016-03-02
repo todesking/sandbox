@@ -270,9 +270,7 @@ object Javassist {
         mRef.descriptor,
         MethodAttribute.from(ctMethod.getModifiers),
         bcs.toSeq,
-        jumpTargets.toMap,
-        codeAttribute.getMaxLocals,
-        codeAttribute.getMaxStack
+        jumpTargets.toMap
       ))
     }
   }

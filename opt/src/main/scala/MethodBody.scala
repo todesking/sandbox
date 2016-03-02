@@ -14,15 +14,12 @@ case class MethodBody(
   descriptor: MethodDescriptor,
   attribute: MethodAttribute,
   bytecode: Seq[Bytecode],
-  jumpTargets: Map[JumpTarget, Bytecode.Label],
-  maxLocals: Int,
-  maxStackDepth: Int
+  jumpTargets: Map[JumpTarget, Bytecode.Label]
 ) {
   require(bytecode.nonEmpty)
 
   def isStatic: Boolean = attribute.isStatic
 
-  // TODO: make maxLocals/maxStackDepth auto calc
   // TODO: Exception handler
 
   def methodReferences: Set[(ClassRef, MethodRef)] =
@@ -53,7 +50,7 @@ case class MethodBody(
     } else {
       val newBcs = bytecode.map { bc => if(bc.label == l) newBc else bc }
       val newJts = jumpTargets.map { case (jt, bcl) => if(bcl == l) (jt -> newBc.label) else (jt -> bcl) }
-      MethodBody(descriptor, attribute, newBcs, newJts, maxLocals, maxStackDepth)
+      MethodBody(descriptor, attribute, newBcs, newJts)
     }
   }
 
@@ -180,7 +177,9 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     effectDependencies: Map[Bytecode.Label, Effect],
     effectMerges: Map[Effect, Set[Effect]],
     liveBytecode: Seq[Bytecode],
-    fallThroughs: Map[Bytecode.Label, Bytecode.Label]
+    fallThroughs: Map[Bytecode.Label, Bytecode.Label],
+    maxLocals: Int,
+    maxStackDepth: Int
   ) = {
     val dataMerges = new AbstractLabel.Merger[DataLabel.Out](DataLabel.out("merged"))
     val effectMerges = new AbstractLabel.Merger[Effect](Effect.fresh())
@@ -249,7 +248,11 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
       effectDependencies ++= u.effectDependencies
     }
 
-    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, fallThroughs.toMap)
+    val allFrames = preFrames.values ++ updates.values.map(_.newFrame)
+    val maxLocals = allFrames.flatMap(_.locals.keys).max + 1
+    val maxStackDepth = allFrames.map(_.stack.size).max
+
+    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, fallThroughs.toMap, maxLocals, maxStackDepth)
   }
 }
 

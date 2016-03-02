@@ -229,8 +229,6 @@ object Instance {
         descriptor = ctorDescriptor,
         MethodAttribute.from(ctorMethodInfo.getAccessFlags),
         jumpTargets = Map.empty,
-        maxLocals = 100,
-        maxStackDepth = 100,
         bytecode =
           Seq(
             aload(0),
