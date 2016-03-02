@@ -76,6 +76,9 @@ Field `x.y` is _fusionable_ to x if `∀E → E(x) === E(x')` where `x' = fusion
   * FAIL if `y` reference not-this members that invisible from `x'`
   * substitute this-member-reference in `y'` to `x'.<renamed>`
   * unique-rename-copy `m` to `x'`
+* For each method `m` in `x'`:
+  * rewrite method/field reference to `y'` in `m` to rewritten
+  * FAIL if some reference may point to `y'` but not sure
 
 ## Inlining
 

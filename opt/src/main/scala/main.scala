@@ -16,7 +16,6 @@ object Main {
   }
 }
 
-
 object Graphviz {
   def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\""}.mkString(", ")}]"""
   def drawNode(id: String, attr: (Symbol, String)*) = s"""${id}${drawAttr(attr)}"""
@@ -45,39 +44,6 @@ object Util {
     }
 }
 
-
-case class Frame(locals: Map[Int, (DataLabel.Out, Data)], stack: List[(DataLabel.Out, Data)], effect: Effect) {
-  def local(n: Int): (DataLabel.Out, Data) =
-    locals(n)
-
-  def stackTop: (DataLabel.Out, Data) = stack.head
-}
-
-case class Data(typeRef: TypeRef, value: Option[Any]) {
-  def pretty: String = s"""${typeRef.pretty}${value.map { v => s" = ${v}" } getOrElse ""}"""
-  def secondWordData: Data =
-    if(!typeRef.isDoubleWord) throw new IllegalArgumentException()
-    else Data(TypeRef.SecondWord, None)
-}
-object Data {
-  val Undefined = Data(TypeRef.Undefined, None)
-  def merge(d1: Data, d2: Data): Data = {
-    if(d1 == d2) d1
-    else {
-      val t = TypeRef.common(d1.typeRef, d2.typeRef)
-      val v =
-        for {
-          v1 <- d1.value
-          v2 <- d2.value if same(v1, v2)
-        } yield v1
-      Data(t, v)
-    }
-  }
-  private[this] def same(v1: Any, v2: Any): Boolean =
-    (v1, v2) match {
-      case (v1: AnyRef, v2: AnyRef) => v1 eq v2
-    }
-}
 
 final class InstructionLabel private () extends AbstractLabel
 object InstructionLabel {
@@ -111,6 +77,39 @@ trait Transformer[A <: AnyRef, B <: AnyRef] {
   def apply(orig: Instance[A]): Try[Instance[B]]
 }
 object Transformer {
+  def fieldFusion[A <: AnyRef](instance: Instance[A], classRef: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
+    instance.fields.get(classRef, fieldRef).fold {
+      throw new IllegalArgumentException(s"Field not found: ${classRef.pretty}.${fieldRef.pretty}")
+    } { field =>
+      field.value match {
+        case FieldValue.Reference(instance) =>
+          if(!instance.fields.values.forall(_.attribute.isStatic))
+            throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
+          val targetMethodBodies =
+            instance.methods
+              .filterNot { case ((cr, _), _) => cr == ClassRef.Object }
+              .map { case ((cr, mr), a) =>
+                instance.methodBody(cr, mr) getOrElse {
+                  throw new IllegalArgumentException(s"Cant rewrite method ${cr.pretty}.${mr.pretty}")
+                }
+              }
+          import Bytecode._
+          // val methodsUsed = targetMethodBodies.flatMap { body =>
+          //   val x = mutable.HashSet.empty[(ClassRef, MethodRef)]
+          //   body.bytecode.foreach {
+          //     case bc: InvokeInstanceMethod if body.dataValue(bc.target). =>
+          //       x ++= bc.methodReference
+          //   }
+          //   x.toSet
+          // }
+          // val fieldUsed = targetMethodBodies.flatMap { body =>
+          // }
+          ???
+        case other =>
+          throw new IllegalArgumentException(s"Field can't fusionable: other")
+      }
+    }
+  }
   /*
   def changeBaseClass[A <: AnyRef](baseClass: Class[A]): Transformer[A, A] = new Transformer[A, A] {
     override def apply(orig: Instance[A]): Try[Instance[A]] = {

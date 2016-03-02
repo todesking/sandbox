@@ -2,7 +2,10 @@ package com.todesking.hoge
 
 import java.lang.reflect.{Field => JField, Modifier}
 
-sealed abstract class FieldAttribute extends Flags[FieldAttribute]
+sealed abstract class FieldAttribute extends Flags[FieldAttribute] {
+  def isStatic: Boolean = has(FieldAttribute.Static)
+  def isFinal: Boolean = has(FieldAttribute.Final)
+}
 object FieldAttribute extends FlagsCompanion[FieldAttribute] {
   def from(m: JField): FieldAttribute =
     items.filter(_.enabledIn(m.getModifiers)).reduce[FieldAttribute](_ | _)
@@ -18,6 +21,7 @@ object FieldAttribute extends FlagsCompanion[FieldAttribute] {
   case object Private extends Single(Modifier.PRIVATE)
   case object Protected extends Single(Modifier.PROTECTED)
   case object Final extends Single(Modifier.FINAL)
+  case object Static extends Single(Modifier.STATIC)
 
-  val items = Seq(Public, Private, Protected, Final)
+  val items = Seq(Public, Private, Protected, Final, Static)
 }

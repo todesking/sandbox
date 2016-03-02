@@ -76,6 +76,17 @@ object Test {
     class B extends A {
     }
   }
+  object FieldFusion {
+    abstract class Base {
+      def foo(): Int
+    }
+    class A(b: B) extends Base {
+      override def foo(): Int = b.bar() + 10
+    }
+    class B {
+      def bar(): Int = 1
+    }
+  }
   // TODO: ref field
 }
 
@@ -201,6 +212,21 @@ class Spec extends FunSpec with Matchers {
 
       val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1000)
+    }
+    it("field fusion") {
+      import Test.FieldFusion._
+      val i = Instance.of(new A(new B))
+      i.value.foo should be(11)
+
+      val dup = i.duplicate[Base]
+
+      val ri = dup.materialized
+      ri.value.foo should be(11)
+
+      dup.fields.size should be(1)
+      val (fc, ff) = dup.fields.keys.head
+      val fi = Transformer.fieldFusion(dup, fc, ff).materialized
+      fi.value.foo should be(11)
     }
     it("inner class with primitive field") {
       pending

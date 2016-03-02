@@ -5,6 +5,7 @@ import java.lang.reflect.{ Method => JMethod, Constructor }
 // TODO: add ClassRef
 case class MethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str
+  def pretty: String = str
   def isVoid: Boolean = descriptor.isVoid
   def args: Seq[TypeRef.Public] = descriptor.args
   def ret: TypeRef.Public = descriptor.ret

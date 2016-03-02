@@ -32,6 +32,8 @@ sealed abstract class Instance[A <: AnyRef] {
   def materialized: Instance.Original[A]
 
   def duplicate[B >: A <: AnyRef: ClassTag]: Instance.Duplicate[B]
+
+  def duplicate1: Instance.Duplicate[A]
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
@@ -43,7 +45,10 @@ object Instance {
 
     override val thisRef = ClassRef.of(jClass)
 
-    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
+    override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] =
+      duplicate1.duplicate[B]
+
+    override def duplicate1: Duplicate[A] =
       Duplicate[A](
         this,
         thisRef.extend(Util.makeUniqueName(thisRef.classLoader, jClass), thisRef.classLoader),
@@ -51,8 +56,7 @@ object Instance {
         Map.empty,
         fields,
         Map.empty
-      ).duplicate[B]
-    }
+      )
 
     override def methodBody(ref: MethodRef): Option[MethodBody] =
       MethodBody.parse(virtualJMethods(ref))
@@ -82,6 +86,8 @@ object Instance {
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
       FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${scala.util.Random.nextInt}", fr.descriptor)
+
+    override def duplicate1 = this
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
@@ -254,10 +260,6 @@ object Instance {
       val bytes = klass.toBytecode
       Instance.registerMaterialized(classLoader, klass.getName, bytes)
       Instance.of(value)
-    }
-
-    def fieldFusion(cr: ClassRef, fr: FieldRef): Duplicate[A] = {
-      this
     }
 
     private[this] def validate(): Unit = {

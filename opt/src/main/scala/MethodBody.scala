@@ -25,6 +25,12 @@ case class MethodBody(
   // TODO: make maxLocals/maxStackDepth auto calc
   // TODO: Exception handler
 
+  def methodReferences: Set[(ClassRef, MethodRef)] =
+    bytecode.flatMap(_.methodReference).toSet
+
+  def fieldReferences: Set[(ClassRef, FieldRef)] =
+    bytecode.flatMap(_.fieldReference).toSet
+
   def labelToBytecode(l: Bytecode.Label): Bytecode =
     bytecode.find(_.label == l).getOrElse { throw new IllegalArgumentException(s"Bytecode ${l} not found") }
 
@@ -189,9 +195,6 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
         effectMerges.merge(f1.effect, f2.effect)
       )
     }
-
-    println("===========")
-    println(pretty)
 
     val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
     val updates = mutable.HashMap.empty[Bytecode.Label, FrameUpdate]

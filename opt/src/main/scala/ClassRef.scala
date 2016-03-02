@@ -2,6 +2,8 @@ package com.todesking.hoge
 
 import scala.language.existentials
 
+import java.util.Objects
+
 sealed abstract class ClassRef {
   def pretty: String
   def name: String
@@ -10,7 +12,15 @@ sealed abstract class ClassRef {
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
 
-  // TODO: override equals(name and classLoader)
+  override def hashCode = Objects.hashCode(name) ^ Objects.hashCode(classLoader)
+
+  override def equals(obj: Any) =
+    obj match {
+      case that: ClassRef =>
+        this.name == that.name && this.classLoader == that.classLoader
+      case _ =>
+        false
+    }
 }
 object ClassRef {
   // Some(n): Determinable
@@ -30,6 +40,9 @@ object ClassRef {
     case (l: Extend, r: Extend) =>
       None
   }
+
+  val Object: ClassRef.Concrete = of(classOf[java.lang.Object])
+
   case class Concrete(override val name: String, override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"${name}@${System.identityHashCode(classLoader)}"
     // TODO: Is this really correct?

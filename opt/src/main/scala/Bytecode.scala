@@ -18,6 +18,8 @@ sealed abstract class Bytecode {
   def pretty: String = toString
 
   def rewriteClassRef(from: ClassRef, to: ClassRef): Bytecode
+  def methodReference: Option[(ClassRef, MethodRef)]
+  def fieldReference: Option[(ClassRef, FieldRef)]
 
   protected def update(frame: Frame): FrameUpdate =
     FrameUpdate(
@@ -52,21 +54,25 @@ object Bytecode {
 
   sealed abstract class Control extends Bytecode {
     val eff: Effect = Effect.fresh()
-    override def effect = Some(eff)
-    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
+    override final def effect = Some(eff)
+    override final def rewriteClassRef(from: ClassRef, to: ClassRef) = this
+    override final def methodReference = None
+    override final def fieldReference = None
   }
   sealed abstract class Shuffle extends Bytecode {
-    override def inputs = Seq.empty
-    override def output = None
-    override def effect = None
-    override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
+    override final def inputs = Seq.empty
+    override final def output = None
+    override final def effect = None
+    override final def rewriteClassRef(from: ClassRef, to: ClassRef) = this
+    override final def methodReference = None
+    override final def fieldReference = None
   }
   sealed abstract class Procedure extends Bytecode
 
   sealed abstract class Jump extends Control {
-    override def inputs = Seq.empty
-    override def output = None
-    override def nextFrame(f: Frame) = update(f)
+    override final def inputs = Seq.empty
+    override final def output = None
+    override final def nextFrame(f: Frame) = update(f)
     def target: JumpTarget
   }
 
@@ -78,9 +84,9 @@ object Bytecode {
   }
   sealed abstract class XReturn extends Return {
     val in: DataLabel.In = DataLabel.in("retval")
-    override val inputs = Seq(in)
-    override def output = None
-    override def nextFrame(f: Frame) = update(f).ret(in)
+    override final val inputs = Seq(in)
+    override final def output = None
+    override final def nextFrame(f: Frame) = update(f).ret(in)
   }
   // Void return
   sealed abstract class VoidReturn extends Return {
@@ -110,6 +116,8 @@ object Bytecode {
   sealed abstract class ConstX extends Procedure {
     def out: DataLabel.Out
     def data: Data
+    override def methodReference = None
+    override def fieldReference = None
     override def inputs = Seq.empty
     override def output = Some(out)
     override def effect = None
@@ -126,6 +134,35 @@ object Bytecode {
     override def nextFrame(f: Frame) = update(f).push2(out -> data)
   }
 
+  sealed abstract class InvokeInstanceMethod extends Procedure {
+    def classRef: ClassRef
+    def methodRef: MethodRef
+    override final def effect = Some(eff)
+    override final def methodReference = Some(classRef, methodRef)
+    override def fieldReference = None
+    val eff: Effect = Effect.fresh()
+    val receiver: DataLabel.In = DataLabel.in("receiver")
+    val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
+    val ret: Option[DataLabel.Out] = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))
+    override final def inputs = receiver +: args
+    override final def output = ret
+    override def nextFrame(f: Frame) = {
+      require(f.stack.size >= methodRef.args.size)
+      val popped =
+        args.zip(methodRef.args).foldRight(update(f)) { case ((a, t), u) =>
+          if(t.isDoubleWord) u.pop2(a)
+          else u.pop1(a)
+        }.pop1(receiver)
+      ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
+    }
+  }
+
+  sealed abstract class FieldAccess extends Procedure {
+    def classRef: ClassRef
+    def fieldRef: FieldRef
+    override final val fieldReference = Some(classRef -> fieldRef)
+    override final val methodReference = None
+  }
   case class nop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f)
   }
@@ -166,6 +203,8 @@ object Bytecode {
     val value1 = DataLabel.in("value1")
     val value2 = DataLabel.in("value2")
     val out = DataLabel.out("result")
+    override def methodReference = None
+    override def fieldReference = None
     override def inputs = Seq(value1, value2)
     override def output = Some(out)
     override def effect = None
@@ -177,39 +216,19 @@ object Bytecode {
       }
     override def rewriteClassRef(from: ClassRef, to: ClassRef) = this
   }
-  sealed abstract class InvokeInstance extends Procedure {
-    def classRef: ClassRef
-    def methodRef: MethodRef
-    override def effect = Some(eff)
-    val eff: Effect = Effect.fresh()
-    val receiver: DataLabel.In = DataLabel.in("receiver")
-    val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
-    val ret: Option[DataLabel.Out] = if(methodRef.isVoid) None else Some(DataLabel.out("ret"))
-    override def inputs = receiver +: args
-    override def output = ret
-    override def nextFrame(f: Frame) = {
-      require(f.stack.size >= methodRef.args.size)
-      val popped =
-        args.zip(methodRef.args).foldRight(update(f)) { case ((a, t), u) =>
-          if(t.isDoubleWord) u.pop2(a)
-          else u.pop1(a)
-        }.pop1(receiver)
-      ret.fold(popped) { rlabel => popped.push(rlabel -> Data(methodRef.ret, None)) }
-    }
-  }
-  case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
+  case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstanceMethod {
     override def pretty = s"invokevirtual ${classRef.pretty}.${methodRef.str}"
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
       if(classRef == from) copy(classRef = to)
       else this
   }
-  case class invokespecial(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstance {
+  case class invokespecial(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstanceMethod {
     override def pretty = s"invokespecial ${classRef.pretty}.${methodRef.str}"
     override def rewriteClassRef(from: ClassRef, to: ClassRef) =
       if(classRef == from) copy(classRef = to)
       else this
   }
-  case class getfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
+  case class getfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
     val out = DataLabel.out("field")
@@ -223,7 +242,7 @@ object Bytecode {
       if(classRef == from) copy(classRef = to)
       else this
   }
-  case class putfield(classRef: ClassRef, fieldRef: FieldRef) extends Procedure {
+  case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
     val eff: Effect = Effect.fresh()
     val target = DataLabel.in("objectref")
     val value = DataLabel.in("value")
