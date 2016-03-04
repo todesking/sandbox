@@ -81,18 +81,11 @@ object Transformer {
       throw new IllegalArgumentException(s"Field not found: ${classRef.pretty}.${fieldRef.pretty}")
     } { field =>
       field.data match {
-        case Data.Reference(t, instance) =>
-          if (!instance.fields.values.forall(_.attribute.isStatic))
+        case Data.Reference(t, fieldInstance) =>
+          if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
             throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
-          val targetMethodBodies =
-            instance.methods
-              .filterNot { case ((cr, _), _) => cr == ClassRef.Object }
-              .map {
-                case ((cr, mr), a) =>
-                  instance.methodBody(cr, mr) getOrElse {
-                    throw new IllegalArgumentException(s"Cant rewrite method ${cr.pretty}.${mr.pretty}")
-                  }
-              }
+          val usedMethods = instance.usedMethodsOf(fieldInstance)
+          val usedFields = instance.usedFieldsOf(fieldInstance)
           import Bytecode._
           // val methodsUsed = targetMethodBodies.flatMap { body =>
           //   val x = mutable.HashSet.empty[(ClassRef, MethodRef)]
@@ -106,7 +99,7 @@ object Transformer {
           // }
           ???
         case other =>
-          throw new IllegalArgumentException(s"Field can't fusionable: other")
+          throw new IllegalArgumentException(s"Field can't fusionable: ${other}")
       }
     }
   }

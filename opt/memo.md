@@ -69,16 +69,19 @@ Field `x.y` is _fusionable_ to x if `∀E → E(x) === E(x')` where `x' = fusion
 `fusion(x, X, y, Y, outer_escaped)` is:
 
 * Let `duplicate(x, X, outer_escaped)` as `x'`(May FAIL)
-* Let `duplicate(y, Y, y_escaped_from_x)` as `y'`(May FAIL)
-* for each field `f` in `y'`:
+* FAIL if `y` is not instance-stateless and _escaped_
+  * `y` is _escaped_ when:
+    * `y` is public field
+    * A method in `x'` uses `y` as other instance's method argument
+* for each field `f` in `y`:
   * unique-rename-copy `f` to `x'`
 * For each method `m` in `y'`
-  * FAIL if `y` reference not-this members that invisible from `x'`
-  * substitute this-member-reference in `y'` to `x'.<renamed>`
+  * FAIL if `y` references non-this members that invisible from `x'`
+  * substitute this-member-reference <renamed>`
   * unique-rename-copy `m` to `x'`
 * For each method `m` in `x'`:
-  * rewrite method/field reference to `y'` in `m` to rewritten
   * FAIL if some reference may point to `y'` but not sure
+  * rewrite method/field reference to `y'` in `m` to rewritten
 
 ## Inlining
 

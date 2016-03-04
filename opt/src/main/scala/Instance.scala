@@ -26,14 +26,81 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def hasVirtualMethod(ref: MethodRef): Boolean =
     methods.exists { case ((c, m), a) => m == ref && a.isVirtual }
+
   def hasVirtualMethod(ref: String): Boolean =
     hasVirtualMethod(MethodRef.parse(ref, thisRef.classLoader))
+
+  def resolveVirtualMethod(mr: MethodRef): ClassRef
 
   def materialized: Instance.Original[A]
 
   def duplicate[B >: A <: AnyRef: ClassTag]: Instance.Duplicate[B]
 
   def duplicate1: Instance.Duplicate[A]
+
+  def usedMethodsOf(i: Instance[_ <: AnyRef]): Option[Set[(ClassRef, MethodRef)]] = {
+    analyzeBytecodes(Set.empty[(ClassRef, MethodRef)]) { (agg, cr, mr, df, bc) =>
+      import Bytecode._
+      bc match {
+        case bc @ invokevirtual(cr, mr) =>
+          isSingleInstance(df, bc.receiver, i).map { mustTheInstance =>
+            val vcr = i.resolveVirtualMethod(mr)
+            if(mustTheInstance) agg + (cr -> mr)
+            else agg
+          }
+        case _ => Some(agg)
+      }
+    }
+  }
+
+  def usedFieldsOf(i: Instance[_ <: AnyRef]): Option[Set[(ClassRef, FieldRef)]] = {
+    analyzeBytecodes(Set.empty[(ClassRef, FieldRef)]) { (agg, cr, mr, df, bc) =>
+      import Bytecode._
+      bc match {
+        case bc: FieldAccess =>
+          isSingleInstance(df, bc.target, i).map { mustTheInstance =>
+            if(mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
+            else agg
+          }
+        case _ => Some(agg)
+      }
+    }
+  }
+
+  // Some(true): data has single value that point the instance
+  // Some(false): data is not point the instance
+  // None: not sure
+  private[this] def isSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
+    df.singleValue(l).map(_.isInstance(i)) orElse {
+      if(df.possibleValues(l).exists(_.isInstance(i))) None
+      else Some(false)
+    }
+
+  def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow) => Option[B]): Option[B] = {
+    breakableFoldLeft(initial)(methods.keys.toSeq) { case (agg, (cr, mr)) =>
+      methodBody(cr, mr)
+        .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
+    }
+  }
+
+  def analyzeBytecodes[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow, Bytecode) => Option[B]): Option[B] =
+    analyzeMethods(initial) { case (mAgg, cr, mr, df) =>
+      breakableFoldLeft(mAgg)(df.body.bytecode) { case (agg, bc) =>
+        analyze(agg, cr, mr, df, bc)
+      }
+    }
+
+  private[this] def breakableFoldLeft[X, Y](initial: Y)(seq: Seq[X])(f: (Y, X) => Option[Y]): Option[Y] = {
+    def loop(rest: Seq[X], agg: Y): Option[Y] =
+      rest match {
+        case Seq() => Some(agg)
+        case Seq(x, r @ _*) => f(agg, x).flatMap { ret => loop(r, ret) }
+      }
+    loop(seq, initial)
+  }
+
+  override final def hashCode() = System.identityHashCode(this)
+  override final def equals(that: Any) = that match { case that: AnyRef => this eq that; case _ => false }
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
@@ -44,6 +111,9 @@ object Instance {
     override def materialized = this
 
     override val thisRef = ClassRef.of(jClass)
+
+    override def resolveVirtualMethod(mr: MethodRef): ClassRef =
+      Util.resolveVirtualMethod(jClass, mr)
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] =
       duplicate1.duplicate[B]
@@ -86,6 +156,15 @@ object Instance {
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
       FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${scala.util.Random.nextInt}", fr.descriptor)
+
+    override def resolveVirtualMethod(mr: MethodRef): ClassRef = {
+      thisMethods.get(mr).map { body =>
+        if(body.attribute.isVirtual) thisRef
+        else throw new IllegalArgumentException(s"Not virtual: ${mr} ${body.attribute}")
+      } getOrElse {
+        orig.resolveVirtualMethod(mr)
+      }
+    }
 
     override def duplicate1 = this
 
@@ -389,7 +468,6 @@ object Instance {
           }
       }
     }
-
   }
 
   object Util {
@@ -399,6 +477,15 @@ object Instance {
         .flatMap(_.getDeclaredMethods)
         .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
         .toMap
+
+    def resolveVirtualMethod(jClass: Class[_], mr: MethodRef): ClassRef.Concrete =
+      supers(jClass)
+        .find { c =>
+          c.getDeclaredMethods
+            .filter { m => MethodAttribute.from(m.getModifiers).isVirtual }
+            .exists { m => MethodRef.from(m) == mr }
+          }.map { m => ClassRef.of(m.getDeclaringClass) }
+          .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr.pretty} in ${jClass}") }
 
     // TODO: default interface method
     def virtualJMethods(jClass: Class[_]): Map[MethodRef, JMethod] =

@@ -70,6 +70,14 @@ object MethodBody {
     Javassist.decompile(m)
 
   class DataFlow(val body: MethodBody, self: Data) {
+    def possibleValues(l: DataLabel): Seq[Data] = ???
+
+    def singleValue(l: DataLabel): Option[Data] = {
+      val pvs = possibleValues(l)
+      if(pvs.size == 1) Some(pvs.head)
+      else None
+    }
+
     def argLabels: Seq[DataLabel.Out] =
       body.descriptor.args
         .zipWithIndex

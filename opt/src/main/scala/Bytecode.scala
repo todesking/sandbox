@@ -159,6 +159,7 @@ object Bytecode {
   sealed abstract class FieldAccess extends Procedure {
     def classRef: ClassRef
     def fieldRef: FieldRef
+    val target = DataLabel.in("objectref")
     override final val fieldReference = Some(classRef -> fieldRef)
     override final val methodReference = None
   }
@@ -241,7 +242,6 @@ object Bytecode {
   }
   case class getfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
     val eff: Effect = Effect.fresh()
-    val target = DataLabel.in("objectref")
     val out = DataLabel.out("field")
     override def pretty = s"getfield ${fieldRef.pretty}"
     override def effect = Some(eff)
@@ -266,7 +266,6 @@ object Bytecode {
   }
   case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
     val eff: Effect = Effect.fresh()
-    val target = DataLabel.in("objectref")
     val value = DataLabel.in("value")
     override def pretty = s"putfield ${fieldRef.pretty}"
     override def effect = Some(eff)
