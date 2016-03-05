@@ -84,19 +84,10 @@ object Transformer {
         case Data.Reference(t, fieldInstance) =>
           if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
             throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
-          val usedMethods = instance.usedMethodsOf(fieldInstance)
-          val usedFields = instance.usedFieldsOf(fieldInstance)
-          import Bytecode._
-          // val methodsUsed = targetMethodBodies.flatMap { body =>
-          //   val x = mutable.HashSet.empty[(ClassRef, MethodRef)]
-          //   body.bytecode.foreach {
-          //     case bc: InvokeInstanceMethod if body.dataValue(bc.target). =>
-          //       x ++= bc.methodReference
-          //   }
-          //   x.toSet
-          // }
-          // val fieldUsed = targetMethodBodies.flatMap { body =>
-          // }
+          val usedMethods = instance.usedMethodsOf(fieldInstance) getOrElse { throw new IllegalArgumentException() }
+          usedMethods.pp()
+          val usedFields = instance.usedFieldsOf(fieldInstance) getOrElse { throw new IllegalArgumentException() }
+          usedFields.pp()
           ???
         case other =>
           throw new IllegalArgumentException(s"Field can't fusionable: ${other}")

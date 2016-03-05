@@ -60,6 +60,10 @@ object Javassist {
           out.add(0x57)
         case iadd() =>
           out.add(0x60)
+        case if_acmpne(target) =>
+          out.add(0xA6)
+          jumps(out.getSize) = (out.getSize - 1) -> target
+          out.add(0x00, 0x03)
         case invokevirtual(classRef, methodRef) =>
           // TODO: check resolved class
           out.addInvokevirtual(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
@@ -203,6 +207,8 @@ object Javassist {
               if_icmple(addr2jt(index + it.s16bitAt(index + 1)))
             )
           // TODO
+          case 0xA6 => // if_acmpne
+            onInstruction(index, if_acmpne(addr2jt(index + it.s16bitAt(index + 1))))
           case 0xA7 => // goto
             onInstruction(index, goto(addr2jt(index + it.s16bitAt(index + 1))))
           // TODO

@@ -70,7 +70,17 @@ object MethodBody {
     Javassist.decompile(m)
 
   class DataFlow(val body: MethodBody, self: Data) {
-    def possibleValues(l: DataLabel): Seq[Data] = ???
+    def possibleValues(l: DataLabel): Seq[Data] = l match {
+      case l: DataLabel.Out =>
+        dataMerges.get(l) map { ms =>
+          // TODO: Is this cause infinite loop?
+          ms.toSeq.flatMap { m => possibleValues(m) }
+        } getOrElse {
+          Seq(dataValue(l))
+        }
+      case l: DataLabel.In =>
+        possibleValues(dataBinding(l))
+    }
 
     def singleValue(l: DataLabel): Option[Data] = {
       val pvs = possibleValues(l)

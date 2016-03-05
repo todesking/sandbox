@@ -6,6 +6,7 @@ import java.util.Objects
 
 sealed abstract class ClassRef {
   def pretty: String
+  override def toString = pretty
   def name: String
   def classLoader: ClassLoader
   def binaryName: String = name.replaceAll("\\.", "/")

@@ -93,7 +93,7 @@ object Bytecode {
     override def nextFrame(f: Frame) = update(f)
   }
 
-  sealed abstract class if_icmpXX extends Branch {
+  sealed abstract class if_X1cmpXX extends Branch {
     val value1: DataLabel.In = DataLabel.in("value1")
     val value2: DataLabel.In = DataLabel.in("value2")
     override def inputs = Seq(value1, value2)
@@ -191,7 +191,8 @@ object Bytecode {
   }
   case class goto(override val target: JumpTarget) extends Jump {
   }
-  case class if_icmple(override val target: JumpTarget) extends if_icmpXX
+  case class if_icmple(override val target: JumpTarget) extends if_X1cmpXX
+  case class if_acmpne(override val target: JumpTarget) extends if_X1cmpXX
   case class ifnonnull(override val target: JumpTarget) extends Branch {
     val value: DataLabel.In = DataLabel.in("value")
     override def pretty = "ifnonnull"

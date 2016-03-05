@@ -7,6 +7,8 @@ sealed abstract class MethodAttribute extends Flags[MethodAttribute] {
     !this.has(MethodAttribute.Private) && !this.has(MethodAttribute.Static)
   def isStatic: Boolean =
     this.has(MethodAttribute.Static)
+  def isAbstract: Boolean =
+    this.has(MethodAttribute.Abstract)
 }
 object MethodAttribute extends FlagsCompanion[MethodAttribute] {
   def from(m: JMethod): MethodAttribute =
@@ -34,6 +36,6 @@ object MethodAttribute extends FlagsCompanion[MethodAttribute] {
   case object Strict extends Single(Modifier.STRICT)
   case object Static extends Single(Modifier.STATIC)
 
-  val items = Seq(Public, Private, Protected, Native, Final, Synchronized, Strict, Static)
+  val items = Seq(Public, Private, Protected, Native, Abstract, Final, Synchronized, Strict, Static)
 }
 

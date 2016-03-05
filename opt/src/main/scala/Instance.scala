@@ -43,11 +43,11 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc @ invokevirtual(cr, mr) =>
-          isSingleInstance(df, bc.receiver, i).map { mustTheInstance =>
+          ifSingleInstance(df, bc.receiver, i).map { mustTheInstance =>
             val vcr = i.resolveVirtualMethod(mr)
             if(mustTheInstance) agg + (cr -> mr)
             else agg
-          }
+          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.receiver)}"); None }
         case _ => Some(agg)
       }
     }
@@ -58,10 +58,10 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc: FieldAccess =>
-          isSingleInstance(df, bc.target, i).map { mustTheInstance =>
+          ifSingleInstance(df, bc.target, i).map { mustTheInstance =>
             if(mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
             else agg
-          }
+          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.target)}"); None }
         case _ => Some(agg)
       }
     }
@@ -70,15 +70,16 @@ sealed abstract class Instance[A <: AnyRef] {
   // Some(true): data has single value that point the instance
   // Some(false): data is not point the instance
   // None: not sure
-  private[this] def isSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
+  private[this] def ifSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
     df.singleValue(l).map(_.isInstance(i)) orElse {
       if(df.possibleValues(l).exists(_.isInstance(i))) None
       else Some(false)
     }
 
   def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow) => Option[B]): Option[B] = {
-    breakableFoldLeft(initial)(methods.keys.toSeq) { case (agg, (cr, mr)) =>
-      methodBody(cr, mr)
+    val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
+    breakableFoldLeft(initial)(ms) { case (agg, (cr, mr)) =>
+      methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr.pretty}.${mr.pretty}"); None }
         .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
     }
   }
