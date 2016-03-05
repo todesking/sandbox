@@ -55,6 +55,25 @@ case class MethodBody(
     }
   }
 
+  def pretty: String = {
+    val lName = Bytecode.Label.namer("L", "")
+    s"""${descriptor.str} ${attribute}
+${
+      bytecode.map { bc =>
+        val l = f"L${bc.label.innerId}%-5s "
+        l + (bc match {
+          case j: Bytecode.Jump =>
+            s"${j} # L${jumpTargets(j.target).innerId}"
+          case b: Bytecode.Branch =>
+            s"${b} # L${jumpTargets(b.target).innerId}"
+          case b =>
+            b.pretty
+        })
+      }.mkString("\n")
+    }
+"""
+  }
+
   def dataflow(self: Instance[_ <: AnyRef]): MethodBody.DataFlow =
     new MethodBody.DataFlow(this, Data.Reference(self.thisRef.toTypeRef, self))
 
@@ -111,25 +130,6 @@ object MethodBody {
       dataValues(l)
 
     def dataType(l: DataLabel): TypeRef = dataValues(l).typeRef
-
-    def pretty: String = {
-      val lName = Bytecode.Label.namer("L", "")
-      s"""${body.descriptor.str} ${body.attribute}
-  ${
-        body.bytecode.map { bc =>
-          val l = f"L${bc.label.innerId}%-5s "
-          l + (bc match {
-            case j: Bytecode.Jump =>
-              s"${j} # L${body.jumpTargets(j.target).innerId}"
-            case b: Bytecode.Branch =>
-              s"${b} # L${body.jumpTargets(b.target).innerId}"
-            case b =>
-              b.pretty
-          })
-        }.mkString("\n")
-      }
-  """
-    }
 
     def toDot(): String = {
       import Graphviz._

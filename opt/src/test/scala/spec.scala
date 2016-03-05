@@ -210,6 +210,14 @@ class Spec extends FunSpec with Matchers {
       val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1000)
     }
+    it("dupdup") {
+      import Test.FieldDuplicate._
+      val i = Instance.of(new B)
+      i.value.foo should be(1000)
+
+      val ri = i.duplicate[Base].duplicate[Base].materialized
+      ri.value.foo should be(1000)
+    }
     it("field fusion") {
       import Test.FieldFusion._
       val i = Instance.of(new A(new B))
@@ -222,8 +230,9 @@ class Spec extends FunSpec with Matchers {
 
       dup.fields.size should be(1)
       val (fc, ff) = dup.fields.keys.head
-      val fi = Transformer.fieldFusion(dup, fc, ff).materialized
-      fi.value.foo should be(11)
+      val fi = Transformer.fieldFusion(dup, fc, ff)
+      fi.materialized.value.foo should be(11)
+      println(fi.pretty)
     }
     it("inner class with primitive field") {
       pending

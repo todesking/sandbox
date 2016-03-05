@@ -143,57 +143,5 @@ object Transformer {
       }
     }
   }
-  /*
-  def changeBaseClass[A <: AnyRef](baseClass: Class[A]): Transformer[A, A] = new Transformer[A, A] {
-    override def apply(orig: Instance[A]): Try[Instance[A]] = {
-      try {
-        // TODO: handle protected/package method
-        val newInstance = Instance.New(baseClass, ClassRef.newAnonymous(baseClass.getClassLoader, baseClass.getName))
-
-        val baseRef = ClassRef.of(baseClass)
-
-        val required = newInstance.methods.flatMap { m => requiredMethods(orig, newInstance, m) }
-
-        import Dataflow.INode._
-        import Bytecode._
-
-        Success(Instance.Rewritten(
-          newInstance,
-          required.map { m =>
-            val body = orig.methodBody(m) getOrElse { throw new TransformError(s"Can't acquire method body for ${m}") }
-            m -> body.rewrite {
-              case iv @ invokevirtual(classRef, method) if body.dataType(iv.receiver) == TypeRef.This && classRef < baseRef =>
-                invokevirtual(newInstance.classRef, method)
-            }
-          }.toMap,
-          useBaseClassRef = true
-        ))
-      } catch {
-        case e: TransformError => Failure(e)
-      }
-    }
-
-    private[this] def requiredMethods(
-      orig: Instance[_ <: AnyRef],
-      newInstance: Instance[_ <: AnyRef],
-      m: LocalMethodRef,
-      required: Set[LocalMethodRef] = Set.empty
-    ): Set[LocalMethodRef] = {
-      if(required.contains(m)) required
-      else if(newInstance.sameMethodDefined(m, orig)) required
-      else if(orig.isNativeMethod(m)) throw new TransformError(s"Method ${m.str} in ${orig.baseClass} is native")
-      else if(orig.isAbstractMethod(m)) required
-      else orig.methodBody(m).map { body =>
-        import Dataflow.INode._
-        body.dataflow.iNodes.collect {
-          case InvokeVirtual(className, method, Data(TypeRef.This, _), retOption, args @ _*) =>
-            method
-          }.distinct.foldLeft(required) { (r, m) => (r + m) ++ requiredMethods(orig, newInstance, m, (r + m)) } + m
-        // TODO: check other instance's protected/package private
-        // TODO: check same-instance method call(virtual/special)
-      }.getOrElse { throw new AssertionError() }
-    }
-  }
-  */
 }
 

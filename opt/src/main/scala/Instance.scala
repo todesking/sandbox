@@ -158,6 +158,22 @@ object Instance {
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
       FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${math.abs(scala.util.Random.nextInt)}", fr.descriptor)
 
+    def pretty: String = s"""class ${thisRef}
+new/overriden methods:
+${thisMethods.map { case (mr, body) =>
+  s"""def ${mr}
+${body.pretty}
+"""
+}.mkString("\n")
+}}
+new fields:
+${
+  thisFields.map { case (fr, field) =>
+    fr.pretty
+  }.mkString("\n")
+}
+"""
+
     def addMethod(mr: MethodRef, body: MethodBody): Duplicate[A] = {
       require(mr.descriptor == body.descriptor)
       copy(thisMethods = thisMethods + (mr -> body))
@@ -185,13 +201,13 @@ object Instance {
       val className = thisRef.name + "_"
       val newRef = newSuperRef.extend(className, thisRef.classLoader)
       val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
-        fields
+        superFields
           .keys
           .filter { case (c, f) => c < newSuperRef }
           .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
           .toMap
       val newThisFields =
-        fields
+        superFields
           .flatMap {
             case (cf, field) =>
               fieldMappings.get(cf).map { fr =>
@@ -200,7 +216,7 @@ object Instance {
           }
       // TODO: support super methods
       val newThisMethods =
-        methods
+        superMethods
           .filter { case ((cr, mr), ma) => cr < newSuperRef }
           .map {
             case ((cr, mr), ma) =>
@@ -218,16 +234,16 @@ object Instance {
                 throw new RuntimeException(s"Method ${cr.pretty}.${mr.str} can't rewrite: It's abstract or native")
               }
           }
-      rewriteThisRef(newRef).copy(
+      copy[B](
         superMethods = superMethods.filterNot { case ((cr, mr), ma) => cr < newSuperRef },
         superFields = superFields.filterNot { case ((cr, fr), f) => cr < newSuperRef },
         thisMethods = thisMethods ++ newThisMethods,
         thisFields = thisFields ++ newThisFields
-      )
+      ).rewriteThisRef(newRef)
     }
 
     // TODO: should we replace thisRef in method/field signature?
-    // => YES. TODO.
+    // TODO: should we replace only if objectref == this ?
     def rewriteThisRef(newRef: ClassRef.Extend): Duplicate[A] =
       copy(
         thisRef = newRef,
