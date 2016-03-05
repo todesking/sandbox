@@ -13,6 +13,7 @@ sealed abstract class ClassRef {
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
   def toTypeRef: TypeRef.Reference = TypeRef.Reference(this)
+  def renamed(newName: String): ClassRef
 
   override def hashCode = Objects.hashCode(name) ^ Objects.hashCode(classLoader)
 
@@ -53,6 +54,9 @@ object ClassRef {
 
     def extend(name: String, cl: ClassLoader): Extend =
       Extend(loadClass, name, cl)
+
+    override def renamed(newName: String): Concrete =
+      copy(name = newName)
   }
 
   // TODO: interface
@@ -61,6 +65,8 @@ object ClassRef {
     // TODO: Make this REAL unique
     def anotherUniqueName: Extend =
       copy(name = name + "_")
+    override def renamed(newName: String): Extend =
+      copy(name = newName)
   }
 
   def of(klass: Class[_]): Concrete =

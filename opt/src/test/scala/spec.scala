@@ -84,7 +84,8 @@ object Test {
       override def foo(): Int = b.bar() + 10
     }
     class B {
-      def bar(): Int = 1
+      private[this] val x = 1
+      def bar(): Int = x
     }
   }
   // TODO: ref field

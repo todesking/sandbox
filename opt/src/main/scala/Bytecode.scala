@@ -17,6 +17,7 @@ sealed abstract class Bytecode {
   def effect: Option[Effect]
   def pretty: String = toString
 
+  // TODO: Bytecode.HasClassRef/HasMethodRef/HasFieldRef
   def rewriteClassRef(from: ClassRef, to: ClassRef): Bytecode
   def methodReference: Option[(ClassRef, MethodRef)]
   def fieldReference: Option[(ClassRef, FieldRef)]
@@ -132,7 +133,9 @@ object Bytecode {
     override def nextFrame(f: Frame) = update(f).push2(out -> data)
   }
 
-  sealed abstract class InvokeInstanceMethod extends Procedure {
+  sealed abstract class InvokeMethod extends Procedure {
+  }
+  sealed abstract class InvokeInstanceMethod extends InvokeMethod {
     def classRef: ClassRef
     def methodRef: MethodRef
     override final def effect = Some(eff)

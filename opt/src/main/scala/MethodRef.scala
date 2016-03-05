@@ -6,6 +6,7 @@ import java.lang.reflect.{ Method => JMethod, Constructor }
 case class MethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str
   def pretty: String = str
+  override def toString = pretty
   def isInit: Boolean = name == "<init>"
   def isVoid: Boolean = descriptor.isVoid
   def args: Seq[TypeRef.Public] = descriptor.args
@@ -17,6 +18,7 @@ case class MethodRef(name: String, descriptor: MethodDescriptor) {
         m.getParameterTypes.size == args.size &&
         m.getParameterTypes.zip(args.map(_.javaClass)).forall { case (p1, p2) => p1 == p2 }
     }
+  def renamed(newName: String): MethodRef = copy(name = newName)
 }
 object MethodRef {
   def from(m: Constructor[_]): MethodRef =

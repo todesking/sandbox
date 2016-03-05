@@ -156,7 +156,16 @@ object Instance {
   ) extends Instance[A] {
     // TODO: make this REAL unique
     private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
-      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${scala.util.Random.nextInt}", fr.descriptor)
+      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${math.abs(scala.util.Random.nextInt)}", fr.descriptor)
+
+    def addMethod(mr: MethodRef, body: MethodBody): Duplicate[A] = {
+      require(mr.descriptor == body.descriptor)
+      copy(thisMethods = thisMethods + (mr -> body))
+    }
+
+    def addField(fr: FieldRef, field: Field): Duplicate[A] = {
+      copy(thisFields = thisFields + (fr -> field))
+    }
 
     override def resolveVirtualMethod(mr: MethodRef): ClassRef = {
       thisMethods.get(mr).map { body =>
@@ -167,7 +176,8 @@ object Instance {
       }
     }
 
-    override def duplicate1 = this
+    override def duplicate1 =
+      rewriteThisRef(thisRef.renamed(thisRef.name + "_"))
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
@@ -217,6 +227,7 @@ object Instance {
     }
 
     // TODO: should we replace thisRef in method/field signature?
+    // => YES. TODO.
     def rewriteThisRef(newRef: ClassRef.Extend): Duplicate[A] =
       copy(
         thisRef = newRef,
@@ -511,7 +522,7 @@ object Instance {
 
     def makeUniqueName(cl: ClassLoader, klass: Class[_]): String = {
       // TODO: make this REAL UNIQUE!!!!
-      klass.getName + "_" + System.identityHashCode(this)
+      klass.getName + "_" + Math.abs(System.identityHashCode(this))
     }
 
     def mapZip[A, B, C](a: Map[A, B], b: Map[A, C]): (Map[A, (B, C)], Map[A, B], Map[A, C]) = {

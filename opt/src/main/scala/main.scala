@@ -77,6 +77,7 @@ trait Transformer[A <: AnyRef, B <: AnyRef] {
 }
 object Transformer {
   def fieldFusion[A <: AnyRef](instance: Instance[A], classRef: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
+    val dupInstance = instance.duplicate1
     instance.fields.get(classRef, fieldRef).fold {
       throw new IllegalArgumentException(s"Field not found: ${classRef.pretty}.${fieldRef.pretty}")
     } { field =>
@@ -84,11 +85,59 @@ object Transformer {
         case Data.Reference(t, fieldInstance) =>
           if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
             throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef.pretty}.${fieldRef.pretty}")
-          val usedMethods = instance.usedMethodsOf(fieldInstance) getOrElse { throw new IllegalArgumentException() }
-          usedMethods.pp()
-          val usedFields = instance.usedFieldsOf(fieldInstance) getOrElse { throw new IllegalArgumentException() }
-          usedFields.pp()
-          ???
+          val usedMethods = (for {
+            outer <- dupInstance.usedMethodsOf(fieldInstance)
+            inner <- fieldInstance.usedMethodsOf(fieldInstance)
+          } yield { outer ++ inner }) getOrElse { throw new IllegalArgumentException() }
+          val usedFields = (for {
+            outer <- dupInstance.usedFieldsOf(fieldInstance)
+            inner <- fieldInstance.usedFieldsOf(fieldInstance)
+          } yield { outer ++ inner }) getOrElse { throw new IllegalArgumentException() }
+
+          // TODO: Make these REAL unique
+          val methodRenaming =
+            usedMethods.map { case (cr, mr) => (cr -> mr) -> s"${fieldRef.name}__${mr.name}" }
+          val fieldRenaming =
+            usedFields.map { case (cr, fr) => (cr -> fr) -> s"${fieldRef.name}__${fr.name}" }
+
+          val withNewFields =
+            fieldRenaming.foldLeft(dupInstance) { case (i, ((cr, fr), newName)) =>
+              i.addField(fr.renamed(newName), fieldInstance.fields(cr, fr))
+            }
+
+          def rewriteRefs(body: MethodBody): MethodBody = {
+            def rewriteMethodRef(body: MethodBody): MethodBody =
+              methodRenaming.foldLeft(body) { case (b, ((cr, mr), newName)) =>
+                val df = b.dataflow(fieldInstance)
+                import Bytecode._
+                // TODO: I need Bytecode.Invoke.rewriteRef
+                body.rewrite {
+                  case bc @ invokevirtual(cref, mref)
+                  if(cr == cref && mr == mref && df.dataValue(bc.receiver).isInstance(fieldInstance)) =>
+                    invokevirtual(dupInstance.thisRef, mr.renamed(newName))
+                  case bc @ invokespecial(cref, mref)
+                  if(cr == cref && mr == mref && df.dataValue(bc.receiver).isInstance(fieldInstance)) =>
+                    invokespecial(dupInstance.thisRef, mr.renamed(newName))
+                }
+              }
+            def rewriteFieldRef(body: MethodBody): MethodBody =
+              fieldRenaming.foldLeft(body) { case (b, ((cr, fr), newName)) =>
+                val df = b.dataflow(fieldInstance)
+                import Bytecode._
+                body.rewrite {
+                  // putfield is 
+                  case bc @ getfield(cref, fref)
+                  if(cr == cref && fr == fref && df.dataValue(bc.target).isInstance(fieldInstance)) =>
+                    getfield(dupInstance.thisRef, fr.renamed(newName))
+                }
+              }
+            rewriteFieldRef(rewriteMethodRef(body))
+          }
+
+          methodRenaming.foldLeft(withNewFields) { case (i, ((cr, mr), newName)) =>
+            val body = rewriteRefs(fieldInstance.methodBody(cr, mr).get)
+            i.addMethod(mr.renamed(newName), body)
+          }
         case other =>
           throw new IllegalArgumentException(s"Field can't fusionable: ${other}")
       }

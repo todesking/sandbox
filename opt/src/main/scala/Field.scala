@@ -5,6 +5,7 @@ import scala.language.higherKinds
 
 import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
+// TODO: remove name from field
 case class Field(
   classRef: ClassRef,
   name: String,
