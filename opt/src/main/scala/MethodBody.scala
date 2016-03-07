@@ -75,13 +75,6 @@ ${
 
   def dataflow(self: Instance[_ <: AnyRef]): MethodBody.DataFlow =
     new MethodBody.DataFlow(this, Data.Reference(self.thisRef.toTypeRef, self))
-
-  // TODO: remove this...
-  lazy val defaultDataflow =
-    new MethodBody.DataFlow(this, Data.Unsure(ClassRef.Object.toTypeRef)) // TODO: this will cause trouble in some future
-
-  def maxLocals = defaultDataflow.maxLocals
-  def maxStackDepth = defaultDataflow.maxStackDepth
 }
 
 object MethodBody {

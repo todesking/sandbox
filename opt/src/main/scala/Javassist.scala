@@ -17,7 +17,8 @@ object Javassist {
     }
   }
 
-  def compile(classPool: ClassPool, constPool: ConstPool, body: MethodBody): CodeAttribute = {
+  def compile(classPool: ClassPool, constPool: ConstPool, df: MethodBody.DataFlow): CodeAttribute = {
+    val body = df.body
     val ctObject = classPool.get("java.lang.Object")
     val out = new JABytecode(constPool, 0, 0)
     val jumps = mutable.HashMap.empty[Int, (Int, JumpTarget)] // jump operand address -> (insn addr -> target)
@@ -92,8 +93,8 @@ object Javassist {
         val targetIndex = addrs(label)
         out.write16bit(dataIndex, targetIndex - index)
     }
-    out.setMaxLocals(body.maxLocals)
-    out.setMaxStack(body.maxStackDepth)
+    out.setMaxLocals(df.maxLocals)
+    out.setMaxStack(df.maxStackDepth)
     out.toCodeAttribute
   }
 

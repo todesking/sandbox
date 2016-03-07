@@ -289,7 +289,7 @@ ${
       thisMethods
         .foreach {
           case (ref, body) =>
-            val codeAttribute = Javassist.compile(classPool, constPool, body)
+            val codeAttribute = Javassist.compile(classPool, constPool, body.dataflow(this))
             val minfo = new MethodInfo(constPool, ref.name, ref.descriptor.str)
             minfo.setCodeAttribute(codeAttribute)
             val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, minfo)
@@ -358,7 +358,7 @@ ${
                   putfield(thisRef, fr)
                 )
             }.toSeq ++ Seq(vreturn())
-      ))
+      ).dataflow(this))
 
       ctorMethodInfo.setCodeAttribute(ctorCA)
       val sm = javassist.bytecode.stackmap.MapMaker.make(classPool, ctorMethodInfo)
