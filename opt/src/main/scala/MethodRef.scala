@@ -2,7 +2,6 @@ package com.todesking.hoge
 
 import java.lang.reflect.{ Method => JMethod, Constructor }
 
-// TODO: add ClassRef
 case class MethodRef(name: String, descriptor: MethodDescriptor) {
   def str: String = name + descriptor.str
   def pretty: String = str
