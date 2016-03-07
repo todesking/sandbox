@@ -71,7 +71,7 @@ sealed abstract class Instance[A <: AnyRef] {
   // Some(false): data is not point the instance
   // None: not sure
   private[this] def ifSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
-    df.singleValue(l).map(_.isInstance(i)) orElse {
+    df.onlyValue(l).map(_.isInstance(i)) orElse {
       if(df.possibleValues(l).exists(_.isInstance(i))) None
       else Some(false)
     }

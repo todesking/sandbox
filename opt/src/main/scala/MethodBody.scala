@@ -101,8 +101,7 @@ object MethodBody {
         possibleValues(dataBinding(l))
     }
 
-    // TODO: rename to onlyValue
-    def singleValue(l: DataLabel): Option[Data] = {
+    def onlyValue(l: DataLabel): Option[Data] = {
       val pvs = possibleValues(l)
       if(pvs.size == 1) Some(pvs.head)
       else None
