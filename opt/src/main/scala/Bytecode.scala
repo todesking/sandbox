@@ -49,9 +49,7 @@ object Bytecode {
         throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
     }
 
-  sealed abstract class Control extends Bytecode {
-    val eff: Effect = Effect.fresh()
-    override final def effect = Some(eff)
+  sealed abstract class Control extends Bytecode with HasEffect {
   }
   sealed abstract class Shuffle extends Bytecode {
     override final def inputs = Seq.empty
@@ -82,6 +80,11 @@ object Bytecode {
     def rewriteFieldRef(newRef: FieldRef): Self =
       if(fieldRef == newRef) self
       else withNewFieldRef(newRef)
+  }
+
+  sealed trait HasEffect extends Bytecode {
+    final val eff: Effect = Effect.fresh()
+    override def effect = Some(eff)
   }
 
   sealed abstract class Jump extends Control {
@@ -146,14 +149,12 @@ object Bytecode {
     override def nextFrame(f: Frame) = update(f).push2(out -> data)
   }
 
-  sealed abstract class InvokeMethod extends Procedure with HasClassRef with HasMethodRef {
+  sealed abstract class InvokeMethod extends Procedure with HasClassRef with HasMethodRef with HasEffect {
   }
   sealed abstract class InvokeInstanceMethod extends InvokeMethod {
-    val eff: Effect = Effect.fresh()
     val objectref: DataLabel.In = DataLabel.in("objectref")
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
     val ret: Option[DataLabel.Out] = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
-    override final def effect = Some(eff)
     override final def inputs = objectref +: args
     override final def output = ret
     override def nextFrame(f: Frame) = {
@@ -168,9 +169,10 @@ object Bytecode {
     }
   }
 
-  sealed abstract class FieldAccess extends Procedure with HasClassRef with HasFieldRef {
+  sealed abstract class FieldAccess extends Procedure with HasClassRef with HasFieldRef with HasEffect {
     val objectref: DataLabel.In = DataLabel.in("objectref")
   }
+
   case class nop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f)
   }
@@ -251,10 +253,8 @@ object Bytecode {
     override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
 
-    val eff: Effect = Effect.fresh()
     val out = DataLabel.out("field")
     override def pretty = s"getfield ${fieldRef.pretty}"
-    override def effect = Some(eff)
     override def inputs = Seq(objectref)
     override def output = Some(out)
     override def nextFrame(f: Frame) = {
@@ -275,10 +275,8 @@ object Bytecode {
     override type Self = putfield
     override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
-    val eff: Effect = Effect.fresh()
     val value = DataLabel.in("value")
     override def pretty = s"putfield ${fieldRef.pretty}"
-    override def effect = Some(eff)
     override def inputs = Seq(objectref)
     override def output = None
     override def nextFrame(f: Frame) =
