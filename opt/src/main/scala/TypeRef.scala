@@ -3,7 +3,6 @@ package com.todesking.hoge
 sealed abstract class TypeRef {
   def isDoubleWord: Boolean = false
   def wordSize: Int = if (isDoubleWord) 2 else 1
-  def pretty: String = toString
 }
 object TypeRef {
   def parse(src: String, cl: ClassLoader): TypeRef.Public =
@@ -42,13 +41,13 @@ object TypeRef {
   }
 
   case object Undefined extends TypeRef {
-    override def pretty = "undefined"
+    override def toString = "[undefined]"
   }
   case object SecondWord extends TypeRef {
-    override def pretty = "second word"
+    override def toString = "[second word]"
   }
   case object Null extends TypeRef {
-    override def pretty = "null"
+    override def toString = "[null]"
   }
 
   sealed abstract class Public extends TypeRef {
@@ -57,7 +56,7 @@ object TypeRef {
   }
 
   sealed abstract class Primitive(
-    override val pretty: String,
+    override val toString: String,
     override val str: String,
     override val javaClass: Class[_]
   ) extends Public
@@ -74,7 +73,7 @@ object TypeRef {
 
   case class Reference(classRef: ClassRef) extends Public {
     override def str = s"L${classRef.binaryName};"
-    override def pretty = classRef.pretty
+    override def toString = classRef.toString
     // TODO: It smells..
     override def javaClass = classRef match {
       case c: ClassRef.Concrete => c.loadClass

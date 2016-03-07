@@ -2,6 +2,7 @@ package com.todesking.hoge
 
 case class FieldDescriptor(typeRef: TypeRef.Public) {
   def str = typeRef.str
+  override def toString = typeRef.toString
 }
 object FieldDescriptor {
   def from(f: java.lang.reflect.Field): FieldDescriptor =

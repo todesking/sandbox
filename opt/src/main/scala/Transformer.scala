@@ -27,7 +27,7 @@ object Transformer {
           } yield { outer ++ inner }) getOrElse { throw new IllegalArgumentException() }
 
           val methodRenaming =
-            usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name ,mr.name) }.toMap
+            usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name, mr.name) }.toMap
           val fieldRenaming =
             usedFields.map { case (cr, fr) => (cr -> fr) -> fr.anotherUniqueName(fieldRef.name, fr.name) }.toMap
 

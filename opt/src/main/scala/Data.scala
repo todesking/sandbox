@@ -9,10 +9,11 @@ sealed abstract class Data {
   def valueString: String
   def isInstance(instance: Instance[_ <: AnyRef]): Boolean = false
 
-  def pretty: String = s"""${typeRef.pretty}${value.map { v => s" = ${valueString}" } getOrElse ""}"""
   def secondWordData: Data =
     if (!typeRef.isDoubleWord) throw new IllegalArgumentException()
     else Data.Unsure(TypeRef.SecondWord)
+
+  override def toString: String = s"""${typeRef}${value.map { v => s" = ${valueString}" } getOrElse ""}"""
 }
 object Data {
   def merge(d1: Data, d2: Data): Data = {

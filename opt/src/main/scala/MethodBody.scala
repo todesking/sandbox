@@ -56,8 +56,7 @@ case class MethodBody(
 
   def pretty: String = {
     val lName = Bytecode.Label.namer("L", "")
-    s"""${descriptor.str} ${attribute}
-${
+    s"""${
       bytecode.map { bc =>
         val l = f"L${bc.label.innerId}%-5s "
         l + (bc match {
@@ -158,7 +157,7 @@ object MethodBody {
       ${
         dataValues.collect {
           case (l: DataLabel.Out, data) =>
-            drawNode(dName.id(l), 'label -> s"${l.name}: ${data.pretty}")
+            drawNode(dName.id(l), 'label -> s"${l.name}: ${data}")
         }.mkString("\n")
       }
       ${
