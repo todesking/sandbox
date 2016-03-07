@@ -260,8 +260,7 @@ object MethodBody {
           val u = bc.nextFrame(merged)
           updates(bc.label) = u
           bc match {
-            case r: Bytecode.VoidReturn =>
-            case r: Bytecode.XReturn =>
+            case r: Bytecode.Return =>
             case j: Bytecode.Jump =>
               tasks += (body.jumpTargets(j.target) -> u.newFrame)
             case b: Bytecode.Branch =>
