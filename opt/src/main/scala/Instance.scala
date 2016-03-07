@@ -58,10 +58,10 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc: FieldAccess =>
-          ifSingleInstance(df, bc.target, i).map { mustTheInstance =>
+          ifSingleInstance(df, bc.objectref, i).map { mustTheInstance =>
             if(mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
             else agg
-          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.target)}"); None }
+          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
       }
     }
@@ -433,7 +433,7 @@ ${
                 val ctor = klass.getDeclaredConstructors.find { c => MethodRef.from(c) == methodRef }.get
                 // TODO: FIXME: WRONG.
                 setterAssigns(self, ctor).map { as => assigns ++ as } getOrElse { return None }
-              case bc @ putfield(classRef, fieldRef) if df.dataValue(bc.target).isInstance(self) =>
+              case bc @ putfield(classRef, fieldRef) if df.dataValue(bc.objectref).isInstance(self) =>
                 assigns + (
                   df.dataValue(bc.value).value.map { v =>
                     (classRef -> fieldRef) -> Right(v) // constant

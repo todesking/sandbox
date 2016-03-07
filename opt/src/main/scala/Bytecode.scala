@@ -149,12 +149,11 @@ object Bytecode {
   sealed abstract class InvokeMethod extends Procedure with HasClassRef with HasMethodRef {
   }
   sealed abstract class InvokeInstanceMethod extends InvokeMethod {
-    def methodRef: MethodRef
-    override final def effect = Some(eff)
     val eff: Effect = Effect.fresh()
     val receiver: DataLabel.In = DataLabel.in("receiver")
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
     val ret: Option[DataLabel.Out] = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
+    override final def effect = Some(eff)
     override final def inputs = receiver +: args
     override final def output = ret
     override def nextFrame(f: Frame) = {
@@ -170,7 +169,7 @@ object Bytecode {
   }
 
   sealed abstract class FieldAccess extends Procedure with HasClassRef with HasFieldRef {
-    val target = DataLabel.in("objectref")
+    val objectref: DataLabel.In = DataLabel.in("objectref")
   }
   case class nop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f)
@@ -256,7 +255,7 @@ object Bytecode {
     val out = DataLabel.out("field")
     override def pretty = s"getfield ${fieldRef.pretty}"
     override def effect = Some(eff)
-    override def inputs = Seq(target)
+    override def inputs = Seq(objectref)
     override def output = Some(out)
     override def nextFrame(f: Frame) = {
       val self = f.stack(0)._2
@@ -269,7 +268,7 @@ object Bytecode {
           case _ =>
             Data.Unsure(fieldRef.descriptor.typeRef)
         }
-      update(f).pop1(target).push(out -> data)
+      update(f).pop1(objectref).push(out -> data)
     }
   }
   case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
@@ -280,10 +279,10 @@ object Bytecode {
     val value = DataLabel.in("value")
     override def pretty = s"putfield ${fieldRef.pretty}"
     override def effect = Some(eff)
-    override def inputs = Seq(target)
+    override def inputs = Seq(objectref)
     override def output = None
     override def nextFrame(f: Frame) =
-      update(f).pop(fieldRef.descriptor.typeRef, value).pop1(target)
+      update(f).pop(fieldRef.descriptor.typeRef, value).pop1(objectref)
   }
   case class athrow() extends Control {
     val objectref = DataLabel.in("objectref")

@@ -124,7 +124,7 @@ object Transformer {
                 body.rewrite {
                   // putfield is 
                   case bc @ getfield(cref, fref)
-                  if(cr == cref && fr == fref && df.dataValue(bc.target).isInstance(fieldInstance)) =>
+                  if(cr == cref && fr == fref && df.dataValue(bc.objectref).isInstance(fieldInstance)) =>
                   println(s"rewrite ${cref}.${fref} to ${dupInstance.thisRef}.${newName}")
                     getfield(dupInstance.thisRef, fr.renamed(newName))
                 }
@@ -142,7 +142,7 @@ object Transformer {
               val df = body.dataflow(i)
               i.addMethod(mr, rewriteRefs(i, body.rewrite {
                 case bc @ getfield(cr, mr)
-                if df.singleValue(bc.target).map(_.isInstance(i)) getOrElse false =>
+                if df.singleValue(bc.objectref).map(_.isInstance(i)) getOrElse false =>
                   nop()
                 case bc @ invokevirtual(cr, mr)
                 if df.singleValue(bc.receiver).map(_.isInstance(fieldInstance)) getOrElse false =>
