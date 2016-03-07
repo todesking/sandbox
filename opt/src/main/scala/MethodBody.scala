@@ -23,10 +23,10 @@ case class MethodBody(
   // TODO: Exception handler
 
   def methodReferences: Set[(ClassRef, MethodRef)] =
-    bytecode.flatMap(_.methodReference).toSet
+    bytecode.collect { case bc: Bytecode.HasMethodRef => (bc.classRef -> bc.methodRef) }.toSet
 
   def fieldReferences: Set[(ClassRef, FieldRef)] =
-    bytecode.flatMap(_.fieldReference).toSet
+    bytecode.collect { case bc: Bytecode.HasFieldRef => (bc.classRef -> bc.fieldRef) }.toSet
 
   def labelToBytecode(l: Bytecode.Label): Bytecode =
     bytecode.find(_.label == l).getOrElse { throw new IllegalArgumentException(s"Bytecode ${l} not found") }
@@ -41,8 +41,7 @@ case class MethodBody(
   }
 
   def rewriteClassRef(from: ClassRef, to: ClassRef): MethodBody = {
-    import Bytecode._
-    rewrite { case bc => bc.rewriteClassRef(from, to) }
+    rewrite { case bc: Bytecode.HasClassRef if bc.classRef == from => bc.rewriteClassRef(to) }
   }
 
   def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
