@@ -1,11 +1,14 @@
 package com.todesking.hoge
 
 case class FieldRef(name: String, descriptor: FieldDescriptor) {
-  def pretty: String = s"${name}: ${descriptor.str}"
+  override def toString: String = s"${name}: ${descriptor.str}"
   def renamed(newName: String): FieldRef = copy(name = newName)
-  override def toString = pretty
+  def anotherUniqueName(baseNames: String*): FieldRef =
+    copy(name = FieldRef.uniqueName(baseNames: _*))
 }
 object FieldRef {
   def from(f: java.lang.reflect.Field): FieldRef =
     FieldRef(f.getName, FieldDescriptor.from(f))
+
+  val uniqueName = new UniqueNamer
 }

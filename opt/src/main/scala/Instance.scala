@@ -47,7 +47,7 @@ sealed abstract class Instance[A <: AnyRef] {
             val vcr = i.resolveVirtualMethod(mr)
             if (mustTheInstance) agg + (cr -> mr)
             else agg
-          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
+          } orElse { println(s"Ambigious reference: ${cr}.${mr} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
       }
     }
@@ -61,7 +61,7 @@ sealed abstract class Instance[A <: AnyRef] {
           ifSingleInstance(df, bc.objectref, i).map { mustTheInstance =>
             if (mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
             else agg
-          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
+          } orElse { println(s"Ambigious reference: ${cr}.${mr} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
       }
     }
@@ -80,7 +80,7 @@ sealed abstract class Instance[A <: AnyRef] {
     val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
     breakableFoldLeft(initial)(ms) {
       case (agg, (cr, mr)) =>
-        methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr.pretty}.${mr.pretty}"); None }
+        methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr}.${mr}"); None }
           .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
     }
   }
@@ -125,7 +125,7 @@ object Instance {
     override def duplicate1: Duplicate[A] =
       Duplicate[A](
         this,
-        thisRef.extend(Util.makeUniqueName(thisRef.classLoader, jClass), thisRef.classLoader),
+        thisRef.extend(thisRef.classLoader),
         methods,
         Map.empty,
         fields,
@@ -157,10 +157,6 @@ object Instance {
       superFields: Map[(ClassRef, FieldRef), Field], // super class field values
       thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
-    // TODO: make this REAL unique
-    private[this] def makeUniqueField(cr: ClassRef, fr: FieldRef): FieldRef =
-      FieldRef(s"${cr.pretty.replaceAll("[^A-Za-z0-9]", "_")}_${fr.name}_${math.abs(scala.util.Random.nextInt)}", fr.descriptor)
-
     def pretty: String = s"""class ${thisRef}
 new/overriden methods:
 ${
@@ -174,8 +170,7 @@ ${body.pretty}
 new fields:
 ${
       thisFields.map {
-        case (fr, field) =>
-          fr.pretty
+        case (fr, field) => fr.toString
       }.mkString("\n")
     }
 """
@@ -203,14 +198,12 @@ ${
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
-      // TODO: Unique name facility
-      val className = thisRef.name + "_"
-      val newRef = newSuperRef.extend(className, thisRef.classLoader)
+      val newRef = newSuperRef.extend(thisRef.anotherUniqueName.name, thisRef.classLoader)
       val fieldMappings: Map[(ClassRef, FieldRef), FieldRef] =
         superFields
           .keys
           .filter { case (c, f) => c < newSuperRef }
-          .map { case (c, f) => (c, f) -> makeUniqueField(c, f) }
+          .map { case (c, f) => (c, f) -> f.anotherUniqueName(c.name, f.name) }
           .toMap
       val newThisFields =
         superFields
@@ -519,7 +512,7 @@ ${
             .filter { m => MethodAttribute.from(m.getModifiers).isVirtual }
             .exists { m => MethodRef.from(m) == mr }
         }.map { m => ClassRef.of(m.getDeclaringClass) }
-        .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr.pretty} in ${jClass}") }
+        .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr} in ${jClass}") }
 
     // TODO: default interface method
     def virtualJMethods(jClass: Class[_]): Map[MethodRef, JMethod] =
@@ -541,11 +534,6 @@ ${
 
     def supers(klass: Class[_]): Seq[Class[_]] =
       klass +: Option(klass.getSuperclass).toSeq.flatMap(supers)
-
-    def makeUniqueName(cl: ClassLoader, klass: Class[_]): String = {
-      // TODO: make this REAL UNIQUE!!!!
-      klass.getName + "_" + Math.abs(System.identityHashCode(this))
-    }
 
     def mapZip[A, B, C](a: Map[A, B], b: Map[A, C]): (Map[A, (B, C)], Map[A, B], Map[A, C]) = {
       val aOnly = a.keySet -- b.keySet

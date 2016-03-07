@@ -55,6 +55,9 @@ object ClassRef {
     def extend(name: String, cl: ClassLoader): Extend =
       Extend(loadClass, name, cl)
 
+    def extend(cl: ClassLoader): Extend =
+      extend(uniqueNamer(name), cl)
+
     override def renamed(newName: String): Concrete =
       copy(name = newName)
   }
@@ -62,13 +65,14 @@ object ClassRef {
   // TODO: interface
   case class Extend(superClass: Class[_], override val name: String, override val classLoader: ClassLoader) extends ClassRef {
     override def pretty = s"${name} <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
-    // TODO: Make this REAL unique
     def anotherUniqueName: Extend =
-      copy(name = name + "_")
+      copy(name = uniqueNamer(name))
     override def renamed(newName: String): Extend =
       copy(name = newName)
   }
 
   def of(klass: Class[_]): Concrete =
     ClassRef.Concrete(klass.getName, klass.getClassLoader)
+
+  private[this] val uniqueNamer = new UniqueNamer
 }
