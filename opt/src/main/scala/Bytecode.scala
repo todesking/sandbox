@@ -11,13 +11,13 @@ import java.lang.reflect.{ Method => JMethod }
 import com.todesking.scalapp.syntax._
 sealed abstract class Bytecode {
   type Self <: Bytecode
-  protected def self: Self = this.asInstanceOf[Self] // :(
+  protected final def self: Self = this.asInstanceOf[Self] // :(
 
   val label: Bytecode.Label = Bytecode.Label.fresh()
   def inputs: Seq[DataLabel.In]
   def output: Option[DataLabel.Out]
-  def nextFrame(frame: Frame): FrameUpdate
   def effect: Option[Effect]
+  def nextFrame(frame: Frame): FrameUpdate
   def pretty: String = toString
 
   protected def update(frame: Frame): FrameUpdate =
@@ -79,14 +79,14 @@ object Bytecode {
   sealed trait HasFieldRef extends HasClassRef {
     def fieldRef: FieldRef
     def withNewFieldRef(newRef: FieldRef): Self
-    def rewriteFieldRef(newRef: FieldRef): Self =
+    final def rewriteFieldRef(newRef: FieldRef): Self =
       if (fieldRef == newRef) self
       else withNewFieldRef(newRef)
   }
 
   sealed trait HasEffect extends Bytecode {
     final val eff: Effect = Effect.fresh()
-    override def effect = Some(eff)
+    override final def effect = Some(eff)
   }
 
   sealed abstract class Jump extends Control {
@@ -96,7 +96,7 @@ object Bytecode {
     def target: JumpTarget
   }
 
-  sealed abstract class Branch extends Control {
+  sealed abstract class Branch extends Control with FallThrough {
     def target: JumpTarget
   }
 
