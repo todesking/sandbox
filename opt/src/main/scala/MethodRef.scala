@@ -10,13 +10,6 @@ case class MethodRef(name: String, descriptor: MethodDescriptor) {
   def isVoid: Boolean = descriptor.isVoid
   def args: Seq[TypeRef.Public] = descriptor.args
   def ret: TypeRef.Public = descriptor.ret
-  // TODO: support protected/package private(use getDeclaredMethods() for each superclasses)
-  def getJavaMethod(klass: Class[_]): Option[JMethod] =
-    klass.getMethods.find { m =>
-      m.getName == name &&
-        m.getParameterTypes.size == args.size &&
-        m.getParameterTypes.zip(args.map(_.javaClass)).forall { case (p1, p2) => p1 == p2 }
-    }
   def renamed(newName: String): MethodRef = copy(name = newName)
 }
 object MethodRef {
