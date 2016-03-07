@@ -43,11 +43,11 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc @ invokevirtual(cr, mr) =>
-          ifSingleInstance(df, bc.receiver, i).map { mustTheInstance =>
+          ifSingleInstance(df, bc.objectref, i).map { mustTheInstance =>
             val vcr = i.resolveVirtualMethod(mr)
             if(mustTheInstance) agg + (cr -> mr)
             else agg
-          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.receiver)}"); None }
+          } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
       }
     }
@@ -428,7 +428,7 @@ ${
               case bc: Jump => assigns
               case bc: Return => assigns
               case bc: ConstX => assigns
-              case bc @ invokespecial(classRef, methodRef) if df.dataValue(bc.receiver).isInstance(self) && methodRef.isInit =>
+              case bc @ invokespecial(classRef, methodRef) if df.dataValue(bc.objectref).isInstance(self) && methodRef.isInit =>
                 val klass = classRef match { case cr @ ClassRef.Concrete(_, _) => cr.loadClass; case unk => throw new AssertionError(s"${unk}") }
                 val ctor = klass.getDeclaredConstructors.find { c => MethodRef.from(c) == methodRef }.get
                 // TODO: FIXME: WRONG.

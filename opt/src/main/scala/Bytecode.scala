@@ -150,11 +150,11 @@ object Bytecode {
   }
   sealed abstract class InvokeInstanceMethod extends InvokeMethod {
     val eff: Effect = Effect.fresh()
-    val receiver: DataLabel.In = DataLabel.in("receiver")
+    val objectref: DataLabel.In = DataLabel.in("objectref")
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
     val ret: Option[DataLabel.Out] = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
     override final def effect = Some(eff)
-    override final def inputs = receiver +: args
+    override final def inputs = objectref +: args
     override final def output = ret
     override def nextFrame(f: Frame) = {
       require(f.stack.size >= methodRef.args.size)
@@ -163,7 +163,7 @@ object Bytecode {
           case ((a, t), u) =>
             if (t.isDoubleWord) u.pop2(a)
             else u.pop1(a)
-        }.pop1(receiver)
+        }.pop1(objectref)
       ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
     }
   }

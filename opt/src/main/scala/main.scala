@@ -110,10 +110,10 @@ object Transformer {
                 // TODO: I need Bytecode.Invoke.rewriteRef
                 b.rewrite {
                   case bc @ invokevirtual(cref, mref)
-                  if(cr == cref && mr == mref && df.singleValue(bc.receiver).map(_.isInstance(fieldInstance)).getOrElse(false)) =>
+                  if(cr == cref && mr == mref && df.singleValue(bc.objectref).map(_.isInstance(fieldInstance)).getOrElse(false)) =>
                     invokevirtual(dupInstance.thisRef, mr.renamed(newName))
                   case bc @ invokespecial(cref, mref)
-                  if(cr == cref && mr == mref && df.dataValue(bc.receiver).isInstance(fieldInstance)) =>
+                  if(cr == cref && mr == mref && df.dataValue(bc.objectref).isInstance(fieldInstance)) =>
                     invokespecial(dupInstance.thisRef, mr.renamed(newName))
                 }
               }
@@ -145,7 +145,7 @@ object Transformer {
                 if df.singleValue(bc.objectref).map(_.isInstance(i)) getOrElse false =>
                   nop()
                 case bc @ invokevirtual(cr, mr)
-                if df.singleValue(bc.receiver).map(_.isInstance(fieldInstance)) getOrElse false =>
+                if df.singleValue(bc.objectref).map(_.isInstance(fieldInstance)) getOrElse false =>
                   val newName = methodRenaming(cr -> mr)
                   invokevirtual(i.thisRef, mr.renamed(newName))
               }))
