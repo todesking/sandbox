@@ -6,10 +6,10 @@ import scala.language.higherKinds
 import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
 case class Field(
-  classRef: ClassRef,
-  descriptor: FieldDescriptor,
-  attribute: FieldAttribute,
-  data: Data.Concrete
+    classRef: ClassRef,
+    descriptor: FieldDescriptor,
+    attribute: FieldAttribute,
+    data: Data.Concrete
 ) {
   def isFinal: Boolean = attribute.isFinal
 }

@@ -45,7 +45,7 @@ sealed abstract class Instance[A <: AnyRef] {
         case bc @ invokevirtual(cr, mr) =>
           ifSingleInstance(df, bc.objectref, i).map { mustTheInstance =>
             val vcr = i.resolveVirtualMethod(mr)
-            if(mustTheInstance) agg + (cr -> mr)
+            if (mustTheInstance) agg + (cr -> mr)
             else agg
           } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
@@ -59,7 +59,7 @@ sealed abstract class Instance[A <: AnyRef] {
       bc match {
         case bc: FieldAccess =>
           ifSingleInstance(df, bc.objectref, i).map { mustTheInstance =>
-            if(mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
+            if (mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
             else agg
           } orElse { println(s"Ambigious reference: ${cr.pretty}.${mr.pretty} ${bc} ${df.possibleValues(bc.objectref)}"); None }
         case _ => Some(agg)
@@ -72,23 +72,26 @@ sealed abstract class Instance[A <: AnyRef] {
   // None: not sure
   private[this] def ifSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
     df.onlyValue(l).map(_.isInstance(i)) orElse {
-      if(df.possibleValues(l).exists(_.isInstance(i))) None
+      if (df.possibleValues(l).exists(_.isInstance(i))) None
       else Some(false)
     }
 
   def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow) => Option[B]): Option[B] = {
     val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
-    breakableFoldLeft(initial)(ms) { case (agg, (cr, mr)) =>
-      methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr.pretty}.${mr.pretty}"); None }
-        .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
+    breakableFoldLeft(initial)(ms) {
+      case (agg, (cr, mr)) =>
+        methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr.pretty}.${mr.pretty}"); None }
+          .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
     }
   }
 
   def analyzeBytecodes[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow, Bytecode) => Option[B]): Option[B] =
-    analyzeMethods(initial) { case (mAgg, cr, mr, df) =>
-      breakableFoldLeft(mAgg)(df.body.bytecode) { case (agg, bc) =>
-        analyze(agg, cr, mr, df, bc)
-      }
+    analyzeMethods(initial) {
+      case (mAgg, cr, mr, df) =>
+        breakableFoldLeft(mAgg)(df.body.bytecode) {
+          case (agg, bc) =>
+            analyze(agg, cr, mr, df, bc)
+        }
     }
 
   private[this] def breakableFoldLeft[X, Y](initial: Y)(seq: Seq[X])(f: (Y, X) => Option[Y]): Option[Y] = {
@@ -160,18 +163,21 @@ object Instance {
 
     def pretty: String = s"""class ${thisRef}
 new/overriden methods:
-${thisMethods.map { case (mr, body) =>
-  s"""def ${mr}
+${
+      thisMethods.map {
+        case (mr, body) =>
+          s"""def ${mr}
 ${body.pretty}
 """
-}.mkString("\n")
-}}
+      }.mkString("\n")
+    }}
 new fields:
 ${
-  thisFields.map { case (fr, field) =>
-    fr.pretty
-  }.mkString("\n")
-}
+      thisFields.map {
+        case (fr, field) =>
+          fr.pretty
+      }.mkString("\n")
+    }
 """
 
     def addMethod(mr: MethodRef, body: MethodBody): Duplicate[A] = {
@@ -185,7 +191,7 @@ ${
 
     override def resolveVirtualMethod(mr: MethodRef): ClassRef = {
       thisMethods.get(mr).map { body =>
-        if(body.attribute.isVirtual) thisRef
+        if (body.attribute.isVirtual) thisRef
         else throw new IllegalArgumentException(s"Not virtual: ${mr} ${body.attribute}")
       } getOrElse {
         orig.resolveVirtualMethod(mr)
@@ -512,8 +518,8 @@ ${
           c.getDeclaredMethods
             .filter { m => MethodAttribute.from(m.getModifiers).isVirtual }
             .exists { m => MethodRef.from(m) == mr }
-          }.map { m => ClassRef.of(m.getDeclaringClass) }
-          .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr.pretty} in ${jClass}") }
+        }.map { m => ClassRef.of(m.getDeclaringClass) }
+        .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr.pretty} in ${jClass}") }
 
     // TODO: default interface method
     def virtualJMethods(jClass: Class[_]): Map[MethodRef, JMethod] =

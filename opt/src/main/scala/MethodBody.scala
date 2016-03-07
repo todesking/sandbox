@@ -96,7 +96,7 @@ object MethodBody {
 
     def onlyValue(l: DataLabel): Option[Data] = {
       val pvs = possibleValues(l)
-      if(pvs.size == 1) Some(pvs.head)
+      if (pvs.size == 1) Some(pvs.head)
       else None
     }
 

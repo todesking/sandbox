@@ -64,7 +64,7 @@ object Bytecode {
     def classRef: ClassRef
     def withNewClassRef(newRef: ClassRef): Self
     final def rewriteClassRef(newRef: ClassRef): Self =
-      if(classRef == newRef) self
+      if (classRef == newRef) self
       else withNewClassRef(newRef)
   }
 
@@ -72,7 +72,7 @@ object Bytecode {
     def methodRef: MethodRef
     def withNewMehtodRef(newRef: MethodRef): Self
     final def rewriteMethodRef(newRef: MethodRef): Self =
-      if(methodRef == newRef) self
+      if (methodRef == newRef) self
       else withNewMehtodRef(newRef)
   }
 
@@ -80,7 +80,7 @@ object Bytecode {
     def fieldRef: FieldRef
     def withNewFieldRef(newRef: FieldRef): Self
     def rewriteFieldRef(newRef: FieldRef): Self =
-      if(fieldRef == newRef) self
+      if (fieldRef == newRef) self
       else withNewFieldRef(newRef)
   }
 
@@ -265,7 +265,7 @@ object Bytecode {
         self match {
           case Data.Reference(_, instance) =>
             val field = instance.fields(classRef -> fieldRef)
-            if(field.isFinal) field.data
+            if (field.isFinal) field.data
             else Data.Unsure(fieldRef.descriptor.typeRef)
           case _ =>
             Data.Unsure(fieldRef.descriptor.typeRef)
