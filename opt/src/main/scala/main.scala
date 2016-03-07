@@ -81,6 +81,8 @@ object Transformer {
     instance.fields.get(classRef, fieldRef).fold {
       throw new IllegalArgumentException(s"Field not found: ${classRef.pretty}.${fieldRef.pretty}")
     } { field =>
+      if(!field.isFinal)
+        throw new IllegalArgumentException(s"Field ${classRef}.${fieldRef} is not final")
       field.data match {
         case Data.Reference(t, fieldInstance) =>
           if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
@@ -96,24 +98,19 @@ object Transformer {
 
           // TODO: Make these REAL unique
           val methodRenaming =
-            usedMethods.map { case (cr, mr) => (cr -> mr) -> s"${fieldRef.name}__${mr.name}" }
+            usedMethods.map { case (cr, mr) => (cr -> mr) -> s"${fieldRef.name}__${mr.name}" }.toMap
           val fieldRenaming =
-            usedFields.map { case (cr, fr) => (cr -> fr) -> s"${fieldRef.name}__${fr.name}" }
+            usedFields.map { case (cr, fr) => (cr -> fr) -> s"${fieldRef.name}__${fr.name}" }.toMap
 
-          val withNewFields =
-            fieldRenaming.foldLeft(dupInstance) { case (i, ((cr, fr), newName)) =>
-              i.addField(fr.renamed(newName), fieldInstance.fields(cr, fr))
-            }
-
-          def rewriteRefs(body: MethodBody): MethodBody = {
+          def rewriteRefs(instance: Instance[_ <: AnyRef], body: MethodBody): MethodBody = {
             def rewriteMethodRef(body: MethodBody): MethodBody =
               methodRenaming.foldLeft(body) { case (b, ((cr, mr), newName)) =>
-                val df = b.dataflow(fieldInstance)
+                val df = b.dataflow(instance)
                 import Bytecode._
                 // TODO: I need Bytecode.Invoke.rewriteRef
-                body.rewrite {
+                b.rewrite {
                   case bc @ invokevirtual(cref, mref)
-                  if(cr == cref && mr == mref && df.dataValue(bc.receiver).isInstance(fieldInstance)) =>
+                  if(cr == cref && mr == mref && df.singleValue(bc.receiver).map(_.isInstance(fieldInstance)).getOrElse(false)) =>
                     invokevirtual(dupInstance.thisRef, mr.renamed(newName))
                   case bc @ invokespecial(cref, mref)
                   if(cr == cref && mr == mref && df.dataValue(bc.receiver).isInstance(fieldInstance)) =>
@@ -122,22 +119,43 @@ object Transformer {
               }
             def rewriteFieldRef(body: MethodBody): MethodBody =
               fieldRenaming.foldLeft(body) { case (b, ((cr, fr), newName)) =>
-                val df = b.dataflow(fieldInstance)
+                val df = b.dataflow(instance)
                 import Bytecode._
                 body.rewrite {
                   // putfield is 
                   case bc @ getfield(cref, fref)
                   if(cr == cref && fr == fref && df.dataValue(bc.target).isInstance(fieldInstance)) =>
+                  println(s"rewrite ${cref}.${fref} to ${dupInstance.thisRef}.${newName}")
                     getfield(dupInstance.thisRef, fr.renamed(newName))
                 }
               }
             rewriteFieldRef(rewriteMethodRef(body))
           }
 
-          methodRenaming.foldLeft(withNewFields) { case (i, ((cr, mr), newName)) =>
-            val body = rewriteRefs(fieldInstance.methodBody(cr, mr).get)
-            i.addMethod(mr.renamed(newName), body)
-          }
+          val i1 =
+            fieldRenaming.foldLeft(dupInstance) { case (i, ((cr, fr), newName)) =>
+              i.addField(fr.renamed(newName), fieldInstance.fields(cr, fr))
+            }
+          val i2 =
+            i1.thisMethods.foldLeft(i1) { case (i, (mr, body)) =>
+              import Bytecode._
+              val df = body.dataflow(i)
+              i.addMethod(mr, rewriteRefs(i, body.rewrite {
+                case bc @ getfield(cr, mr)
+                if df.singleValue(bc.target).map(_.isInstance(i)) getOrElse false =>
+                  nop()
+                case bc @ invokevirtual(cr, mr)
+                if df.singleValue(bc.receiver).map(_.isInstance(fieldInstance)) getOrElse false =>
+                  val newName = methodRenaming(cr -> mr)
+                  invokevirtual(i.thisRef, mr.renamed(newName))
+              }))
+            }
+          val i3 =
+            methodRenaming.foldLeft(i2) { case (i, ((cr, mr), newName)) =>
+              val body = rewriteRefs(fieldInstance, fieldInstance.methodBody(cr, mr).get)
+              i.addMethod(mr.renamed(newName), body)
+            }
+          i3
         case other =>
           throw new IllegalArgumentException(s"Field can't fusionable: ${other}")
       }
