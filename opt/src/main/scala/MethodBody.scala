@@ -204,6 +204,16 @@ object MethodBody {
   }"""
     }
 
+    lazy val fallThroughs: Map[Bytecode.Label, Bytecode.Label] = {
+      import Bytecode._
+      body.bytecode.sliding(2).map {
+        case Seq() => Map.empty
+        case Seq(_) => Map.empty
+        case Seq(bc1: FallThrough, bc2) => Map(bc1.label -> bc2.label)
+        case Seq(_, _) => Map.empty
+      }.foldLeft(Map.empty[Bytecode.Label, Bytecode.Label]) { (a, m) => a ++ m }
+    }
+
     // Yes I know this is just a pattern matching, not type-annotation. But I need readability
     lazy val (
       dataBinding: Map[DataLabel.In, DataLabel.Out],
@@ -212,7 +222,6 @@ object MethodBody {
       effectDependencies: Map[Bytecode.Label, Effect],
       effectMerges: Map[Effect, Set[Effect]],
       liveBytecode: Seq[Bytecode],
-      fallThroughs: Map[Bytecode.Label, Bytecode.Label],
       maxLocals: Int,
       maxStackDepth: Int
       ) = {
@@ -233,7 +242,6 @@ object MethodBody {
       val preFrames = mutable.HashMap.empty[Bytecode.Label, Frame]
       val updates = mutable.HashMap.empty[Bytecode.Label, FrameUpdate]
       val falls = mutable.HashMap.empty[Bytecode.Label, Bytecode.Label]
-      val fallThroughs = new mutable.HashMap[Bytecode.Label, Bytecode.Label]
 
       val liveBcs = mutable.HashMap.empty[Bytecode.Label, Bytecode]
 
@@ -259,10 +267,8 @@ object MethodBody {
             case b: Bytecode.Branch =>
               tasks += (body.jumpTargets(b.target) -> u.newFrame)
               tasks += (bseq(1).label -> u.newFrame)
-              fallThroughs(b.label) = bseq(1).label
             case _: Bytecode.Procedure | _: Bytecode.Shuffle =>
               tasks += (bseq(1).label -> u.newFrame)
-              fallThroughs(bc.label) = bseq(1).label
             case Bytecode.athrow() =>
             // TODO: Exception handler
           }
@@ -288,7 +294,7 @@ object MethodBody {
       val maxLocals = allFrames.flatMap(_.locals.keys).max + 1
       val maxStackDepth = allFrames.map(_.stack.size).max
 
-      (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, fallThroughs.toMap, maxLocals, maxStackDepth)
+      (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, maxLocals, maxStackDepth)
     }
   }
 }

@@ -49,14 +49,16 @@ object Bytecode {
         throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
     }
 
+  sealed trait FallThrough extends Bytecode
+
   sealed abstract class Control extends Bytecode with HasEffect {
   }
-  sealed abstract class Shuffle extends Bytecode {
+  sealed abstract class Shuffle extends Bytecode with FallThrough {
     override final def inputs = Seq.empty
     override final def output = None
     override final def effect = None
   }
-  sealed abstract class Procedure extends Bytecode
+  sealed abstract class Procedure extends Bytecode with FallThrough
 
   sealed trait HasClassRef extends Bytecode {
     def classRef: ClassRef
