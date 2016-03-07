@@ -83,7 +83,7 @@ class UniqueNamer() {
   def apply(baseNames: String*): String = {
     val prefix = baseNames
       .map(_.replaceAll("""\$[0-9]+\$$""", ""))
-      .map(_.replaceAll("[^A-Za-z0-9$]", ""))
+      .map(_.replaceAll("[^A-Za-z0-9$]", "_"))
       .mkString("__")
     prefix + "$" + nextId() + "$"
   }

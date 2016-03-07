@@ -194,7 +194,7 @@ ${
     }
 
     override def duplicate1 =
-      rewriteThisRef(thisRef.renamed(thisRef.name + "_"))
+      rewriteThisRef(thisRef.anotherUniqueName)
 
     override def duplicate[B >: A <: AnyRef: ClassTag]: Duplicate[B] = {
       val newSuperRef = ClassRef.of(implicitly[ClassTag[B]].runtimeClass)
