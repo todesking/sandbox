@@ -15,10 +15,13 @@ case class MethodRef(name: String, descriptor: MethodDescriptor) {
 }
 object MethodRef {
   def from(m: Constructor[_]): MethodRef =
-    MethodRef("<init>", MethodDescriptor(TypeRef.Void, m.getParameterTypes.map(TypeRef.from)))
+    constructor(MethodDescriptor(TypeRef.Void, m.getParameterTypes.map(TypeRef.from)))
 
   def from(m: JMethod): MethodRef =
     MethodRef(m.getName, MethodDescriptor.from(m))
+
+  def constructor(d: MethodDescriptor): MethodRef =
+    MethodRef("<init>", d)
 
   val uniqueName = new UniqueNamer
 

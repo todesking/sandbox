@@ -135,7 +135,9 @@ object Instance {
     override def methodBody(ref: MethodRef): Option[MethodBody] =
       MethodBody.parse(virtualJMethods(ref))
 
-    override def methodBody(cr: ClassRef, mr: MethodRef) = MethodBody.parse(allJMethods(cr -> mr))
+    override def methodBody(cr: ClassRef, mr: MethodRef) =
+      if(mr.isInit) MethodBody.parse(allJConstructors(cr -> mr))
+      else MethodBody.parse(allJMethods(cr -> mr))
 
     override lazy val methods: Map[(ClassRef, MethodRef), MethodAttribute] =
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
@@ -147,6 +149,7 @@ object Instance {
     private[this] lazy val virtualJMethods = Reflect.virtualJMethods(jClass)
     private[this] lazy val allJMethods = Reflect.allJMethods(jClass)
     private[this] lazy val allJFields = Reflect.allJFields(jClass)
+    private[this] lazy val allJConstructors = Reflect.allJConstructors(jClass)
   }
 
   case class Duplicate[A <: AnyRef](
@@ -303,7 +306,7 @@ ${
           klass.addField(ctf)
       }
 
-      val (superCtor, assigns) =
+      val superCtor =
         Analyze.findSetterConstructor(this, superClass, superFields) getOrElse {
           throw new RuntimeException(s"Usable constructor not found")
         }
@@ -311,11 +314,10 @@ ${
       // TODO: set private field values via ctor
       // TODO: set non-const field values via ctor
 
-      if (superCtor.args.size > 0)
+      val superCtorArgs: Seq[Any] = superCtor.toArguments(superFields)
+      if (superCtorArgs.size > 0)
         ???
 
-      val argAssigns = assigns.collect { case (k, Left(i)) => (k -> i) }
-      val superCtorArgs: Seq[Int] = Seq.empty
 
       val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
       val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) }

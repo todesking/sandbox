@@ -2,6 +2,7 @@ package com.todesking.hoge
 
 case class FieldRef(name: String, descriptor: FieldDescriptor) {
   override def toString: String = s"${name}: ${descriptor}"
+  def typeRef: TypeRef = descriptor.typeRef
   def renamed(newName: String): FieldRef = copy(name = newName)
   def anotherUniqueName(baseNames: String*): FieldRef =
     copy(name = FieldRef.uniqueName(baseNames: _*))

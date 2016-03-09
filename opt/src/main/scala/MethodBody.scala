@@ -6,7 +6,7 @@ import scala.language.higherKinds
 import scala.reflect.{ classTag, ClassTag }
 import scala.collection.mutable
 
-import java.lang.reflect.{ Method => JMethod }
+import java.lang.reflect.{ Method => JMethod, Constructor => JConstructor }
 
 import com.todesking.scalapp.syntax._
 
@@ -78,6 +78,9 @@ case class MethodBody(
 
 object MethodBody {
   def parse(m: JMethod): Option[MethodBody] =
+    Javassist.decompile(m)
+
+  def parse(m: JConstructor[_]): Option[MethodBody] =
     Javassist.decompile(m)
 
   class DataFlow(val body: MethodBody, self: Data) {

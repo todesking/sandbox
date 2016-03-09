@@ -1,12 +1,18 @@
 package com.todesking.hoge
 
-import java.lang.reflect.{ Method => JMethod, Field => JField }
+import java.lang.reflect.{ Method => JMethod, Field => JField, Constructor => JConstructor }
 
 object Reflect {
   // TODO: default interface method
   def allJMethods(jClass: Class[_]): Map[(ClassRef, MethodRef), JMethod] =
     supers(jClass)
       .flatMap(_.getDeclaredMethods)
+      .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
+      .toMap
+
+  def allJConstructors(jClass: Class[_]): Map[(ClassRef, MethodRef), JConstructor[_]] =
+    supers(jClass)
+      .flatMap(_.getDeclaredConstructors)
       .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
       .toMap
 

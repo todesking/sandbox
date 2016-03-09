@@ -233,9 +233,7 @@ class Spec extends FunSpec with Matchers {
       dup.fields.size should be(1)
       val (fc, ff) = dup.fields.keys.head
       val fi = Transformer.fieldFusion(dup, fc, ff)
-      println(fi.pretty)
       fi.materialized.value.foo should be(expected)
-      println(fi.pretty)
     }
     it("inner class with primitive field") {
       pending
@@ -252,6 +250,11 @@ class Spec extends FunSpec with Matchers {
 
       val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1)
+    }
+    it("analyze setter ctor") {
+      class Inner {
+      }
+      val i = Instance.of(new Inner)
     }
   }
 }

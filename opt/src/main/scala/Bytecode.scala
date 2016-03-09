@@ -51,8 +51,7 @@ object Bytecode {
 
   sealed trait FallThrough extends Bytecode
 
-  sealed abstract class Control extends Bytecode with HasEffect {
-  }
+  sealed abstract class Control extends Bytecode with HasEffect
   sealed abstract class Shuffle extends Bytecode with FallThrough {
     override final def inputs = Seq.empty
     override final def output = None
@@ -95,13 +94,13 @@ object Bytecode {
     override final def nextFrame(f: Frame) = update(f)
     def target: JumpTarget
   }
-
   sealed abstract class Branch extends Control with FallThrough {
     def target: JumpTarget
   }
+  sealed abstract class Exit extends Control
+  sealed abstract class Return extends Exit
+  sealed abstract class Throw extends Exit
 
-  sealed abstract class Return extends Control {
-  }
   sealed abstract class XReturn extends Return {
     val in: DataLabel.In = DataLabel.in("retval")
     override final val inputs = Seq(in)
@@ -284,7 +283,7 @@ object Bytecode {
     override def nextFrame(f: Frame) =
       update(f).pop(fieldRef.descriptor.typeRef, value).pop1(objectref)
   }
-  case class athrow() extends Control {
+  case class athrow() extends Throw {
     val objectref = DataLabel.in("objectref")
     override def pretty = s"athrow"
     override def inputs = Seq(objectref)
