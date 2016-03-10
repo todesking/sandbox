@@ -70,13 +70,13 @@ sealed abstract class Instance[A <: AnyRef] {
   // Some(true): data has single value that point the instance
   // Some(false): data is not point the instance
   // None: not sure
-  private[this] def ifSingleInstance(df: MethodBody.DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
+  private[this] def ifSingleInstance(df: DataFlow, l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
     df.onlyValue(l).map(_.isInstance(i)) orElse {
       if (df.possibleValues(l).exists(_.isInstance(i))) None
       else Some(false)
     }
 
-  def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow) => Option[B]): Option[B] = {
+  def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow) => Option[B]): Option[B] = {
     val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
     breakableFoldLeft(initial)(ms) {
       case (agg, (cr, mr)) =>
@@ -85,7 +85,7 @@ sealed abstract class Instance[A <: AnyRef] {
     }
   }
 
-  def analyzeBytecodes[B](initial: B)(analyze: (B, ClassRef, MethodRef, MethodBody.DataFlow, Bytecode) => Option[B]): Option[B] =
+  def analyzeBytecodes[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow, Bytecode) => Option[B]): Option[B] =
     analyzeMethods(initial) {
       case (mAgg, cr, mr, df) =>
         breakableFoldLeft(mAgg)(df.body.bytecode) {
@@ -213,7 +213,7 @@ ${
           .flatMap {
             case (cf, field) =>
               fieldMappings.get(cf).map { fr =>
-                fr -> field.copy(attribute = field.attribute | FieldAttribute.Private)
+                fr -> field.copy(attribute = field.attribute.makePrivate)
               }
           }
       // TODO: support super methods
@@ -315,14 +315,15 @@ ${
       // TODO: set non-const field values via ctor
 
       val superCtorArgs: Seq[Any] = superCtor.toArguments(superFields)
-      if (superCtorArgs.size > 0)
-        ???
 
       val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
-      val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) }
+      val ctorArgs: Seq[(TypeRef.Public, Any)] =
+        thisFieldsSeq
+          .map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) } ++
+          superCtor.descriptor.args.zip(superCtorArgs)
 
-      val fieldAssigns: Map[FieldRef, Int] =
-        thisFieldsSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }.toMap
+      val thisFieldAssigns: Seq[(FieldRef, Int)] =
+        thisFieldsSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }
 
       val ctorDescriptor = MethodDescriptor(TypeRef.Void, ctorArgs.map(_._1))
 
@@ -343,13 +344,17 @@ ${
         jumpTargets = Map.empty,
         bytecode =
           Seq(
-            aload(0),
-            // TODO: call with args
-            invokespecial(
-              ClassRef.of(superClass),
-              MethodRef("<init>", MethodDescriptor(TypeRef.Void, Seq.empty))
+            Seq(aload(0)),
+            superCtor.descriptor.args.zipWithIndex.map { case (t, i) =>
+              load(t, i + thisFieldAssigns.size)
+            },
+            Seq(
+              invokespecial(
+                ClassRef.of(superClass),
+                superCtor.methodRef
+              )
             )
-          ) ++ fieldAssigns.flatMap {
+          ).flatten ++ thisFieldAssigns.flatMap {
               case (fr, i) =>
                 import Bytecode._
                 Seq(

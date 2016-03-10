@@ -83,20 +83,27 @@ object Bytecode {
       else withNewFieldRef(newRef)
   }
 
+  sealed trait HasJumpTargets extends Control {
+    def jumpTargets: Set[JumpTarget]
+  }
+
+  sealed trait HasAJumpTarget extends HasJumpTargets {
+    override def jumpTargets = Set(jumpTarget)
+    def target: JumpTarget = jumpTarget // TODO: remove this
+    def jumpTarget: JumpTarget
+  }
+
   sealed trait HasEffect extends Bytecode {
     final val eff: Effect = Effect.fresh()
     override final def effect = Some(eff)
   }
 
-  sealed abstract class Jump extends Control {
+  sealed abstract class Jump extends Control with HasAJumpTarget {
     override final def inputs = Seq.empty
     override final def output = None
     override final def nextFrame(f: Frame) = update(f)
-    def target: JumpTarget
   }
-  sealed abstract class Branch extends Control with FallThrough {
-    def target: JumpTarget
-  }
+  sealed abstract class Branch extends Control with HasAJumpTarget with FallThrough
   sealed abstract class Exit extends Control
   sealed abstract class Return extends Exit
   sealed abstract class Throw extends Exit
@@ -200,11 +207,10 @@ object Bytecode {
   case class aconst_null() extends Const1 {
     override def data = Data.Null
   }
-  case class goto(override val target: JumpTarget) extends Jump {
-  }
-  case class if_icmple(override val target: JumpTarget) extends if_X1cmpXX
-  case class if_acmpne(override val target: JumpTarget) extends if_X1cmpXX
-  case class ifnonnull(override val target: JumpTarget) extends Branch {
+  case class goto(override val jumpTarget: JumpTarget) extends Jump
+  case class if_icmple(override val jumpTarget: JumpTarget) extends if_X1cmpXX
+  case class if_acmpne(override val jumpTarget: JumpTarget) extends if_X1cmpXX
+  case class ifnonnull(override val jumpTarget: JumpTarget) extends Branch {
     val value: DataLabel.In = DataLabel.in("value")
     override def pretty = "ifnonnull"
     override def inputs = Seq(value)

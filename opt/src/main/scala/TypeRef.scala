@@ -53,27 +53,30 @@ object TypeRef {
   sealed abstract class Public extends TypeRef {
     def str: String
     def javaClass: Class[_]
+    def defaultValue: Any
   }
 
   sealed abstract class Primitive(
     override val toString: String,
     override val str: String,
-    override val javaClass: Class[_]
+    override val javaClass: Class[_],
+    override val defaultValue: Any
   ) extends Public
 
-  object Byte extends Primitive("int", "B", java.lang.Byte.TYPE)
-  object Boolean extends Primitive("bool", "Z", java.lang.Boolean.TYPE)
-  object Char extends Primitive("char", "C", java.lang.Character.TYPE)
-  object Short extends Primitive("short", "S", java.lang.Short.TYPE)
-  object Int extends Primitive("int", "I", java.lang.Integer.TYPE)
-  object Float extends Primitive("float", "F", java.lang.Float.TYPE)
-  object Long extends Primitive("long", "J", java.lang.Long.TYPE) with DoubleWord
-  object Double extends Primitive("double", "D", java.lang.Double.TYPE) with DoubleWord
-  object Void extends Primitive("void", "V", java.lang.Void.TYPE)
+  object Byte extends Primitive("int", "B", java.lang.Byte.TYPE, 0)
+  object Boolean extends Primitive("bool", "Z", java.lang.Boolean.TYPE, false)
+  object Char extends Primitive("char", "C", java.lang.Character.TYPE, 0)
+  object Short extends Primitive("short", "S", java.lang.Short.TYPE, 0)
+  object Int extends Primitive("int", "I", java.lang.Integer.TYPE, 0)
+  object Float extends Primitive("float", "F", java.lang.Float.TYPE, 0.0f)
+  object Long extends Primitive("long", "J", java.lang.Long.TYPE, 0L) with DoubleWord
+  object Double extends Primitive("double", "D", java.lang.Double.TYPE, 0.0) with DoubleWord
+  object Void extends Primitive("void", "V", java.lang.Void.TYPE, null)
 
   case class Reference(classRef: ClassRef) extends Public {
     override def str = s"L${classRef.binaryName};"
     override def toString = classRef.toString
+    override def defaultValue = null
     // TODO: It smells..
     override def javaClass = classRef match {
       case c: ClassRef.Concrete => c.loadClass

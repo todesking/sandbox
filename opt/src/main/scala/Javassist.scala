@@ -17,7 +17,7 @@ object Javassist {
     }
   }
 
-  def compile(classPool: ClassPool, constPool: ConstPool, df: MethodBody.DataFlow): CodeAttribute = {
+  def compile(classPool: ClassPool, constPool: ConstPool, df: DataFlow): CodeAttribute = {
     val body = df.body
     val ctObject = classPool.get("java.lang.Object")
     val out = new JABytecode(constPool, 0, 0)

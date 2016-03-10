@@ -13,7 +13,7 @@ sealed abstract class Data {
     if (!typeRef.isDoubleWord) throw new IllegalArgumentException()
     else Data.Unsure(TypeRef.SecondWord)
 
-  override def toString: String = s"""${typeRef}${value.map { v => s" = ${valueString}" } getOrElse ""}"""
+  override def toString: String = s"""Data(${typeRef}${value.map { v => s" = ${valueString}" } getOrElse " = ???"})"""
 }
 object Data {
   def merge(d1: Data, d2: Data): Data = {
