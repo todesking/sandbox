@@ -235,26 +235,21 @@ class Spec extends FunSpec with Matchers {
       val fi = Transformer.fieldFusion(dup, fc, ff)
       fi.materialized.value.foo should be(expected)
     }
-    it("inner class with primitive field") {
-      pending
+    it("inner class") {
       abstract class Base {
-        def x: Int
-        def foo: Int = x
+        def foo: Int
       }
       class A extends Base {
-        override val x = 1
+        override def foo = 1
       }
 
       val i = Instance.of(new A)
       i.value.foo should be(1)
 
+      println(Analyze.setterConstructors(i, classOf[Base]).map { _.pretty }.mkString("\n"))
+
       val ri = i.duplicate[Base].materialized
       ri.value.foo should be(1)
-    }
-    it("analyze setter ctor") {
-      class Inner {
-      }
-      val i = Instance.of(new Inner)
     }
   }
 }

@@ -136,7 +136,7 @@ object Instance {
       MethodBody.parse(virtualJMethods(ref))
 
     override def methodBody(cr: ClassRef, mr: MethodRef) =
-      if(mr.isInit) MethodBody.parse(allJConstructors(cr -> mr))
+      if (mr.isInit) MethodBody.parse(allJConstructors(cr -> mr))
       else MethodBody.parse(allJMethods(cr -> mr))
 
     override lazy val methods: Map[(ClassRef, MethodRef), MethodAttribute] =
@@ -317,7 +317,6 @@ ${
       val superCtorArgs: Seq[Any] = superCtor.toArguments(superFields)
       if (superCtorArgs.size > 0)
         ???
-
 
       val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
       val ctorArgs: Seq[(TypeRef.Public, Any)] = thisFieldsSeq.map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) }
