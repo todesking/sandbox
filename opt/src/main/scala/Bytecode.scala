@@ -158,13 +158,29 @@ object Bytecode {
   }
 
   sealed abstract class InvokeMethod extends Procedure with HasClassRef with HasMethodRef with HasEffect {
-  }
-  sealed abstract class InvokeInstanceMethod extends InvokeMethod {
-    val objectref: DataLabel.In = DataLabel.in("objectref")
+    override type Self <: InvokeMethod
     val args: Seq[DataLabel.In] = methodRef.args.zipWithIndex.map { case (_, i) => DataLabel.in(s"arg${i}") }
     val ret: Option[DataLabel.Out] = if (methodRef.isVoid) None else Some(DataLabel.out("ret"))
-    override final def inputs = objectref +: args
     override final def output = ret
+  }
+  sealed abstract class InvokeClassMethod extends InvokeMethod {
+    override type Self <: InvokeClassMethod
+    override final def inputs = args
+    override def nextFrame(f: Frame) = {
+      require(f.stack.size >= methodRef.args.size)
+      val popped =
+        args.zip(methodRef.args).foldRight(update(f)) {
+          case ((a, t), u) =>
+            if (t.isDoubleWord) u.pop2(a)
+            else u.pop1(a)
+        }
+      ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
+    }
+  }
+  sealed abstract class InvokeInstanceMethod extends InvokeMethod {
+    override type Self <: InvokeInstanceMethod
+    val objectref: DataLabel.In = DataLabel.in("objectref")
+    override final def inputs = objectref +: args
     override def nextFrame(f: Frame) = {
       require(f.stack.size >= methodRef.args.size)
       val popped =
@@ -178,6 +194,13 @@ object Bytecode {
   }
 
   sealed abstract class FieldAccess extends Procedure with HasClassRef with HasFieldRef with HasEffect {
+    override type Self <: FieldAccess
+  }
+  sealed abstract class StaticFieldAccess extends FieldAccess {
+    override type Self <: StaticFieldAccess
+  }
+  sealed abstract class InstanceFieldAccess extends FieldAccess {
+    override type Self <: InstanceFieldAccess
     val objectref: DataLabel.In = DataLabel.in("objectref")
   }
 
@@ -196,6 +219,7 @@ object Bytecode {
   case class istore(n: Int) extends Store1
   case class astore(n: Int) extends Store1
   case class ireturn() extends XReturn
+  case class dreturn() extends XReturn
   case class lreturn() extends XReturn
   case class areturn() extends XReturn
   case class iconst(value: Int) extends Const1 {
@@ -255,7 +279,13 @@ object Bytecode {
     override def withNewMehtodRef(newRef: MethodRef) = copy(methodRef = newRef)
     override def pretty = s"invokespecial ${classRef.pretty}.${methodRef.str}"
   }
-  case class getfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
+  case class invokestatic(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeClassMethod {
+    override type Self = invokestatic
+    override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
+    override def withNewMehtodRef(newRef: MethodRef) = copy(methodRef = newRef)
+    override def pretty = s"invokestatic ${classRef.pretty}.${methodRef.str}"
+  }
+  case class getfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends InstanceFieldAccess {
     override type Self = getfield
     override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
@@ -278,7 +308,21 @@ object Bytecode {
       update(f).pop1(objectref).push(out -> data)
     }
   }
-  case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends FieldAccess {
+  case class getstatic(override val classRef: ClassRef, override val fieldRef: FieldRef) extends StaticFieldAccess {
+    override type Self = getstatic
+    override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
+    override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
+
+    val out = DataLabel.out("field")
+    override def pretty = s"getstatic ${fieldRef}"
+    override def inputs = Seq.empty
+    override def output = Some(out)
+    override def nextFrame(f: Frame) = {
+      val data = Data.Unsure(fieldRef.descriptor.typeRef) // TODO: set static field value if it is final
+      update(f).push(out -> data)
+    }
+  }
+  case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends InstanceFieldAccess {
     override type Self = putfield
     override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)

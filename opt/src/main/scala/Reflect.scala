@@ -16,13 +16,14 @@ object Reflect {
       .map { m => (ClassRef.of(m.getDeclaringClass) -> MethodRef.from(m)) -> m }
       .toMap
 
+  // TODO: default interface method
   def resolveVirtualMethod(jClass: Class[_], mr: MethodRef): ClassRef.Concrete =
     supers(jClass)
       .find { c =>
         c.getDeclaredMethods
           .filter { m => MethodAttribute.from(m.getModifiers).isVirtual }
           .exists { m => MethodRef.from(m) == mr }
-      }.map { m => ClassRef.of(m.getDeclaringClass) }
+      }.map { c => ClassRef.of(c) }
       .getOrElse { throw new IllegalArgumentException(s"Can't find virtual method ${mr} in ${jClass}") }
 
   // TODO: default interface method

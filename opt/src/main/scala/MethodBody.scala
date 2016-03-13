@@ -28,8 +28,8 @@ case class MethodBody(
   def fieldReferences: Set[(ClassRef, FieldRef)] =
     bytecode.collect { case bc: Bytecode.HasFieldRef => (bc.classRef -> bc.fieldRef) }.toSet
 
-  def labelToBytecode(l: Bytecode.Label): Bytecode =
-    bytecode.find(_.label == l).getOrElse { throw new IllegalArgumentException(s"Bytecode ${l} not found") }
+  lazy val labelToBytecode: Map[Bytecode.Label, Bytecode] =
+    bytecode.map { bc => bc.label -> bc }.toMap
 
   def rewrite(f: PartialFunction[Bytecode, Bytecode]): MethodBody = {
     val lifted = f.lift
@@ -40,17 +40,49 @@ case class MethodBody(
     }
   }
 
+  def rewrite_**(f: PartialFunction[Bytecode, Map[Bytecode.Label, Seq[Bytecode]]]): MethodBody = {
+    val lifted = f.lift
+    val allRewrites =
+      bytecode.foldLeft(Map.empty[Bytecode.Label, Seq[Bytecode]]) { case (m, bc) =>
+        lifted(bc).fold(m) { mm =>
+          Algorithm.sharedNothingUnion(m, mm).fold {
+            throw new TransformException(s"rewrite conflict")
+          }(identity)
+        }
+      }
+    allRewrites.foldLeft(this) { case (b, (l, bcs)) => b.replaceBytecode(l, bcs) }
+  }
+
   def rewriteClassRef(from: ClassRef, to: ClassRef): MethodBody = {
     rewrite { case bc: Bytecode.HasClassRef if bc.classRef == from => bc.rewriteClassRef(to) }
   }
 
   def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
+    replaceBytecode(l, Seq(newBc))
     if (newBc.label == l) {
       this
     } else {
       val newBcs = bytecode.map { bc => if (bc.label == l) newBc else bc }
       val newJts = jumpTargets.map { case (jt, bcl) => if (bcl == l) (jt -> newBc.label) else (jt -> bcl) }
       MethodBody(descriptor, attribute, newBcs, newJts)
+    }
+  }
+
+  def replaceBytecode(l: Bytecode.Label, bcs: Seq[Bytecode]): MethodBody = {
+    require(labelToBytecode.contains(l))
+    require(bcs.nonEmpty)
+    if(bcs.size == 1 && bcs.head.label == l) {
+      this
+    } else {
+      require(bcs.map(_.label).distinct.size == bcs.size)
+      require(bcs.tail.forall { bc => !labelToBytecode.contains(bc.label) })
+      require(bcs.head.label == l || !labelToBytecode.contains(bcs.head.label))
+      require(bcs.forall { case _: Bytecode.Control => false; case _ => true })
+      val first = bcs.head
+      val start = bcs.indexWhere(_.label == l)
+      val newBcs = bytecode.patch(start, bcs, 1)
+      val newJts = jumpTargets.map { case (jt, bcl) => if (bcl == first.label) (jt -> first.label) else (jt -> bcl) }
+      copy(bytecode = newBcs, jumpTargets = newJts)
     }
   }
 

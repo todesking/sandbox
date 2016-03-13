@@ -9,27 +9,66 @@ object Transformer {
   def fieldFusion[A <: AnyRef](instance: Instance[A], classRef: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
     val dupInstance = instance.duplicate1
     instance.fields.get(classRef, fieldRef).fold {
-      throw new IllegalArgumentException(s"Field not found: ${classRef}.${fieldRef}")
+      throw new FieldAnalyzeException(classRef, fieldRef, s"Not found: ${classRef}.${fieldRef}")
     } { field =>
       if (!field.isFinal)
-        throw new IllegalArgumentException(s"Field ${classRef}.${fieldRef} is not final")
+        throw new FieldTransformException(classRef, fieldRef, s"Not final")
       field.data match {
         case Data.Reference(t, fieldInstance) =>
           if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
-            throw new IllegalArgumentException(s"Can't fuse instance-stateful field: ${classRef}.${fieldRef}")
+            throw new FieldTransformException(classRef, fieldRef, s"Can't fuse instance-stateful field")
           val usedMethods = (for {
             outer <- dupInstance.usedMethodsOf(fieldInstance)
             inner <- fieldInstance.usedMethodsOf(fieldInstance)
-          } yield { outer ++ inner }) getOrElse { throw new IllegalArgumentException() }
+          } yield { outer ++ inner }) getOrElse { throw new AnalyzeException("usedMethods") }
           val usedFields = (for {
             outer <- dupInstance.usedFieldsOf(fieldInstance)
             inner <- fieldInstance.usedFieldsOf(fieldInstance)
-          } yield { outer ++ inner }) getOrElse { throw new IllegalArgumentException() }
+          } yield { outer ++ inner }) getOrElse { throw new AnalyzeException("usedFields") }
 
           val methodRenaming =
             usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name, mr.name) }.toMap
           val fieldRenaming =
             usedFields.map { case (cr, fr) => (cr -> fr) -> fr.anotherUniqueName(fieldRef.name, fr.name) }.toMap
+
+          val fusedMethods =
+            methodRenaming.map { case ((fCr, fMr), newMR) =>
+              val b = fieldInstance.methodBody(fCr, fMr).get
+              val df = b.dataflow(fieldInstance)
+              import Bytecode._
+              (fCr, fMr) -> b.rewrite_** {
+                case bc @ getfield(cr, mr) =>
+                  df.ifOnlyInstance(bc.objectref, fieldInstance).fold {
+                    throw new BytecodeTransformException(fCr, fMr, b, bc, "Ambigious rererence")
+                  } { mustTheInstance =>
+                    if(mustTheInstance)
+                      Map(bc.label -> Seq(pop()))
+                    else Map.empty
+                  }
+                case bc: InvokeInstanceMethod =>
+                  df.ifOnlyInstance(bc.objectref, fieldInstance).fold {
+                    throw new BytecodeTransformException(fCr, fMr, b, bc, "Ambigious rererence")
+                  } { mustTheInstance =>
+                    if(mustTheInstance) {
+                      df.onlySourceBytecode(bc.objectref).fold {
+                        println(df.sourceBytecodes(bc.objectref))
+                        println(df.dataValue(bc.objectref))
+                        throw new BytecodeTransformException(fCr, fMr, b, bc, s"Multiple/no receiver candidate: unsupported")
+                      } {
+                        case sbc @ aload(n) =>
+                          Map(
+                            sbc.label -> Seq(aload(0)),
+                            bc.label -> Seq(bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(bc.classRef, bc.methodRef)))
+                          )
+                        case _ =>
+                          throw new BytecodeTransformException(fCr, fMr, b, bc, s"Unsupported objectref source")
+                      }
+                    } else {
+                      Map.empty
+                    }
+                  }
+              }
+            }
 
           def rewriteRefs(instance: Instance[_ <: AnyRef], body: MethodBody): MethodBody = {
             def rewriteMethodRef(body: MethodBody): MethodBody =
@@ -69,7 +108,7 @@ object Transformer {
                 import Bytecode._
                 val df = body.dataflow(i)
                 i.addMethod(mr, rewriteRefs(i, body.rewrite {
-                  case bc @ getfield(cr, mr) if df.onlyValue(bc.objectref).map(_.isInstance(i)) getOrElse false =>
+                  case bc @ getfield(cr, fr) if df.onlyValue(bc.objectref).map(_.isInstance(i)) getOrElse false =>
                     nop()
                   case bc @ invokevirtual(cr, mr) if df.onlyValue(bc.objectref).map(_.isInstance(fieldInstance)) getOrElse false =>
                     invokevirtual(i.thisRef, methodRenaming(cr -> mr))
@@ -83,7 +122,7 @@ object Transformer {
             }
           i3
         case other =>
-          throw new IllegalArgumentException(s"Field can't fusionable: ${other}")
+          throw new FieldTransformException(classRef, fieldRef, s"Field can't fusionable: ${other}")
       }
     }
   }

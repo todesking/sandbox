@@ -5,7 +5,7 @@ import java.lang.reflect.{ Method => JMethod, Constructor }
 case class MethodDescriptor(ret: TypeRef.Public, args: Seq[TypeRef.Public]) {
   def str: String = s"${args.map(_.str).mkString("(", "", ")")}${ret.str}"
 
-  override def toString = s"${args.mkString("(", "", ")")}${ret}"
+  override def toString = s"${args.mkString("(", ", ", ")")}${ret}"
 
   def isVoid: Boolean = ret == TypeRef.Void
 

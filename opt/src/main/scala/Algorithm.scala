@@ -13,6 +13,12 @@ object Algorithm {
     )
   }
 
+  def sharedNothingUnion[A, B](m1: Map[A, B], m2: Map[A, B]): Option[Map[A, B]] = {
+    val union = m1 ++ m2
+    if(m1.size + m2.size > union.size) None
+    else Some(union)
+  }
+
   def tsort[A, B](in: Seq[A])(labelOf: A => B)(depsOf: A => Set[B]): Seq[A] =
     tsort0(in.map { i => (i, labelOf(i), depsOf(i)) }, Set.empty, Seq.empty)
 

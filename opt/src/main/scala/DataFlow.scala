@@ -27,6 +27,33 @@ class DataFlow(val body: MethodBody, self: Data) {
     else None
   }
 
+  // Some(true): data has single value that point the instance
+  // Some(false): data is not point the instance
+  // None: not sure
+  def ifOnlyInstance(l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
+    onlyValue(l).map(_.isInstance(i)) orElse {
+      if (possibleValues(l).exists(_.isInstance(i))) None
+      else Some(false)
+    }
+
+  def onlySourceBytecode(l: DataLabel): Option[Bytecode] = {
+    val bcs = sourceBytecodes(l)
+    if(bcs.size == 1) Some(bcs.head)
+    else None
+  }
+
+  def sourceBytecodes(l: DataLabel): Seq[Bytecode] =
+    l match {
+      case in: DataLabel.In =>
+        sourceBytecodes(dataBinding(in))
+      case out: DataLabel.Out =>
+        dataMerges.get(out).fold {
+          body.bytecode.find(_.output.contains(out)).toSeq
+        } {
+          _.toSeq.flatMap(sourceBytecodes) // TODO: May cause inf loop?
+        }
+    }
+
   lazy val argLabels: Seq[DataLabel.Out] =
     body.descriptor.args
       .zipWithIndex

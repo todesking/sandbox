@@ -19,12 +19,14 @@ object Analyze {
       superConstructor.map(_.argumentAssigns).getOrElse(Map.empty) ++ argumentAssigns0 // TODO: WRONG
     def toArguments(fields: Map[(ClassRef, FieldRef), Field]): Seq[Any] = {
       require(assignable(fields))
-      descriptor.args.zipWithIndex map { case (t, i) =>
-        argumentAssigns.find(_._1 == i).map { case (k, v) =>
-          fields(k).data.concreteValue
-        } getOrElse {
-          t.defaultValue
-        }
+      descriptor.args.zipWithIndex map {
+        case (t, i) =>
+          argumentAssigns.find(_._2 == i).map {
+            case (k, v) =>
+              fields(k).data.concreteValue
+          } getOrElse {
+            t.defaultValue
+          }
       }
     }
 
@@ -72,7 +74,7 @@ object Analyze {
   object SetterConstructor {
     def from(self: Instance[_ <: AnyRef], ctorClass: ClassRef, body: MethodBody): Try[SetterConstructor] = {
       def makeError(msg: String) =
-        new MethodAnalyzeException( ctorClass, MethodRef.constructor(body.descriptor), msg)
+        new MethodAnalyzeException(ctorClass, MethodRef.constructor(body.descriptor), msg)
       val df = body.dataflow(self)
       import Bytecode._
       Try {
@@ -81,14 +83,13 @@ object Analyze {
         val argAssigns = mutable.HashMap.empty[(ClassRef, FieldRef), Int]
         body.bytecode.foreach {
           case bc if df.possibleReturns(bc.label).isEmpty =>
-            // ignore error path
+          // ignore error path
           case bc: Shuffle =>
           case bc: Jump =>
           case bc: Return =>
           case bc: ConstX =>
-          case bc: Branch
-          if df.possibleReturns(body.jumpTargets(bc.jumpTarget)).isEmpty || df.possibleReturns(df.fallThroughs(bc.label)).isEmpty =>
-            // OK if one of jumps exit by throw
+          case bc: Branch if df.possibleReturns(body.jumpTargets(bc.jumpTarget)).isEmpty || df.possibleReturns(df.fallThroughs(bc.label)).isEmpty =>
+          // OK if one of jumps exit by throw
           case bc @ invokespecial(classRef, methodRef) if df.onlyValue(bc.objectref).map(_.isInstance(self)).getOrElse(false) && methodRef.isInit =>
             // super ctor invocation
             if (superConstructor.nonEmpty)

@@ -39,6 +39,8 @@ object Javassist {
           out.addReturn(CtClass.longType)
         case areturn() =>
           out.add(0xB0)
+        case dreturn() =>
+          out.add(0xAF)
         case iload(n) =>
           out.addIload(n)
         case aload(n) =>
@@ -71,6 +73,8 @@ object Javassist {
         case invokespecial(classRef, methodRef) =>
           // TODO: check resolved class
           out.addInvokespecial(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
+        case invokestatic(classRef, methodRef) =>
+          out.addInvokestatic(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
         case if_icmple(target) =>
           out.add(0xA4)
           jumps(out.getSize) = (out.getSize - 1) -> target
@@ -83,6 +87,8 @@ object Javassist {
           out.add(0xBF)
         case getfield(classRef, fieldRef) =>
           out.addGetfield(classRef.binaryName, fieldRef.name, fieldRef.descriptor.str)
+        case getstatic(classRef, fieldRef) =>
+          out.addGetstatic(classRef.binaryName, fieldRef.name, fieldRef.descriptor.str)
         case putfield(classRef, fieldRef) =>
           out.addPutfield(classRef.binaryName, fieldRef.name, fieldRef.descriptor.str)
       }
@@ -219,6 +225,8 @@ object Javassist {
           case 0xAD => // lreturn
             onInstruction(index, lreturn())
           // TODO
+          case 0xAF => // dreturn
+            onInstruction(index, dreturn())
           case 0x60 =>
             onInstruction(index, iadd())
           // TODO
@@ -227,6 +235,14 @@ object Javassist {
           case 0xB1 => // return
             onInstruction(index, vreturn())
           // TODO
+          case 0xB2 => // getstatic
+            val constIndex = it.u16bitAt(index + 1)
+            val className = cpool.getFieldrefClassName(constIndex)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val fieldName = cpool.getFieldrefName(constIndex)
+            val fieldDescriptor = FieldDescriptor.parse(cpool.getFieldrefType(constIndex), jClass.getClassLoader)
+            val fieldRef = FieldRef(fieldName, fieldDescriptor)
+            onInstruction(index, getstatic(classRef, fieldRef))
           case 0xB4 => // getfield
             val constIndex = it.u16bitAt(index + 1)
             val className = cpool.getFieldrefClassName(constIndex)
@@ -269,12 +285,25 @@ object Javassist {
                 MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader))
               )
             )
+          case 0xB8 => // invokestatic
+            val constIndex = it.u16bitAt(index + 1)
+            val className = cpool.getMethodrefClassName(constIndex)
+            val methodName = cpool.getMethodrefName(constIndex)
+            val methodType = cpool.getMethodrefType(constIndex)
+            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            onInstruction(
+              index,
+              invokestatic(
+                classRef,
+                MethodRef(methodName, MethodDescriptor.parse(methodType, jClass.getClassLoader))
+              )
+            )
           case 0xBF => // athrow
             onInstruction(index, athrow())
           case 0xC7 => // ifnonnull
             onInstruction(index, ifnonnull(addr2jt(index + it.s16bitAt(index + 1))))
           case unk =>
-            throw new UnsupportedOpcodeException(unk, mRef.name)
+            throw new UnsupportedOpcodeException(ClassRef.of(jClass), mRef, unk)
         }
       }
       Some(MethodBody(
