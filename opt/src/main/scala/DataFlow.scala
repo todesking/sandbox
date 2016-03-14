@@ -46,24 +46,6 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
       throw new BytecodeTransformException(self.classRef, mr, body, bc, "Ambigious this rererence")
     }(identity)
 
-  def onlySourceBytecode(l: DataLabel): Option[Bytecode] = {
-    val bcs = sourceBytecodes(l)
-    if(bcs.size == 1) Some(bcs.head)
-    else None
-  }
-
-  def sourceBytecodes(l: DataLabel): Seq[Bytecode] =
-    l match {
-      case in: DataLabel.In =>
-        sourceBytecodes(dataBinding(in))
-      case out: DataLabel.Out =>
-        dataMerges.get(out).fold {
-          body.bytecode.find(_.output.contains(out)).toSeq
-        } {
-          _.toSeq.flatMap(sourceBytecodes) // TODO: May cause inf loop?
-        }
-    }
-
   lazy val argLabels: Seq[DataLabel.Out] =
     body.descriptor.args
       .zipWithIndex
