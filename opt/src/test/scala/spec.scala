@@ -11,19 +11,19 @@ class Spec extends FunSpec with Matchers {
   }
 
   override def withFixture(test: NoArgTest) =
-      super.withFixture(test) match {
-        case o @ Failed(t: BytecodeTransformException) =>
-          println("=== FAILED")
-          println(t)
-          println(t.methodBody.pretty)
-          o
-        case o @ Failed(t: InvalidClassException) =>
-          println("=== INVALID CLASS")
-          println(t.instance.pretty)
-          o
-        case o =>
-          o
-      }
+    super.withFixture(test) match {
+      case o @ Failed(t: BytecodeTransformException) =>
+        println("=== FAILED")
+        println(t)
+        println(t.methodBody.pretty)
+        o
+      case o @ Failed(t: InvalidClassException) =>
+        println("=== INVALID CLASS")
+        println(t.instance.pretty)
+        o
+      case o =>
+        o
+    }
 
   describe("opt") {
     val defaultCL = ClassLoader.getSystemClassLoader
@@ -217,7 +217,7 @@ class Spec extends FunSpec with Matchers {
       // A.outer + Base.outer + b
       dup.fields.size should be(3)
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
-      val fi =Transformer.fieldFusion(dup, fc, ff) 
+      val fi = Transformer.fieldFusion(dup, fc, ff)
       fi.materialized.value.foo should be(expected)
     }
     it("inner class") {

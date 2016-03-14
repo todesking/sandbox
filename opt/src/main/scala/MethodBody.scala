@@ -47,12 +47,13 @@ case class MethodBody(
   def rewrite_**(f: PartialFunction[Bytecode, Map[Bytecode.Label, Seq[Bytecode]]]): MethodBody = {
     val lifted = f.lift
     val allRewrites =
-      bytecode.foldLeft(Map.empty[Bytecode.Label, Seq[Bytecode]]) { case (m, bc) =>
-        lifted(bc).fold(m) { mm =>
-          Algorithm.sharedNothingUnion(m, mm).fold {
-            throw new TransformException(s"rewrite conflict")
-          }(identity)
-        }
+      bytecode.foldLeft(Map.empty[Bytecode.Label, Seq[Bytecode]]) {
+        case (m, bc) =>
+          lifted(bc).fold(m) { mm =>
+            Algorithm.sharedNothingUnion(m, mm).fold {
+              throw new TransformException(s"rewrite conflict")
+            }(identity)
+          }
       }
     allRewrites.foldLeft(this) { case (b, (l, bcs)) => b.replaceBytecode(l, bcs) }
   }
@@ -67,7 +68,7 @@ case class MethodBody(
   def replaceBytecode(l: Bytecode.Label, bcs: Seq[Bytecode]): MethodBody = {
     require(labelToBytecode.contains(l))
     require(bcs.nonEmpty)
-    if(bcs.size == 1 && bcs.head.label == l) {
+    if (bcs.size == 1 && bcs.head.label == l) {
       this
     } else {
       require(bcs.map(_.label).distinct.size == bcs.size)

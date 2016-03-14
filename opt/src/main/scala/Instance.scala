@@ -163,8 +163,8 @@ object Instance {
 constructor:
 ${constructorBody.descriptor}
 ${
-  constructorBody.pretty
-}
+      constructorBody.pretty
+    }
 new/overriden methods:
 ${
       thisMethods.map {
@@ -182,10 +182,10 @@ ${
     }
 Super fields:
 ${
-  superFields.map {
-    case (fr, f) => fr.toString
-  }.mkString("\n")
-}
+      superFields.map {
+        case (fr, f) => fr.toString
+      }.mkString("\n")
+    }
 """
 
     def addMethod(mr: MethodRef, body: MethodBody): Duplicate[A] = {
@@ -196,9 +196,9 @@ ${
     def addMethods(ms: Map[MethodRef, MethodBody]): Duplicate[A] =
       ms.foldLeft(this) { case (i, (mr, b)) => i.addMethod(mr, b) }
 
-    def addField(fr: FieldRef, field: Field): Duplicate[A] = 
+    def addField(fr: FieldRef, field: Field): Duplicate[A] =
       copy(thisFields = thisFields + (fr -> field))
-    
+
     def addFields(fs: Map[FieldRef, Field]): Duplicate[A] =
       fs.foldLeft(this) { case (i, (fr, f)) => i.addField(fr, f) }
 
@@ -282,17 +282,17 @@ ${
 
     lazy val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
     lazy val superConstructor: Analyze.SetterConstructor =
-        Analyze.findSetterConstructor(this, superClass, superFields) getOrElse {
-          println(Analyze.setterConstructorsTry(this, superClass))
-          throw new TransformException(s"Usable constructor not found")
-        }
+      Analyze.findSetterConstructor(this, superClass, superFields) getOrElse {
+        println(Analyze.setterConstructorsTry(this, superClass))
+        throw new TransformException(s"Usable constructor not found")
+      }
     lazy val superConstructorArgs: Seq[Any] = superConstructor.toArguments(superFields)
-      lazy val constructorArgs: Seq[(TypeRef.Public, Any)] =
-        thisFieldsSeq
-          .map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) } ++
-          superConstructor.descriptor.args.zip(superConstructorArgs)
+    lazy val constructorArgs: Seq[(TypeRef.Public, Any)] =
+      thisFieldsSeq
+        .map { case (r, f) => (f.descriptor.typeRef -> f.data.concreteValue) } ++
+        superConstructor.descriptor.args.zip(superConstructorArgs)
 
-      lazy val constructorDescriptor = MethodDescriptor(TypeRef.Void, constructorArgs.map(_._1))
+    lazy val constructorDescriptor = MethodDescriptor(TypeRef.Void, constructorArgs.map(_._1))
     lazy val constructorBody: MethodBody = {
       val thisFieldAssigns: Seq[(FieldRef, Int)] =
         thisFieldsSeq.zipWithIndex.map { case ((fr, f), i) => fr -> (i + 1) }
@@ -302,27 +302,27 @@ ${
         MethodAttribute.Public,
         jumpTargets = Map.empty,
         bytecode =
+        Seq(
+          Seq(aload(0)),
+          superConstructor.descriptor.args.zipWithIndex.map {
+            case (t, i) =>
+              load(t, i + thisFieldAssigns.size + 1)
+          },
           Seq(
-            Seq(aload(0)),
-            superConstructor.descriptor.args.zipWithIndex.map {
-              case (t, i) =>
-                load(t, i + thisFieldAssigns.size + 1)
-            },
-            Seq(
-              invokespecial(
-                ClassRef.of(superClass),
-                superConstructor.methodRef
-              )
+            invokespecial(
+              ClassRef.of(superClass),
+              superConstructor.methodRef
             )
-          ).flatten ++ thisFieldAssigns.flatMap {
-              case (fr, i) =>
-                import Bytecode._
-                Seq(
-                  aload(0),
-                  load(fr.descriptor.typeRef, i),
-                  putfield(thisRef, fr)
-                )
-            }.toSeq ++ Seq(vreturn())
+          )
+        ).flatten ++ thisFieldAssigns.flatMap {
+            case (fr, i) =>
+              import Bytecode._
+              Seq(
+                aload(0),
+                load(fr.descriptor.typeRef, i),
+                putfield(thisRef, fr)
+              )
+          }.toSeq ++ Seq(vreturn())
       )
     }
     override lazy val materialized: Original[A] = {
@@ -388,9 +388,9 @@ ${
       val value =
         try {
           concreteClass
-          .getDeclaredConstructor(constructorArgs.map(_._1.javaClass).toArray: _*)
-          .newInstance(constructorArgs.map(_._2.asInstanceOf[Object]).toArray: _*)
-          .asInstanceOf[A]
+            .getDeclaredConstructor(constructorArgs.map(_._1.javaClass).toArray: _*)
+            .newInstance(constructorArgs.map(_._2.asInstanceOf[Object]).toArray: _*)
+            .asInstanceOf[A]
         } catch {
           case e: LinkageError => throw new InvalidClassException(this, e)
         }

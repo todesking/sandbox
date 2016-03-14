@@ -15,7 +15,7 @@ object Algorithm {
 
   def sharedNothingUnion[A, B](m1: Map[A, B], m2: Map[A, B]): Option[Map[A, B]] = {
     val union = m1 ++ m2
-    if(m1.size + m2.size > union.size) None
+    if (m1.size + m2.size > union.size) None
     else Some(union)
   }
 

@@ -39,9 +39,8 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
   def isThis(l: DataLabel): Option[Boolean] =
     isInstance(l, self.instance)
 
-
   // TODO: refactor
-  def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef], mr:MethodRef, bc: Bytecode): Boolean =
+  def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef], mr: MethodRef, bc: Bytecode): Boolean =
     isInstance(l, i).fold {
       throw new BytecodeTransformException(self.classRef, mr, body, bc, "Ambigious this rererence")
     }(identity)
@@ -90,7 +89,7 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
         case _ => Set.empty
       })
 
-  lazy val thisLabel: Option[DataLabel.Out] = if(body.isStatic) None else Some(DataLabel.out("this"))
+  lazy val thisLabel: Option[DataLabel.Out] = if (body.isStatic) None else Some(DataLabel.out("this"))
 
   lazy val initialFrame: Frame = {
     val initialEffect = Effect.fresh()
@@ -272,7 +271,7 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
     (preFrames.values.toSeq :+ initialFrame) foreach { frame =>
       (frame.locals.values ++ frame.stack) foreach { d =>
-          dataValues(d.label) = d.data
+        dataValues(d.label) = d.data
       }
     }
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
@@ -286,10 +285,12 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     val dataPlacers = mutable.HashMap.empty[DataLabel.In, Bytecode]
     updates.values.foreach { u =>
       u.bytecode.inputs.foreach { i =>
-        u.dataValues.get(i) foreach { _.placedBy foreach { l =>
-          dataPlacers(i) = body.labelToBytecode(l)
+        u.dataValues.get(i) foreach {
+          _.placedBy foreach { l =>
+            dataPlacers(i) = body.labelToBytecode(l)
+          }
         }
-      }}
+      }
     }
 
     val allFrames = preFrames.values ++ updates.values.map(_.newFrame)

@@ -127,10 +127,9 @@ object Analyze {
       .map { mr => SetterConstructor.from(self, classRef, self.methodBody(classRef, mr).get) }
   }
 
-  def setterConstructors(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[SetterConstructor] = 
+  def setterConstructors(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[SetterConstructor] =
     setterConstructorsTry(self, klass)
       .collect { case Success(sc) => sc }
-  
 
   def findSetterConstructor[A](
     self: Instance[_ <: AnyRef],
