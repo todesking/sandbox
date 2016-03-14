@@ -1,6 +1,13 @@
 package com.todesking.hoge
 
-class UnveilException(msg: String) extends RuntimeException(msg)
+class UnveilException(msg: String, err: Throwable) extends RuntimeException(msg, err) {
+  def this(msg: String) = this(msg, null)
+}
+
+class MaterializeException(msg: String, err: Throwable) extends UnveilException(msg, err)
+
+class InvalidClassException(val instance: Instance.Duplicate[_], err: LinkageError)
+  extends MaterializeException(err.toString, err)
 
 class AnalyzeException(msg: String) extends UnveilException(msg)
 
@@ -14,6 +21,7 @@ class FieldAnalyzeException(classRef: ClassRef, fieldRef: FieldRef, msg: String)
   extends AnalyzeException(s"Field analyze failed(${classRef}.${fieldRef}): ${msg}")
 
 class TransformException(msg: String) extends UnveilException(msg)
+
 class FieldTransformException(classRef: ClassRef, fieldRef: FieldRef, msg: String)
   extends AnalyzeException(s"Transform failed at ${classRef}.${fieldRef}: ${msg}")
 

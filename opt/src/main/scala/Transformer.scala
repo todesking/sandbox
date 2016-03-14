@@ -6,9 +6,10 @@ trait Transformer[A <: AnyRef, B <: AnyRef] {
   def apply(orig: Instance[A]): Try[Instance[B]]
 }
 object Transformer {
-  def fieldFusion[A <: AnyRef](instance: Instance[A], classRef: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
+  def fieldFusion[A <: AnyRef](instance: Instance[A], classRef0: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
     val dupInstance = instance.duplicate1
-    instance.fields.get(classRef, fieldRef).fold {
+    val classRef = if(instance.thisRef == classRef0) dupInstance.thisRef else classRef0
+    instance.fields.get(classRef0, fieldRef).fold {
       throw new FieldAnalyzeException(classRef, fieldRef, s"Not found: ${classRef}.${fieldRef}")
     } { field =>
       if (!field.isFinal)
@@ -31,98 +32,45 @@ object Transformer {
           val fieldRenaming =
             usedFields.map { case (cr, fr) => (cr -> fr) -> fr.anotherUniqueName(fieldRef.name, fr.name) }.toMap
 
+          def fusedMemberAccessRewriter(methodRef: MethodRef, df: DataFlow): PartialFunction[Bytecode, Bytecode] = {
+            import Bytecode._
+            {
+                case bc :InstanceFieldAccess if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc) =>
+                  bc.rewriteClassRef(dupInstance.thisRef).rewriteFieldRef(fieldRenaming(bc.classRef -> bc.fieldRef))
+                case bc @ invokespecial(cr, mr) if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc)=>
+                  bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(cr -> mr))
+                case bc @ invokevirtual(cr, mr) if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc) =>
+                  val definedCR = fieldInstance.resolveVirtualMethod(mr)
+                  bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(definedCR -> mr))
+            }
+          }
           val fusedMethods =
             methodRenaming.map { case ((fCr, fMr), newMR) =>
               val b = fieldInstance.methodBody(fCr, fMr).get
               val df = b.dataflow(fieldInstance)
               import Bytecode._
-              (fCr, fMr) -> b.rewrite_** {
-                case bc @ getfield(cr, mr) =>
-                  df.ifOnlyInstance(bc.objectref, fieldInstance).fold {
-                    throw new BytecodeTransformException(fCr, fMr, b, bc, "Ambigious rererence")
-                  } { mustTheInstance =>
-                    if(mustTheInstance)
-                      Map(bc.label -> Seq(pop()))
-                    else Map.empty
-                  }
-                case bc: InvokeInstanceMethod =>
-                  df.ifOnlyInstance(bc.objectref, fieldInstance).fold {
-                    throw new BytecodeTransformException(fCr, fMr, b, bc, "Ambigious rererence")
-                  } { mustTheInstance =>
-                    if(mustTheInstance) {
-                      df.onlySourceBytecode(bc.objectref).fold {
-                        println(df.sourceBytecodes(bc.objectref))
-                        println(df.dataValue(bc.objectref))
-                        throw new BytecodeTransformException(fCr, fMr, b, bc, s"Multiple/no receiver candidate: unsupported")
-                      } {
-                        case sbc @ aload(n) =>
-                          Map(
-                            sbc.label -> Seq(aload(0)),
-                            bc.label -> Seq(bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(bc.classRef, bc.methodRef)))
-                          )
-                        case _ =>
-                          throw new BytecodeTransformException(fCr, fMr, b, bc, s"Unsupported objectref source")
-                      }
-                    } else {
-                      Map.empty
-                    }
-                  }
-              }
+              newMR -> b.rewrite(fusedMemberAccessRewriter(fMr, df))
             }
 
-          def rewriteRefs(instance: Instance[_ <: AnyRef], body: MethodBody): MethodBody = {
-            def rewriteMethodRef(body: MethodBody): MethodBody =
-              methodRenaming.foldLeft(body) {
-                case (b, ((cr, mr), newMR)) =>
-                  val df = b.dataflow(instance)
-                  import Bytecode._
-                  // TODO: I need Bytecode.Invoke.rewriteRef
-                  b.rewrite {
-                    case bc @ invokevirtual(cref, mref) if (cr == cref && mr == mref && df.onlyValue(bc.objectref).map(_.isInstance(fieldInstance)).getOrElse(false)) =>
-                      invokevirtual(dupInstance.thisRef, newMR)
-                    case bc @ invokespecial(cref, mref) if (cr == cref && mr == mref && df.dataValue(bc.objectref).isInstance(fieldInstance)) =>
-                      invokespecial(dupInstance.thisRef, newMR)
-                  }
-              }
-            def rewriteFieldRef(body: MethodBody): MethodBody =
-              fieldRenaming.foldLeft(body) {
-                case (b, ((cr, fr), newFR)) =>
-                  val df = b.dataflow(instance)
-                  import Bytecode._
-                  body.rewrite {
-                    case bc @ getfield(cref, fref) if (cr == cref && fr == fref && df.dataValue(bc.objectref).isInstance(fieldInstance)) =>
-                      getfield(dupInstance.thisRef, newFR)
-                  }
-              }
-            rewriteFieldRef(rewriteMethodRef(body))
-          }
+          def thisMethods =
+            dupInstance.thisMethods.map { case (mr, body) =>
+              val df = body.dataflow(dupInstance)
+              import Bytecode._
+              mr -> body.rewrite(({
+                case bc @ getfield(cr, fr)
+                if cr == classRef && fr == fieldRef && df.mustInstance(bc.objectref, dupInstance, mr, bc) =>
+                  nop()
+              }: PartialFunction[Bytecode, Bytecode]).orElse(fusedMemberAccessRewriter(mr, df)))
+            }
 
-          val i1 =
-            fieldRenaming.foldLeft(dupInstance) {
-              case (i, ((cr, fr), newFR)) =>
-                i.addField(newFR, fieldInstance.fields(cr, fr))
-            }
-          val i2 =
-            i1.thisMethods.foldLeft(i1) {
-              case (i, (mr, body)) =>
-                import Bytecode._
-                val df = body.dataflow(i)
-                i.addMethod(mr, rewriteRefs(i, body.rewrite {
-                  case bc @ getfield(cr, fr) if df.onlyValue(bc.objectref).map(_.isInstance(i)) getOrElse false =>
-                    nop()
-                  case bc @ invokevirtual(cr, mr) if df.onlyValue(bc.objectref).map(_.isInstance(fieldInstance)) getOrElse false =>
-                    invokevirtual(i.thisRef, methodRenaming(cr -> mr))
-                }))
-            }
-          val i3 =
-            methodRenaming.foldLeft(i2) {
-              case (i, ((cr, mr), newMR)) =>
-                val body = rewriteRefs(fieldInstance, fieldInstance.methodBody(cr, mr).get)
-                i.addMethod(newMR, body)
-            }
-          i3
+          def allMethods = fusedMethods ++ thisMethods
+          assert(allMethods.size == fusedMethods.size + thisMethods.size)
+
+          val additionalFields = fieldRenaming.map { case ((cr, fr), newRef) => newRef -> fieldInstance.fields(cr -> fr) }
+
+          dupInstance.addFields(additionalFields).addMethods(allMethods)
         case other =>
-          throw new FieldTransformException(classRef, fieldRef, s"Field can't fusionable: ${other}")
+          throw new FieldTransformException(classRef, fieldRef, s"Field can't fusable: ${other}")
       }
     }
   }

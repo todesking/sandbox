@@ -290,7 +290,7 @@ object Bytecode {
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
 
     val out = DataLabel.out("field")
-    override def pretty = s"getfield ${fieldRef}"
+    override def pretty = s"getfield ${classRef}.${fieldRef}"
     override def inputs = Seq(objectref)
     override def output = Some(out)
     override def nextFrame(f: Frame) = {
@@ -326,7 +326,7 @@ object Bytecode {
     override def withNewClassRef(newRef: ClassRef) = copy(classRef = newRef)
     override def withNewFieldRef(newRef: FieldRef) = copy(fieldRef = newRef)
     val value = DataLabel.in("value")
-    override def pretty = s"putfield ${fieldRef}"
+    override def pretty = s"putfield ${classRef}.${fieldRef}"
     override def inputs = Seq(objectref)
     override def output = None
     override def nextFrame(f: Frame) =

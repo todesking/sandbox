@@ -8,7 +8,7 @@ import scala.collection.mutable
 
 import java.lang.reflect.{ Method => JMethod, Constructor => JConstructor }
 
-class DataFlow(val body: MethodBody, self: Data) {
+class DataFlow(val body: MethodBody, self: Data.Reference) {
   def possibleValues(l: DataLabel): Seq[Data] = l match {
     case l: DataLabel.Out =>
       dataMerges.get(l) map { ms =>
@@ -30,22 +30,21 @@ class DataFlow(val body: MethodBody, self: Data) {
   // Some(true): data has single value that point the instance
   // Some(false): data is not point the instance
   // None: not sure
-  def ifOnlyInstance(l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
+  def isInstance(l: DataLabel, i: Instance[_ <: AnyRef]): Option[Boolean] =
     onlyValue(l).map(_.isInstance(i)) orElse {
       if (possibleValues(l).exists(_.isInstance(i))) None
       else Some(false)
     }
 
-  def isThis(l: DataLabel): Option[Boolean] = l match {
-    case l: DataLabel.In =>
-      isThis(dataBinding(l))
-    case l: DataLabel.Out =>
-      dataMerges.get(l).fold[Option[Boolean]] {
-        Some(l == thisLabel)
-      } { sources =>
-        None
-      }
-  }
+  def isThis(l: DataLabel): Option[Boolean] =
+    isInstance(l, self.instance)
+
+
+  // TODO: refactor
+  def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef], mr:MethodRef, bc: Bytecode): Boolean =
+    isInstance(l, i).fold {
+      throw new BytecodeTransformException(self.classRef, mr, body, bc, "Ambigious this rererence")
+    }(identity)
 
   def onlySourceBytecode(l: DataLabel): Option[Bytecode] = {
     val bcs = sourceBytecodes(l)

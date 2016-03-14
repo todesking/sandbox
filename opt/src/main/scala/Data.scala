@@ -47,6 +47,7 @@ object Data {
     override def valueString = concreteValue.toString
   }
   case class Reference(override val typeRef: TypeRef.Reference, instance: Instance[_ <: AnyRef]) extends Concrete {
+    def classRef: ClassRef = typeRef.classRef
     override def valueString = "<object>"
     override def concreteValue = instance.materialized.value
     override def isInstance(i: Instance[_ <: AnyRef]) = instance eq i

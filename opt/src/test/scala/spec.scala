@@ -13,8 +13,13 @@ class Spec extends FunSpec with Matchers {
   override def withFixture(test: NoArgTest) =
       super.withFixture(test) match {
         case o @ Failed(t: BytecodeTransformException) =>
+          println("=== FAILED")
           println(t)
           println(t.methodBody.pretty)
+          o
+        case o @ Failed(t: InvalidClassException) =>
+          println("=== INVALID CLASS")
+          println(t.instance.pretty)
           o
         case o =>
           o

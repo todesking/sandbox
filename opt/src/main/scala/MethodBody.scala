@@ -61,17 +61,8 @@ case class MethodBody(
     rewrite { case bc: Bytecode.HasClassRef if bc.classRef == from => bc.rewriteClassRef(to) }
   }
 
-  def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
-    // TODO: use replaceBytecode(l, Seq(newBc))
+  def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody =
     replaceBytecode(l, Seq(newBc))
-    if (newBc.label == l) {
-      this
-    } else {
-      val newBcs = bytecode.map { bc => if (bc.label == l) newBc else bc }
-      val newJts = jumpTargets.map { case (jt, bcl) => if (bcl == l) (jt -> newBc.label) else (jt -> bcl) }
-      MethodBody(descriptor, attribute, newBcs, newJts)
-    }
-  }
 
   def replaceBytecode(l: Bytecode.Label, bcs: Seq[Bytecode]): MethodBody = {
     require(labelToBytecode.contains(l))

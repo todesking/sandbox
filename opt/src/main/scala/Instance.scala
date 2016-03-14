@@ -43,7 +43,7 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc @ invokevirtual(cr, mr) =>
-          df.ifOnlyInstance(bc.objectref, i).map { mustTheInstance =>
+          df.isInstance(bc.objectref, i).map { mustTheInstance =>
             if (mustTheInstance) agg + (i.resolveVirtualMethod(mr) -> mr)
             else agg
           } orElse { println(s"Ambigious reference: ${cr}.${mr} ${bc} ${df.possibleValues(bc.objectref)}"); None }
@@ -57,7 +57,7 @@ sealed abstract class Instance[A <: AnyRef] {
       import Bytecode._
       bc match {
         case bc: InstanceFieldAccess =>
-          df.ifOnlyInstance(bc.objectref, i).map { mustTheInstance =>
+          df.isInstance(bc.objectref, i).map { mustTheInstance =>
             if (mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
             else agg
             // TODO: what tha hell this println
@@ -193,9 +193,14 @@ ${
       copy(thisMethods = thisMethods + (mr -> body))
     }
 
-    def addField(fr: FieldRef, field: Field): Duplicate[A] = {
+    def addMethods(ms: Map[MethodRef, MethodBody]): Duplicate[A] =
+      ms.foldLeft(this) { case (i, (mr, b)) => i.addMethod(mr, b) }
+
+    def addField(fr: FieldRef, field: Field): Duplicate[A] = 
       copy(thisFields = thisFields + (fr -> field))
-    }
+    
+    def addFields(fs: Map[FieldRef, Field]): Duplicate[A] =
+      fs.foldLeft(this) { case (i, (fr, f)) => i.addField(fr, f) }
 
     override def resolveVirtualMethod(mr: MethodRef): ClassRef = {
       thisMethods.get(mr).map { body =>
@@ -380,10 +385,15 @@ ${
       ctorCA.setAttribute(sm)
 
       val concreteClass = klass.toClass(classLoader, null)
-      val value = concreteClass
-        .getDeclaredConstructor(constructorArgs.map(_._1.javaClass).toArray: _*)
-        .newInstance(constructorArgs.map(_._2.asInstanceOf[Object]).toArray: _*)
-        .asInstanceOf[A]
+      val value =
+        try {
+          concreteClass
+          .getDeclaredConstructor(constructorArgs.map(_._1.javaClass).toArray: _*)
+          .newInstance(constructorArgs.map(_._2.asInstanceOf[Object]).toArray: _*)
+          .asInstanceOf[A]
+        } catch {
+          case e: LinkageError => throw new InvalidClassException(this, e)
+        }
       val bytes = klass.toBytecode
       Instance.registerMaterialized(classLoader, klass.getName, bytes)
       Instance.of(value)
