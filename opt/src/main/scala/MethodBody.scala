@@ -33,10 +33,14 @@ case class MethodBody(
 
   def rewrite(f: PartialFunction[Bytecode, Bytecode]): MethodBody = {
     val lifted = f.lift
-    bytecode.foldLeft(this) {
-      case (body, bc) =>
-        val newBc = lifted(bc) getOrElse bc
-        body.replaceBytecode(bc.label, newBc)
+    rewrite_* {
+      case bc if f.isDefinedAt(bc) => Seq(f(bc))
+    }
+  }
+
+  def rewrite_*(f: PartialFunction[Bytecode, Seq[Bytecode]]): MethodBody = {
+    rewrite_** {
+      case bc if f.isDefinedAt(bc) => Map(bc.label -> f(bc))
     }
   }
 
@@ -58,6 +62,7 @@ case class MethodBody(
   }
 
   def replaceBytecode(l: Bytecode.Label, newBc: Bytecode): MethodBody = {
+    // TODO: use replaceBytecode(l, Seq(newBc))
     replaceBytecode(l, Seq(newBc))
     if (newBc.label == l) {
       this
@@ -79,7 +84,8 @@ case class MethodBody(
       require(bcs.head.label == l || !labelToBytecode.contains(bcs.head.label))
       require(bcs.forall { case _: Bytecode.Control => false; case _ => true })
       val first = bcs.head
-      val start = bcs.indexWhere(_.label == l)
+      val start = bytecode.indexWhere(_.label == l)
+      assert(start >= 0)
       val newBcs = bytecode.patch(start, bcs, 1)
       val newJts = jumpTargets.map { case (jt, bcl) => if (bcl == first.label) (jt -> first.label) else (jt -> bcl) }
       copy(bytecode = newBcs, jumpTargets = newJts)

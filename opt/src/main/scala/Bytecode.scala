@@ -21,12 +21,7 @@ sealed abstract class Bytecode {
   def pretty: String = toString
 
   protected def update(frame: Frame): FrameUpdate =
-    FrameUpdate(
-      frame.copy(effect = this.effect getOrElse frame.effect),
-      Map.empty,
-      this.effect.map { _ => this.label -> frame.effect }.toMap,
-      Map.empty
-    )
+    new FrameUpdate(this, frame)
 }
 object Bytecode {
   class Label extends AbstractLabel
@@ -149,12 +144,12 @@ object Bytecode {
 
   sealed abstract class Const1 extends ConstX {
     final val out: DataLabel.Out = DataLabel.out("const(1word)")
-    override def nextFrame(f: Frame) = update(f).push1(out -> data)
+    override def nextFrame(f: Frame) = update(f).push1(FrameItem(out, data, Some(label)))
   }
 
   sealed abstract class Const2 extends ConstX {
     final val out: DataLabel.Out = DataLabel.out("const(2word)")
-    override def nextFrame(f: Frame) = update(f).push2(out -> data)
+    override def nextFrame(f: Frame) = update(f).push2(FrameItem(out, data, Some(label)))
   }
 
   sealed abstract class InvokeMethod extends Procedure with HasClassRef with HasMethodRef with HasEffect {
@@ -174,7 +169,7 @@ object Bytecode {
             if (t.isDoubleWord) u.pop2(a)
             else u.pop1(a)
         }
-      ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
+      ret.fold(popped) { rlabel => popped.push(FrameItem(rlabel, Data.Unsure(methodRef.ret), Some(label))) }
     }
   }
   sealed abstract class InvokeInstanceMethod extends InvokeMethod {
@@ -189,7 +184,7 @@ object Bytecode {
             if (t.isDoubleWord) u.pop2(a)
             else u.pop1(a)
         }.pop1(objectref)
-      ret.fold(popped) { rlabel => popped.push(rlabel -> Data.Unsure(methodRef.ret)) }
+      ret.fold(popped) { rlabel => popped.push(FrameItem(rlabel, Data.Unsure(methodRef.ret), Some(label))) }
     }
   }
 
@@ -250,19 +245,23 @@ object Bytecode {
     override def effect = None
     override def nextFrame(f: Frame) =
       (f.stack(0), f.stack(1)) match {
-        case ((_, d1), (_, d2)) if d1.typeRef == TypeRef.Int && d2.typeRef == TypeRef.Int =>
+        case (d1, d2) if d1.data.typeRef == TypeRef.Int && d2.data.typeRef == TypeRef.Int =>
           update(f)
             .pop1(value2)
             .pop1(value1)
             .push(
-              out -> (d1.value.flatMap { v1 =>
-                d2.value.map { v2 =>
-                  Data.Primitive(
-                    TypeRef.Int,
-                    v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
-                  )
-                }
-              }).getOrElse { Data.Unsure(TypeRef.Int) }
+              FrameItem(
+                out,
+                d1.data.value.flatMap { v1 =>
+                  d2.data.value.map { v2 =>
+                    Data.Primitive(
+                      TypeRef.Int,
+                      v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
+                    )
+                  }
+                }.getOrElse { Data.Unsure(TypeRef.Int) },
+                Some(label)
+              )
             )
         case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
       }
@@ -295,7 +294,7 @@ object Bytecode {
     override def inputs = Seq(objectref)
     override def output = Some(out)
     override def nextFrame(f: Frame) = {
-      val self = f.stack(0)._2
+      val self = f.stack(0).data
       val data =
         self match {
           case Data.Reference(_, instance) =>
@@ -305,7 +304,7 @@ object Bytecode {
           case _ =>
             Data.Unsure(fieldRef.descriptor.typeRef)
         }
-      update(f).pop1(objectref).push(out -> data)
+      update(f).pop1(objectref).push(FrameItem(out, data, Some(label)))
     }
   }
   case class getstatic(override val classRef: ClassRef, override val fieldRef: FieldRef) extends StaticFieldAccess {
@@ -319,7 +318,7 @@ object Bytecode {
     override def output = Some(out)
     override def nextFrame(f: Frame) = {
       val data = Data.Unsure(fieldRef.descriptor.typeRef) // TODO: set static field value if it is final
-      update(f).push(out -> data)
+      update(f).push(FrameItem(out, data, Some(label)))
     }
   }
   case class putfield(override val classRef: ClassRef, override val fieldRef: FieldRef) extends InstanceFieldAccess {

@@ -77,7 +77,7 @@ object Analyze {
         new MethodAnalyzeException(ctorClass, MethodRef.constructor(body.descriptor), msg)
       val df = body.dataflow(self)
       import Bytecode._
-      Try {
+      try {
         var superConstructor: Option[SetterConstructor] = None
         val constAssigns = mutable.HashMap.empty[(ClassRef, FieldRef), Any]
         val argAssigns = mutable.HashMap.empty[(ClassRef, FieldRef), Int]
@@ -93,7 +93,7 @@ object Analyze {
           case bc @ invokespecial(classRef, methodRef) if df.onlyValue(bc.objectref).map(_.isInstance(self)).getOrElse(false) && methodRef.isInit =>
             // super ctor invocation
             if (superConstructor.nonEmpty)
-              throw new AnalyzeException(s"Another constructor called twice in ${ctorClass}.<init>${body.descriptor}")
+              throw makeError(s"Another constructor called twice in ${ctorClass}.<init>${body.descriptor}")
             superConstructor =
               SetterConstructor.from(self, classRef, self.methodBody(classRef, methodRef).get).map(Some(_)).get
           case bc @ putfield(classRef, fieldRef) if df.dataValue(bc.objectref).isInstance(self) =>
@@ -111,20 +111,26 @@ object Analyze {
           case bc =>
             throw makeError(s"Bytecode ${bc} is not acceptable in setter constructor")
         }
-        new SetterConstructor(body.descriptor, superConstructor, constAssigns.toMap, argAssigns.toMap)
+        Success(new SetterConstructor(body.descriptor, superConstructor, constAssigns.toMap, argAssigns.toMap))
+      } catch {
+        case e: UnveilException => Failure(e)
       }
     }
   }
 
-  def setterConstructors(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[SetterConstructor] = {
+  def setterConstructorsTry(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[Try[SetterConstructor]] = {
     val classRef = ClassRef.of(klass)
     klass
       .getDeclaredConstructors
       .filterNot { c => MethodAttribute.Private.enabledIn(c.getModifiers) }
       .map { c => MethodRef.from(c) }
       .map { mr => SetterConstructor.from(self, classRef, self.methodBody(classRef, mr).get) }
-      .collect { case Success(sc) => sc }
   }
+
+  def setterConstructors(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[SetterConstructor] = 
+    setterConstructorsTry(self, klass)
+      .collect { case Success(sc) => sc }
+  
 
   def findSetterConstructor[A](
     self: Instance[_ <: AnyRef],

@@ -36,6 +36,17 @@ class DataFlow(val body: MethodBody, self: Data) {
       else Some(false)
     }
 
+  def isThis(l: DataLabel): Option[Boolean] = l match {
+    case l: DataLabel.In =>
+      isThis(dataBinding(l))
+    case l: DataLabel.Out =>
+      dataMerges.get(l).fold[Option[Boolean]] {
+        Some(l == thisLabel)
+      } { sources =>
+        None
+      }
+  }
+
   def onlySourceBytecode(l: DataLabel): Option[Bytecode] = {
     val bcs = sourceBytecodes(l)
     if(bcs.size == 1) Some(bcs.head)
@@ -98,16 +109,25 @@ class DataFlow(val body: MethodBody, self: Data) {
         case _ => Set.empty
       })
 
+  lazy val thisLabel: Option[DataLabel.Out] = if(body.isStatic) None else Some(DataLabel.out("this"))
+
   lazy val initialFrame: Frame = {
     val initialEffect = Effect.fresh()
-    val thisData = if (body.isStatic) None else Some(DataLabel.out("this") -> self)
+    val thisData = thisLabel.map { l => FrameItem(l, self, None) }
     val argData = body.descriptor.args.zipWithIndex.zip(argLabels).flatMap {
       case ((t, i), label) =>
         val data = Data.Unsure(t)
         if (t.isDoubleWord)
-          Seq((DataLabel.out(s"second word of ${label.name}") -> data.secondWordData), (label -> data))
+          Seq(
+            FrameItem(
+              DataLabel.out(s"second word of ${label.name}"),
+              data.secondWordData,
+              None
+            ),
+            FrameItem(label, data, None)
+          )
         else
-          Seq(label -> data)
+          Seq(FrameItem(label, data, None))
     }
     Frame((thisData.toSeq ++ argData).zipWithIndex.map(_.swap).toMap, List.empty, initialEffect)
   }
@@ -216,12 +236,13 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     effectMerges: Map[Effect, Set[Effect]],
     liveBytecode: Seq[Bytecode],
     maxLocals: Int,
-    maxStackDepth: Int
+    maxStackDepth: Int,
+    dataPlacers: Map[DataLabel.In, Bytecode]
     ) = {
     val dataMerges = new AbstractLabel.Merger[DataLabel.Out](DataLabel.out("merged"))
     val effectMerges = new AbstractLabel.Merger[Effect](Effect.fresh())
-    def mergeData(d1: (DataLabel.Out, Data), d2: (DataLabel.Out, Data)): (DataLabel.Out, Data) =
-      (dataMerges.merge(d1._1, d2._1) -> Data.merge(d1._2, d2._2))
+    def mergeData(d1: FrameItem, d2: FrameItem): FrameItem =
+      FrameItem(dataMerges.merge(d1.label, d2.label), Data.merge(d1.data, d2.data), None) // TODO: record placedBy merge
     def merge(f1: Frame, f2: Frame): Frame = {
       Frame(
         (f1.locals.keySet ++ f2.locals.keySet)
@@ -269,23 +290,31 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
 
     val dataValues = mutable.HashMap.empty[DataLabel, Data]
     (preFrames.values.toSeq :+ initialFrame) foreach { frame =>
-      (frame.locals.values ++ frame.stack) foreach {
-        case (l, d) =>
-          dataValues(l) = d
+      (frame.locals.values ++ frame.stack) foreach { d =>
+          dataValues(d.label) = d.data
       }
     }
     val binding = mutable.HashMap.empty[DataLabel.In, DataLabel.Out]
     val effectDependencies = mutable.HashMap.empty[Bytecode.Label, Effect]
     updates.values foreach { u =>
-      dataValues ++= u.dataValues
+      dataValues ++= u.dataValues.mapValues(_.data)
       binding ++= u.binding
       effectDependencies ++= u.effectDependencies
+    }
+
+    val dataPlacers = mutable.HashMap.empty[DataLabel.In, Bytecode]
+    updates.values.foreach { u =>
+      u.bytecode.inputs.foreach { i =>
+        u.dataValues.get(i) foreach { _.placedBy foreach { l =>
+          dataPlacers(i) = body.labelToBytecode(l)
+        }
+      }}
     }
 
     val allFrames = preFrames.values ++ updates.values.map(_.newFrame)
     val maxLocals = allFrames.flatMap(_.locals.keys).max + 1
     val maxStackDepth = allFrames.map(_.stack.size).max
 
-    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, maxLocals, maxStackDepth)
+    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, maxLocals, maxStackDepth, dataPlacers.toMap)
   }
 }

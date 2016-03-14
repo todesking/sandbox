@@ -278,7 +278,8 @@ ${
     lazy val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
     lazy val superConstructor: Analyze.SetterConstructor =
         Analyze.findSetterConstructor(this, superClass, superFields) getOrElse {
-          throw new RuntimeException(s"Usable constructor not found")
+          println(Analyze.setterConstructorsTry(this, superClass))
+          throw new TransformException(s"Usable constructor not found")
         }
     lazy val superConstructorArgs: Seq[Any] = superConstructor.toArguments(superFields)
       lazy val constructorArgs: Seq[(TypeRef.Public, Any)] =
