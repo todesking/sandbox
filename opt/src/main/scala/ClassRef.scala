@@ -10,8 +10,13 @@ sealed abstract class ClassRef {
   def name: String
   def classLoader: ClassLoader
   def binaryName: String = name.replaceAll("\\.", "/")
+
   def <(rhs: ClassRef): Boolean =
     ClassRef.compare(this, rhs).map { case -1 => true; case 0 => false; case 1 => false } getOrElse false
+
+  def >(rhs: ClassRef): Boolean =
+    ClassRef.compare(this, rhs).map { case -1 => false; case 0 => false; case 1 => true } getOrElse false
+
   def toTypeRef: TypeRef.Reference = TypeRef.Reference(this)
   def renamed(newName: String): ClassRef
 

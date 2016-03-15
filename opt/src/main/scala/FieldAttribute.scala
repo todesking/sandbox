@@ -5,6 +5,8 @@ import java.lang.reflect.{ Field => JField, Modifier }
 sealed abstract class FieldAttribute extends Flags[FieldAttribute] {
   def isStatic: Boolean = has(FieldAttribute.Static)
   def isFinal: Boolean = has(FieldAttribute.Final)
+  def isPrivate: Boolean = has(FieldAttribute.Private)
+  def isPrivateFinal: Boolean = isPrivate && isFinal
   def makePrivate: FieldAttribute
 }
 object FieldAttribute extends FlagsCompanion[FieldAttribute] {

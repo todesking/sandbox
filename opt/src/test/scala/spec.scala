@@ -10,6 +10,10 @@ class Spec extends FunSpec with Matchers {
     Files.write(Paths.get(filename), b.dataflow(self).toDot.getBytes("UTF-8"))
   }
 
+  def withThe(i: Instance[_])(f: => Unit): Unit = {
+    try { f } catch { case e: UnveilException => throw e; case e: Throwable => println("==== TEST FAILED\n" + i.pretty); throw e }
+  }
+
   override def withFixture(test: NoArgTest) =
     super.withFixture(test) match {
       case o @ Failed(t: BytecodeTransformException) =>
@@ -221,8 +225,10 @@ class Spec extends FunSpec with Matchers {
       dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
 
       val fi = Transformer.fieldFusion1(dup, fc, ff)
-      fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
-      fi.materialized.value.foo should be(expected)
+      withThe(fi) {
+        fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
+        fi.materialized.value.foo should be(expected)
+      }
     }
     it("field fusion(base)") {
       class Base(b: B) {
@@ -243,26 +249,40 @@ class Spec extends FunSpec with Matchers {
       val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
 
       val fi = Transformer.fieldFusion1(dup, fc, ff)
-      fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
-      println(fi.pretty)
+      withThe(fi) {
+        fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
+        fi.materialized.value.foo() should be(expected)
+      }
+    }
+    it("dup and accessor") {
+      abstract class Base { def foo: Int }
+      class A extends Base { override val foo = 1 }
+      val dup = Instance.of(new A).duplicate[Base]
+      dup.materialized.value.foo should be(1)
     }
     it("field fusion(recursive)") {
-      pending
-      class A(b: B) {
+      class A(val b: B) {
         def foo(): Int = b.bar() + 1000
       }
-      class B(c: C) {
+      class B(val c: C) {
         def bar(): Int = c.baz() + 1
       }
       class C {
         def baz(): Int = 999
       }
       val expected = 2000
+      val foo = MethodRef.parse("foo()I", defaultCL)
+      val bar = MethodRef.parse("bar()I", defaultCL)
+
       val a = new A(new B(new C))
       a.foo() should be(expected)
       val i = Instance.of(a)
+      // i.dataflow(foo).usedMethodsOf(Instance.of(a.b)) should be('empty)
+
       val fused = Transformer.fieldFusion.apply(i).get
-      fused.materialized.value.foo() should be(expected)
+      withThe(fused) {
+        fused.materialized.value.foo() should be(expected)
+      }
     }
     // TODO: accept new instance as constant in SetterConstructor
   }

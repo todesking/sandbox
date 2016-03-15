@@ -59,15 +59,20 @@ sealed abstract class Instance[A <: AnyRef] {
   }
 
   def pretty: String
-
-  override final def hashCode() = System.identityHashCode(this)
-  override final def equals(that: Any) = that match { case that: AnyRef => this eq that; case _ => false }
 }
 object Instance {
   def of[A <: AnyRef](value: A): Original[A] = Original(value)
 
   case class Original[A <: AnyRef](value: A) extends Instance[A] {
     require(value != null)
+
+    override final def hashCode() =
+      System.identityHashCode(value)
+
+    override final def equals(that: Any) = that match {
+      case Original(v) => value eq v
+      case _ => false
+    }
 
     override def pretty = s"Original(${jClass.getName})"
 
@@ -118,6 +123,14 @@ object Instance {
       superFields: Map[(ClassRef, FieldRef), Field], // super class field values
       thisFields: Map[FieldRef, Field]
   ) extends Instance[A] {
+    override final def hashCode() =
+      System.identityHashCode(this)
+
+    override final def equals(that: Any) = that match {
+      case that: Duplicate[_] => this eq that
+      case _ => false
+    }
+
     override def toString = s"Instance.Duplicate(${thisRef})"
     override def pretty: String = s"""class ${thisRef}
 constructor:

@@ -74,7 +74,7 @@ case class MethodBody(
       require(bcs.map(_.label).distinct.size == bcs.size)
       require(bcs.tail.forall { bc => !labelToBytecode.contains(bc.label) })
       require(bcs.head.label == l || !labelToBytecode.contains(bcs.head.label))
-      require(bcs.forall { case _: Bytecode.Control => false; case _ => true })
+      require(bcs.forall { case (_: Bytecode.Jump | _: Bytecode.Branch) => false; case _ => true })
       val first = bcs.head
       val start = bytecode.indexWhere(_.label == l)
       assert(start >= 0)

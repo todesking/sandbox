@@ -216,7 +216,9 @@ object Bytecode {
   case class ireturn() extends XReturn
   case class dreturn() extends XReturn
   case class lreturn() extends XReturn
-  case class areturn() extends XReturn
+  case class areturn() extends XReturn {
+    def objectref: DataLabel.In = in
+  }
   case class iconst(value: Int) extends Const1 {
     override def data = Data.Primitive(TypeRef.Int, value)
   }
