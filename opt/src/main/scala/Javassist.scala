@@ -195,15 +195,20 @@ object Javassist {
           // TODO
           case 0x10 => // bipush
             onInstruction(index, iconst(it.signedByteAt(index + 1)))
+          case 0x11 => // sipush
+            onInstruction(index, iconst(it.s16bitAt(index + 1)))
           // TODO
           case 0x1B => // iload_1
             onInstruction(index, iload(1))
           // TODO
-          case 0x2B => // aload_1
-            onInstruction(index, aload(1))
-          // TODO
           case 0x2A => // aload_0
             onInstruction(index, aload(0))
+          case 0x2B => // aload_1
+            onInstruction(index, aload(1))
+          case 0x2C => // aload_2
+            onInstruction(index, aload(2))
+          case 0x2D => // aload_3
+            onInstruction(index, aload(3))
           // TODO
           case 0x3C => // istore_1
             onInstruction(index, istore(1))

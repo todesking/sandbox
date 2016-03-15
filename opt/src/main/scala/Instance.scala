@@ -18,6 +18,9 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def methodBody(classRef: ClassRef, methodRef: MethodRef): Option[MethodBody]
 
+  def dataflow(classRef: ClassRef, methodRef: MethodRef): Option[DataFlow] =
+    methodBody(classRef, methodRef).map { b => b.dataflow(this) }
+
   def thisRef: ClassRef
 
   def methods: Map[(ClassRef, MethodRef), MethodAttribute]
@@ -38,61 +41,17 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def duplicate1: Instance.Duplicate[A]
 
-  def usedMethodsOf(i: Instance[_ <: AnyRef]): Option[Set[(ClassRef, MethodRef)]] = {
-    analyzeBytecodes(Set.empty[(ClassRef, MethodRef)]) { (agg, cr, mr, df, bc) =>
-      import Bytecode._
-      bc match {
-        case bc @ invokevirtual(cr, mr) =>
-          df.isInstance(bc.objectref, i).map { mustTheInstance =>
-            if (mustTheInstance) agg + (i.resolveVirtualMethod(mr) -> mr)
-            else agg
-          } orElse { println(s"Ambigious reference: ${cr}.${mr} ${bc} ${df.possibleValues(bc.objectref)}"); None }
-        case _ => Some(agg)
-      }
-    }
-  }
+  def usedMethodsOf(i: Instance[_ <: AnyRef]): Set[(ClassRef, MethodRef)] = 
+    analyzeMethods(Set.empty[(ClassRef, MethodRef)]) { (agg, cr, mr, df) => agg ++ df.usedMethodsOf(i) }
+  
 
-  def usedFieldsOf(i: Instance[_ <: AnyRef]): Option[Set[(ClassRef, FieldRef)]] = {
-    analyzeBytecodes(Set.empty[(ClassRef, FieldRef)]) { (agg, cr, mr, df, bc) =>
-      import Bytecode._
-      bc match {
-        case bc: InstanceFieldAccess =>
-          df.isInstance(bc.objectref, i).map { mustTheInstance =>
-            if (mustTheInstance) agg + (bc.classRef -> bc.fieldRef)
-            else agg
-            // TODO: what tha hell this println
-          } orElse { println(s"Ambigious reference: ${cr}.${mr} ${bc} ${df.possibleValues(bc.objectref)}"); None }
-        case _ => Some(agg)
-      }
-    }
-  }
+  def usedFieldsOf(i: Instance[_ <: AnyRef]): Set[(ClassRef, FieldRef)] =
+    analyzeMethods(Set.empty[(ClassRef, FieldRef)]) { case (agg, cr, mr, df) => agg ++ df.usedFieldsOf(i) }
 
-  def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow) => Option[B]): Option[B] = {
+  def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow) => B): B = {
     // TODO: Exclude overriden and unaccessed method
     val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
-    breakableFoldLeft(initial)(ms) {
-      case (agg, (cr, mr)) =>
-        methodBody(cr, mr).orElse { println(s"Method cant decompile: ${cr}.${mr}"); None }
-          .flatMap { body => analyze(agg, cr, mr, body.dataflow(this)) }
-    }
-  }
-
-  def analyzeBytecodes[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow, Bytecode) => Option[B]): Option[B] =
-    analyzeMethods(initial) {
-      case (mAgg, cr, mr, df) =>
-        breakableFoldLeft(mAgg)(df.body.bytecode) {
-          case (agg, bc) =>
-            analyze(agg, cr, mr, df, bc)
-        }
-    }
-
-  private[this] def breakableFoldLeft[X, Y](initial: Y)(seq: Seq[X])(f: (Y, X) => Option[Y]): Option[Y] = {
-    def loop(rest: Seq[X], agg: Y): Option[Y] =
-      rest match {
-        case Seq() => Some(agg)
-        case Seq(x, r @ _*) => f(agg, x).flatMap { ret => loop(r, ret) }
-      }
-    loop(seq, initial)
+    ms.foldLeft(initial) { case (agg, (cr, mr)) => analyze(agg, cr, mr, dataflow(cr, mr).get) }
   }
 
   def pretty: String
@@ -278,7 +237,7 @@ ${
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
 
-    def superClass: Class[_] = thisRef.superClass
+    def superClass: Class[_] = thisRef.superClassRef.loadClass
 
     lazy val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
     lazy val superConstructor: Analyze.SetterConstructor =
@@ -333,18 +292,17 @@ ${
 
       validate()
 
-      val superClass = thisRef.superClass
+      val superClass = thisRef.superClassRef.loadClass
       val classLoader = thisRef.classLoader
-      val baseRef = ClassRef.of(thisRef.superClass)
 
       val classPool = new ClassPool(null)
       Instance.findMaterializedClasses(classLoader).foreach {
         case (name, bytes) =>
           classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
       }
-      classPool.appendClassPath(new ClassClassPath(thisRef.superClass))
+      classPool.appendClassPath(new ClassClassPath(superClass))
 
-      val ctBase = classPool.get(thisRef.superClass.getName)
+      val ctBase = classPool.get(superClass.getName)
 
       val klass = classPool.makeClass(thisRef.name, ctBase)
       val constPool = klass.getClassFile.getConstPool
@@ -403,7 +361,7 @@ ${
       def fail(msg: String) =
         throw new IllegalStateException(msg)
 
-      if ((thisRef.superClass.getModifiers & Modifier.FINAL) == Modifier.FINAL)
+      if ((thisRef.superClassRef.loadClass.getModifiers & Modifier.FINAL) == Modifier.FINAL)
         fail("base is final class")
       // TODO: check finalizer
       // * for each fields `f` in `x`:

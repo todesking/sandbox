@@ -42,8 +42,34 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
   // TODO: refactor
   def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef], mr: MethodRef, bc: Bytecode): Boolean =
     isInstance(l, i).fold {
-      throw new BytecodeTransformException(self.classRef, mr, body, bc, "Ambigious this rererence")
+      throw new BytecodeTransformException(self.classRef, mr, body, bc, "Ambigious rererence")
     }(identity)
+
+  def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef]): Boolean =
+    isInstance(l, i).fold {
+      throw new MethodBodyAnalyzeException(body, "Ambigious rererence")
+    }(identity)
+
+  def usedFieldsOf(i: Instance[_ <: AnyRef]): Set[(ClassRef, FieldRef)] =
+    body.bytecode.foldLeft(Set.empty[(ClassRef, FieldRef)]) { case (agg, bc) =>
+      import Bytecode._
+      bc match {
+        case bc: InstanceFieldAccess if mustInstance(bc.objectref, i) =>
+          agg + (bc.classRef -> bc.fieldRef)
+        case _ => agg
+      }
+    }
+
+  def usedMethodsOf(i: Instance[_ <: AnyRef]): Set[(ClassRef, MethodRef)] =
+    body.bytecode.foldLeft(Set.empty[(ClassRef, MethodRef)]) { case (agg, bc) =>
+      import Bytecode._
+      bc match {
+        case bc @ invokevirtual(cr, mr) if mustInstance(bc.objectref, i) =>
+            agg + (i.resolveVirtualMethod(mr) -> mr)
+        case _ => agg
+      }
+    }
+
 
   lazy val argLabels: Seq[DataLabel.Out] =
     body.descriptor.args

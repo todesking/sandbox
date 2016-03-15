@@ -35,10 +35,10 @@ object ClassRef {
       else if (r.loadClass.isAssignableFrom(l.loadClass)) Some(-1)
       else None
     case (l: Concrete, r: Extend) =>
-      if (l.loadClass.isAssignableFrom(r.superClass)) Some(1)
+      if (l.loadClass.isAssignableFrom(r.superClassRef.loadClass)) Some(1)
       else None
     case (l: Extend, r: Concrete) =>
-      if (r.loadClass.isAssignableFrom(l.superClass)) Some(-1)
+      if (r.loadClass.isAssignableFrom(l.superClassRef.loadClass)) Some(-1)
       else None
     case (l: Extend, r: Extend) =>
       None
@@ -53,7 +53,7 @@ object ClassRef {
       (if (classLoader == null) ClassLoader.getSystemClassLoader else classLoader).loadClass(name)
 
     def extend(name: String, cl: ClassLoader): Extend =
-      Extend(loadClass, name, cl)
+      Extend(this, name, cl)
 
     def extend(cl: ClassLoader): Extend =
       extend(uniqueNamer(name), cl)
@@ -63,8 +63,8 @@ object ClassRef {
   }
 
   // TODO: interface
-  case class Extend(superClass: Class[_], override val name: String, override val classLoader: ClassLoader) extends ClassRef {
-    override def pretty = s"${name} <: ${superClass.getName}@${System.identityHashCode(classLoader)}"
+  case class Extend(superClassRef: ClassRef.Concrete, override val name: String, override val classLoader: ClassLoader) extends ClassRef {
+    override def pretty = s"${name} <: ${superClassRef.name}@${System.identityHashCode(classLoader)}"
     def anotherUniqueName: Extend =
       copy(name = uniqueNamer(name))
     override def renamed(newName: String): Extend =

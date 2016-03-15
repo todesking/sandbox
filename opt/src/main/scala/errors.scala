@@ -14,6 +14,9 @@ class AnalyzeException(msg: String) extends UnveilException(msg)
 class MethodAnalyzeException(classRef: ClassRef, methodRef: MethodRef, msg: String)
   extends AnalyzeException(s"Method analyze failed(${classRef}.${methodRef}): ${msg}")
 
+class MethodBodyAnalyzeException(val body: MethodBody, msg: String)
+  extends AnalyzeException(s"Method analyze failed(descriptor: ${body.descriptor}): ${msg}")
+
 class UnsupportedOpcodeException(classRef: ClassRef, methodRef: MethodRef, byte: Int)
   extends MethodAnalyzeException(classRef, methodRef, f"Unsupported opcode: 0x$byte%02X")
 

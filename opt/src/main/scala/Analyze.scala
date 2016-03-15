@@ -4,6 +4,7 @@ import java.lang.reflect.{ Constructor, Method => JMethod }
 import scala.util.{ Try, Success, Failure }
 import scala.collection.mutable
 
+// TODO: Analyzer
 object Analyze {
   // TODO: add classRef
   class SetterConstructor(

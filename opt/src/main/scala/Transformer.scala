@@ -1,14 +1,37 @@
 package com.todesking.hoge
 
-import scala.util.Try
+import scala.util.{Try, Success, Failure}
 
-trait Transformer[A <: AnyRef, B <: AnyRef] {
-  def apply(orig: Instance[A]): Try[Instance[B]]
+trait Transformer {
+  def apply[A <: AnyRef](orig: Instance[A]): Try[Instance.Duplicate[A]]
 }
 object Transformer {
-  def fieldFusion[A <: AnyRef](instance: Instance[A], classRef0: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
+  object fieldFusion extends Transformer {
+    override def apply[A <: AnyRef](orig: Instance[A]): Try[Instance.Duplicate[A]] = {
+      try {
+        val targetFields =
+          orig.fields
+            .filter { case (_, f) => f.attribute.isFinal && !f.attribute.isStatic }
+            .filter { case (_, f) =>
+              f.data match {
+                case Data.Reference(typeRef, instance) =>
+                  instance.fields.forall { case (_, f) => f.attribute.isFinal && !f.attribute.isStatic }
+                case _ =>
+                  false
+              }
+            }
+        // TODO: replace the fields to fused version
+        Success(targetFields.keys.foldLeft(orig.duplicate1) { case (i, (cr, fr)) => fieldFusion1(i, cr, fr) })
+      } catch {
+        case e: UnveilException => Failure(e)
+      }
+    }
+  }
+
+  def fieldFusion1[A <: AnyRef](instance: Instance[A], classRef0: ClassRef, fieldRef: FieldRef): Instance.Duplicate[A] = {
+    // TODO: leak detection
     val dupInstance = instance.duplicate1
-    val classRef = if (instance.thisRef == classRef0) dupInstance.thisRef else classRef0
+    val classRef = if (classRef0 < dupInstance.thisRef.superClassRef) dupInstance.thisRef else classRef0
     instance.fields.get(classRef0, fieldRef).fold {
       throw new FieldAnalyzeException(classRef, fieldRef, s"Not found: ${classRef}.${fieldRef}")
     } { field =>
@@ -18,14 +41,9 @@ object Transformer {
         case Data.Reference(t, fieldInstance) =>
           if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
             throw new FieldTransformException(classRef, fieldRef, s"Can't fuse instance-stateful field")
-          val usedMethods = (for {
-            outer <- dupInstance.usedMethodsOf(fieldInstance)
-            inner <- fieldInstance.usedMethodsOf(fieldInstance)
-          } yield { outer ++ inner }) getOrElse { throw new AnalyzeException("usedMethods") }
-          val usedFields = (for {
-            outer <- dupInstance.usedFieldsOf(fieldInstance)
-            inner <- fieldInstance.usedFieldsOf(fieldInstance)
-          } yield { outer ++ inner }) getOrElse { throw new AnalyzeException("usedFields") }
+
+          val usedMethods = dupInstance.usedMethodsOf(fieldInstance) ++ fieldInstance.usedMethodsOf(fieldInstance)
+          val usedFields = dupInstance.usedFieldsOf(fieldInstance) ++ fieldInstance.usedFieldsOf(fieldInstance)
 
           val methodRenaming =
             usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name, mr.name) }.toMap

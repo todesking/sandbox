@@ -192,7 +192,7 @@ class Spec extends FunSpec with Matchers {
       val ri = i.duplicate[Base].duplicate[Base].materialized
       ri.value.foo should be(1000)
     }
-    it("field fusion") {
+    it("field fusion(manual)") {
       abstract class Base {
         def foo(): Int
       }
@@ -214,25 +214,34 @@ class Spec extends FunSpec with Matchers {
       val ri = dup.materialized
       ri.value.foo should be(expected)
 
+      def foo = MethodRef.parse("foo()I", defaultCL)
       // A.outer + Base.outer + b
       dup.fields.size should be(3)
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
-      val fi = Transformer.fieldFusion(dup, fc, ff)
+      dup.dataflow(dup.thisRef, foo).get.usedFieldsOf(dup).size should be(1)
+
+      val fi = Transformer.fieldFusion1(dup, fc, ff)
+      fi.dataflow(fi.thisRef, foo).get.usedFieldsOf(fi).size should be(0)
       fi.materialized.value.foo should be(expected)
     }
-    it("inner class") {
-      abstract class Base {
-        def foo: Int
+    it("field fusion(auto)") {
+      class A(b: B) {
+        def foo(): Int = b.bar() + 1000
       }
-      class A extends Base {
-        override def foo = 1
+      class B(c: C) {
+        def bar(): Int = c.baz() + 1
       }
-
-      val i = Instance.of(new A)
-      i.value.foo should be(1)
-
-      val ri = i.duplicate[Base].materialized
-      ri.value.foo should be(1)
+      class C {
+        def baz(): Int = 999
+      }
+      val expected = 2000
+      val a = new A(new B(new C))
+      a.foo() should be(expected)
+      val i = Instance.of(a)
+      val fused = Transformer.fieldFusion.apply(i).get
+      println(fused.pretty)
+      fused.materialized.value.foo() should be(expected)
     }
+    // TODO: accept new instance as constant in SetterConstructor
   }
 }
