@@ -65,7 +65,7 @@ object Transformer {
           val fusedMethods =
             methodRenaming.map {
               case ((fCr, fMr), newMR) =>
-                val b = fieldInstance.methodBody(fCr, fMr).get
+                val b = fieldInstance.methodBody(fCr, fMr)
                 val df = b.dataflow(fieldInstance)
                 import Bytecode._
                 newMR -> b.rewrite(fusedMemberAccessRewriter(fMr, df))

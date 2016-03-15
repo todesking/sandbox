@@ -96,7 +96,7 @@ object Analyze {
             if (superConstructor.nonEmpty)
               throw makeError(s"Another constructor called twice in ${ctorClass}.<init>${body.descriptor}")
             superConstructor =
-              SetterConstructor.from(self, classRef, self.methodBody(classRef, methodRef).get).map(Some(_)).get
+              SetterConstructor.from(self, classRef, self.methodBody(classRef, methodRef)).map(Some(_)).get
           case bc @ putfield(classRef, fieldRef) if df.dataValue(bc.objectref).isInstance(self) =>
             df.dataValue(bc.value).value.map { v =>
               // value from constant
@@ -125,7 +125,7 @@ object Analyze {
       .getDeclaredConstructors
       .filterNot { c => MethodAttribute.Private.enabledIn(c.getModifiers) }
       .map { c => MethodRef.from(c) }
-      .map { mr => SetterConstructor.from(self, classRef, self.methodBody(classRef, mr).get) }
+      .map { mr => SetterConstructor.from(self, classRef, self.methodBody(classRef, mr)) }
   }
 
   def setterConstructors(self: Instance[_ <: AnyRef], klass: Class[_]): Seq[SetterConstructor] =

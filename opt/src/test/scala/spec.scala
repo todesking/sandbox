@@ -126,7 +126,7 @@ class Spec extends FunSpec with Matchers {
       val i = Instance.of[A](obj)
       val foo = MethodRef.parse("foo()I", defaultCL)
       val ri = i.duplicate[A].materialized
-      dotBody("real_upcast.dot", ri, ri.methodBody(foo).get)
+      dotBody("real_upcast.dot", ri, ri.methodBody(foo))
       classOf[A].isAssignableFrom(ri.value.getClass) should be(true)
       classOf[B].isAssignableFrom(ri.value.getClass) should be(false)
       ri.value.foo() should be(99)
@@ -144,7 +144,7 @@ class Spec extends FunSpec with Matchers {
 
       val ri = i.duplicate.materialized
 
-      dotBody("s.dot", ri, ri.methodBody(foo).get)
+      dotBody("s.dot", ri, ri.methodBody(foo))
 
       ri.value.foo() should be(2)
     }
@@ -192,7 +192,7 @@ class Spec extends FunSpec with Matchers {
       val ri = i.duplicate[Base].duplicate[Base].materialized
       ri.value.foo should be(1000)
     }
-    it("field fusion(manual)") {
+    it("field fusion(thisMethod)") {
       abstract class Base {
         def foo(): Int
       }
@@ -214,17 +214,39 @@ class Spec extends FunSpec with Matchers {
       val ri = dup.materialized
       ri.value.foo should be(expected)
 
-      def foo = MethodRef.parse("foo()I", defaultCL)
+      val foo = MethodRef.parse("foo()I", defaultCL)
       // A.outer + Base.outer + b
       dup.fields.size should be(3)
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
-      dup.dataflow(dup.thisRef, foo).get.usedFieldsOf(dup).size should be(1)
+      dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
 
       val fi = Transformer.fieldFusion1(dup, fc, ff)
-      fi.dataflow(fi.thisRef, foo).get.usedFieldsOf(fi).size should be(0)
+      fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
       fi.materialized.value.foo should be(expected)
     }
-    it("field fusion(auto)") {
+    it("field fusion(base)") {
+      class Base(b: B) {
+        def foo(): Int = b.bar()
+      }
+      class B {
+        def bar(): Int = 999
+      }
+      val expected = 999
+      val foo = MethodRef.parse("foo()I", defaultCL)
+
+      val i = Instance.of(new Base(new B))
+      i.value.foo() should be(expected)
+      i.dataflow(i.thisRef, foo).usedFieldsOf(i).size should be(1)
+
+      val dup = i.duplicate1
+      dup.dataflow(foo).usedFieldsOf(dup).size should be(1)
+      val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
+
+      val fi = Transformer.fieldFusion1(dup, fc, ff)
+      fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
+    }
+    it("field fusion(recursive)") {
+      pending
       class A(b: B) {
         def foo(): Int = b.bar() + 1000
       }

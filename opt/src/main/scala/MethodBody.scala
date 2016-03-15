@@ -107,10 +107,10 @@ case class MethodBody(
 }
 
 object MethodBody {
-  def parse(m: JMethod): Option[MethodBody] =
-    Javassist.decompile(m)
+  def parse(m: JMethod): MethodBody =
+    Javassist.decompile(m).get
 
-  def parse(m: JConstructor[_]): Option[MethodBody] =
-    Javassist.decompile(m)
+  def parse(m: JConstructor[_]): MethodBody =
+    Javassist.decompile(m).get
 }
 

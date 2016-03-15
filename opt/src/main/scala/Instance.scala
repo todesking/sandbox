@@ -12,17 +12,21 @@ import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier, Constru
 import com.todesking.scalapp.syntax._
 
 sealed abstract class Instance[A <: AnyRef] {
-  // TODO: return Success/Abstract/Native/UnSupportedOp
-  def methodBody(ref: MethodRef): Option[MethodBody] =
-    methodBody(thisRef, ref)
+  // TODO: rename virtualMethodBody
+  def methodBody(ref: MethodRef): MethodBody =
+    methodBody(resolveVirtualMethod(ref), ref)
 
-  def methodBody(classRef: ClassRef, methodRef: MethodRef): Option[MethodBody]
+  def methodBody(classRef: ClassRef, methodRef: MethodRef): MethodBody
 
-  def dataflow(classRef: ClassRef, methodRef: MethodRef): Option[DataFlow] =
-    methodBody(classRef, methodRef).map { b => b.dataflow(this) }
+  def dataflow(methodRef: MethodRef): DataFlow =
+    methodBody(methodRef).dataflow(this)
+
+  def dataflow(classRef: ClassRef, methodRef: MethodRef): DataFlow =
+    methodBody(classRef, methodRef).dataflow(this)
 
   def thisRef: ClassRef
 
+  // TODO: change to instanceMethods
   def methods: Map[(ClassRef, MethodRef), MethodAttribute]
 
   def fields: Map[(ClassRef, FieldRef), Field]
@@ -51,7 +55,7 @@ sealed abstract class Instance[A <: AnyRef] {
   def analyzeMethods[B](initial: B)(analyze: (B, ClassRef, MethodRef, DataFlow) => B): B = {
     // TODO: Exclude overriden and unaccessed method
     val ms = methods.filterNot { case (k, attrs) => attrs.isAbstract }.keys.toSeq.filterNot { case (cr, mr) => cr == ClassRef.Object }
-    ms.foldLeft(initial) { case (agg, (cr, mr)) => analyze(agg, cr, mr, dataflow(cr, mr).get) }
+    ms.foldLeft(initial) { case (agg, (cr, mr)) => analyze(agg, cr, mr, dataflow(cr, mr)) }
   }
 
   def pretty: String
@@ -88,9 +92,6 @@ object Instance {
         fields,
         Map.empty
       )
-
-    override def methodBody(ref: MethodRef): Option[MethodBody] =
-      MethodBody.parse(virtualJMethods(ref))
 
     override def methodBody(cr: ClassRef, mr: MethodRef) =
       if (mr.isInit) MethodBody.parse(allJConstructors(cr -> mr))
@@ -197,8 +198,8 @@ ${
           .map {
             case ((cr, mr), ma) =>
               import Bytecode._
-              mr -> orig.methodBody(cr, mr).map { body =>
-                body.rewrite {
+              val body = orig.methodBody(cr, mr)
+              mr -> body.rewrite {
                   case iv @ invokevirtual(cref, mref) if cref < newSuperRef =>
                     invokevirtual(newRef, mref)
                   case bc @ getfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
@@ -206,9 +207,6 @@ ${
                   case bc @ putfield(cref, fref) if fieldMappings.contains(cref -> fref) =>
                     putfield(newRef, fieldMappings(cref -> fref))
                 }
-              }.getOrElse {
-                throw new RuntimeException(s"Method ${cr.pretty}.${mr.str} can't rewrite: It's abstract or native")
-              }
           }
       copy[B](
         superMethods = superMethods.filterNot { case ((cr, mr), ma) => cr < newSuperRef },
@@ -227,7 +225,7 @@ ${
       )
 
     override def methodBody(cr: ClassRef, mr: MethodRef) =
-      if (cr == thisRef) thisMethods.get(mr)
+      if (cr == thisRef) thisMethods(mr)
       else if (thisRef < cr) orig.methodBody(cr, mr)
       else throw new IllegalArgumentException(s"Method not found: ${cr.pretty}.${mr.str}")
 
