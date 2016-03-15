@@ -71,7 +71,8 @@ object Transformer {
                 newMR -> b.rewrite(fusedMemberAccessRewriter(fMr, df))
             }
 
-          // TODO: use virtualMethods instead of methods
+          // TODO[BUG]: use virtualMethods instead of methods
+          // confused if multiple overriden method exists
           val targetMethods =
             dupInstance.methods.collect {
               case ((cr, mr), a)

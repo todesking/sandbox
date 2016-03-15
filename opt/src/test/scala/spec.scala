@@ -244,6 +244,7 @@ class Spec extends FunSpec with Matchers {
 
       val fi = Transformer.fieldFusion1(dup, fc, ff)
       fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
+      println(fi.pretty)
     }
     it("field fusion(recursive)") {
       pending
@@ -261,7 +262,6 @@ class Spec extends FunSpec with Matchers {
       a.foo() should be(expected)
       val i = Instance.of(a)
       val fused = Transformer.fieldFusion.apply(i).get
-      println(fused.pretty)
       fused.materialized.value.foo() should be(expected)
     }
     // TODO: accept new instance as constant in SetterConstructor
