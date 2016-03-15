@@ -261,10 +261,11 @@ class Spec extends FunSpec with Matchers {
       dup.materialized.value.foo should be(1)
     }
     it("field fusion(recursive)") {
-      class A(val b: B) {
+      class A(b: B) {
+        def bbb = b
         def foo(): Int = b.bar() + 1000
       }
-      class B(val c: C) {
+      class B(c: C) {
         def bar(): Int = c.baz() + 1
       }
       class C {
@@ -274,16 +275,24 @@ class Spec extends FunSpec with Matchers {
       val foo = MethodRef.parse("foo()I", defaultCL)
       val bar = MethodRef.parse("bar()I", defaultCL)
 
-      val a = new A(new B(new C))
+      val c = new C
+      val b = new B(c)
+      val a = new A(b)
       a.foo() should be(expected)
+
       val i = Instance.of(a)
-      // i.dataflow(foo).usedMethodsOf(Instance.of(a.b)) should be('empty)
+      assert(Instance.of(b) == Instance.of(b))
+      i.dataflow(foo).usedMethodsOf(Instance.of(b)) should be('nonEmpty)
+      i.dataflow(foo).usedMethodsOf(Instance.of(c)) should be('empty)
 
       val fused = Transformer.fieldFusion.apply(i).get
       withThe(fused) {
+        fused.dataflow(foo).usedMethodsOf(Instance.of(b)) should be('empty)
+        fused.usedMethodsOf(Instance.of(c)) should be('empty)
         fused.materialized.value.foo() should be(expected)
       }
     }
+    // TODO: accessor inlining
     // TODO: accept new instance as constant in SetterConstructor
   }
 }

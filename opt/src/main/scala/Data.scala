@@ -25,8 +25,8 @@ object Data {
         Unsure(TypeRef.common(t, lhs.typeRef))
       case (Primitive(t1, v1), Primitive(t2, v2)) if t1 == t2 && v1 == v2 =>
         Primitive(t1, v1)
-      case (Reference(t1, v1), Reference(t2, v2)) if v1 eq v2 =>
-        Reference(TypeRef.common(t1, t2).asInstanceOf[TypeRef.Reference], v1)
+      case (Reference(t1, i1), Reference(t2, i2)) if i1 == i2 =>
+        Reference(TypeRef.common(t1, t2).asInstanceOf[TypeRef.Reference], i1)
       case (Null, Null) => Null
       case (d1, d2) =>
         Unsure(TypeRef.common(d1.typeRef, d2.typeRef))
@@ -50,7 +50,7 @@ object Data {
     def classRef: ClassRef = typeRef.classRef
     override def valueString = "<object>"
     override def concreteValue = instance.materialized.value
-    override def isInstance(i: Instance[_ <: AnyRef]) = instance eq i
+    override def isInstance(i: Instance[_ <: AnyRef]) = instance == i
   }
   case object Null extends Concrete {
     override def valueString = "null"
