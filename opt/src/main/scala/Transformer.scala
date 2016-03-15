@@ -71,9 +71,20 @@ object Transformer {
                 newMR -> b.rewrite(fusedMemberAccessRewriter(fMr, df))
             }
 
+          // TODO: use virtualMethods instead of methods
+          val targetMethods =
+            dupInstance.methods.collect {
+              case ((cr, mr), a)
+              if cr < ClassRef.Object && !a.isAbstract && a.isVirtual && !a.isFinal && dupInstance.dataflow(cr, mr).usedMethodsOf(dupInstance).forall {
+                case (cr, mr) => dupInstance.methods(cr, mr).isVirtual
+              } =>
+              // TODO: check abstract/native
+                (cr -> mr) -> dupInstance.methodBody(cr, mr)
+            }
+
           def thisMethods =
-            dupInstance.thisMethods.map {
-              case (mr, body) =>
+            targetMethods.map {
+              case ((cr, mr), body) =>
                 val df = body.dataflow(dupInstance)
                 import Bytecode._
                 mr -> body.rewrite(({

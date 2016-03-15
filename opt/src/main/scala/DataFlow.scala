@@ -66,6 +66,9 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
       bc match {
         case bc @ invokevirtual(cr, mr) if mustInstance(bc.objectref, i) =>
             agg + (i.resolveVirtualMethod(mr) -> mr)
+        case bc @ invokespecial(cr, mr) if mustInstance(bc.objectref, i) =>
+          // TODO: Special method resolution
+          agg + (cr -> mr)
         case _ => agg
       }
     }

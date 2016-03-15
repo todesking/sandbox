@@ -108,9 +108,9 @@ case class MethodBody(
 
 object MethodBody {
   def parse(m: JMethod): MethodBody =
-    Javassist.decompile(m).get
+    Javassist.decompile(m).getOrElse { throw new MethodAnalyzeException(ClassRef.of(m.getDeclaringClass), MethodRef.from(m), "CA not found") }
 
   def parse(m: JConstructor[_]): MethodBody =
-    Javassist.decompile(m).get
+    Javassist.decompile(m).getOrElse {  throw new MethodAnalyzeException(ClassRef.of(m.getDeclaringClass), MethodRef.from(m), "CA not found")  }
 }
 

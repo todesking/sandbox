@@ -5,6 +5,8 @@ import java.lang.reflect.{ Method => JMethod, Modifier }
 sealed abstract class MethodAttribute extends Flags[MethodAttribute] {
   def isVirtual: Boolean =
     !this.has(MethodAttribute.Private) && !this.has(MethodAttribute.Static)
+  def isFinal: Boolean =
+    this.has(MethodAttribute.Final)
   def isStatic: Boolean =
     this.has(MethodAttribute.Static)
   def isAbstract: Boolean =
