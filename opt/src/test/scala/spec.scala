@@ -196,6 +196,19 @@ class Spec extends FunSpec with Matchers {
       val ri = i.duplicate[Base].duplicate[Base].materialized
       ri.value.foo should be(1000)
     }
+    it("lower private fields") {
+      class Base {
+        private[this] val x = 1000
+        def foo: Int = x
+      }
+      val x = new Base
+      val i = Instance.of(x)
+      val ri = Transformer.lowerPrivateFields.apply0(i)
+      withThe(ri) {
+        ri.thisMethods.keySet should contain(MethodRef.parse("foo()I", defaultCL))
+        ri.thisFields.size should be(1)
+      }
+    }
     it("field fusion(thisMethod)") {
       abstract class Base {
         def foo(): Int
@@ -224,7 +237,7 @@ class Spec extends FunSpec with Matchers {
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
       dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
 
-      val fi = Transformer.fieldFusion1(dup, fc, ff)
+      val fi = Transformer.fieldFusion1(fc, ff).apply0(dup)
       withThe(fi) {
         fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo should be(expected)
@@ -248,7 +261,7 @@ class Spec extends FunSpec with Matchers {
       dup.dataflow(foo).usedFieldsOf(dup).size should be(1)
       val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
 
-      val fi = Transformer.fieldFusion1(dup, fc, ff)
+      val fi = Transformer.fieldFusion1(fc, ff).apply0(dup)
       withThe(fi) {
         fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo() should be(expected)
@@ -281,14 +294,14 @@ class Spec extends FunSpec with Matchers {
       a.foo() should be(expected)
 
       val i = Instance.of(a)
-      assert(Instance.of(b) == Instance.of(b))
-      i.dataflow(foo).usedMethodsOf(Instance.of(b)) should be('nonEmpty)
-      i.dataflow(foo).usedMethodsOf(Instance.of(c)) should be('empty)
+      withThe(i) {
+        i.dataflow(foo).usedFieldsOf(i).size should be(1)
+      }
 
       val fused = Transformer.fieldFusion.apply(i).get
+      println(fused.pretty)
       withThe(fused) {
-        fused.dataflow(foo).usedMethodsOf(Instance.of(b)) should be('empty)
-        fused.usedMethodsOf(Instance.of(c)) should be('empty)
+        fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
         fused.materialized.value.foo() should be(expected)
       }
     }

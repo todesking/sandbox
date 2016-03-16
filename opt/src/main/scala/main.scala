@@ -23,6 +23,49 @@ object Opt {
   }
 }
 
+abstract class TransformListener {
+  def stage[A](name: String)(f: TransformListener => A): A
+  def process[A](cr: ClassRef, fr: FieldRef)(f: TransformListener => A): A
+  def process[A](cr: ClassRef, mr: MethodRef)(f: TransformListener => A): A
+  def process[A](instance: Instance[_])(f: TransformListener => A): A
+  def log(s: String): Unit
+}
+
+object Log {
+  def start(s: String): Unit = {
+    println()
+    println(s"===== START $s =====")
+  }
+  def end(s: String): Unit = {
+    println(s"^^^^^ END $s ^^^^^")
+  }
+  def classAndMethods(name: String, ms: Iterable[(ClassRef, MethodRef)]): Unit = {
+    start(name)
+    ms.foreach { case (cr, mr) =>
+      println(s"[C] $cr")
+      println(s"  [M] .$mr")
+    }
+    end(name)
+  }
+  def methods(name: String, ms: Iterable[MethodRef]): Unit = {
+    start(name)
+    ms.foreach { case mr =>
+      println(s"[M] $mr")
+    }
+    end(name)
+  }
+  def failure(transformerName: String, e: Exception): Unit = {
+    println(s"==== ERROR at transformer $transformerName")
+    e match {
+    case e: UnveilException.HasMethodBody =>
+      println(e)
+      println(e.methodBody.pretty)
+    case e =>
+      println(e)
+    }
+  }
+}
+
 // TODO: add query methods about types(isDoubleWord etc) for FrameUpdate
 case class FrameItem(label: DataLabel.Out, data: Data, placedBy: Option[Bytecode.Label])
 

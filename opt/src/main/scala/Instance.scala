@@ -161,20 +161,19 @@ ${
       thisMethods.map {
         case (mr, body) =>
           s"""def ${mr} ${body.attribute}
-${body.pretty}
-"""
+${body.pretty}"""
       }.mkString("\n")
-    }
+}
 New fields:
 ${
       thisFields.map {
-        case (fr, field) => fr.toString
+        case (fr, field) => s"$fr ${field.attribute}"
       }.mkString("\n")
     }
 Super fields:
 ${
       superFields.map {
-        case (fr, f) => fr.toString
+        case ((cr, fr), f) => s"$cr.$fr ${f.attribute}"
       }.mkString("\n")
     }
 """
@@ -274,7 +273,6 @@ ${
     lazy val thisFieldsSeq: Seq[(FieldRef, Field)] = thisFields.toSeq
     lazy val superConstructor: Analyze.SetterConstructor =
       Analyze.findSetterConstructor(this, superClass, superFields) getOrElse {
-        println(Analyze.setterConstructorsTry(this, superClass))
         throw new TransformException(s"Usable constructor not found")
       }
     lazy val superConstructorArgs: Seq[Any] = superConstructor.toArguments(superFields)
