@@ -3,28 +3,95 @@ package com.todesking.hoge
 import scala.util.{Try, Success, Failure}
 
 trait Transformer {
-  def apply[A <: AnyRef](orig: Instance[A]): Try[Instance.Duplicate[A]]
+  def apply[A <: AnyRef](orig: Instance[A]): Try[Instance.Duplicate[A]] =
+    try {
+      Success(apply0(orig))
+    } catch {
+      case e: UnveilException => Failure(e)
+    }
+
+  def apply0[A <: AnyRef](orig: Instance[A]): Instance.Duplicate[A] =
+    apply(orig).get
 }
 object Transformer {
   object fieldFusion extends Transformer {
-    override def apply[A <: AnyRef](orig: Instance[A]): Try[Instance.Duplicate[A]] = {
-      try {
-        val targetFields =
-          orig.fields
-            .filter { case (_, f) => f.attribute.isFinal && !f.attribute.isStatic }
-            .filter { case (_, f) =>
-              f.data match {
-                case Data.Reference(typeRef, instance) =>
-                  instance.fields.forall { case (_, f) => f.attribute.isFinal && !f.attribute.isStatic }
-                case _ =>
-                  false
-              }
+    override def apply0[A <: AnyRef](orig: Instance[A]): Instance.Duplicate[A] = {
+      val i = Transformer.lowerPrivateFields.apply0(orig)
+      val targetFields =
+        i.fields
+          .filter { case (cr, f) => f.attribute.isFinal && !f.attribute.isStatic && (cr == i.thisRef || !f.attribute.isPrivate) }
+          .filter { case (_, f) =>
+            f.data match {
+              case Data.Reference(typeRef, instance) =>
+                instance.fields.forall { case (_, f) => f.attribute.isFinal && !f.attribute.isStatic }
+              case _ =>
+                false
             }
-        // TODO: replace the fields to fused version
-        Success(targetFields.keys.foldLeft(orig.duplicate1) { case (i, (cr, fr)) => fieldFusion1(i, cr, fr) })
-      } catch {
-        case e: UnveilException => Failure(e)
-      }
+          }
+      val newValues =
+        i.fields.map {
+          case ((cr, fr), f) =>
+            f.data match {
+              case Data.Reference(t, instance) =>
+                val newInstance: Instance[_ <: AnyRef] = Transformer.lowerPrivateFields(instance).flatMap(Transformer.fieldFusion.apply) getOrElse instance
+                ((cr -> fr) -> f.copy(data = Data.Reference(t, newInstance)))
+              case _ =>
+                ((cr -> fr) -> f)
+            }
+        }
+      // TODO: replace the fields to fused version
+      targetFields.keys.foldLeft(i.setFieldValues(newValues)) { case (i, (cr, fr)) => fieldFusion1(i, cr, fr) }
+    }
+  }
+
+  // TODO: lowerPrivateMembers
+  object lowerPrivateFields extends Transformer {
+    override def apply0[A <: AnyRef](orig: Instance[A]): Instance.Duplicate[A] = {
+      val dupInstance = orig.duplicate1
+      // TODO: support invokespecial methods
+      val entryMethods =
+        dupInstance.virtualMethods
+          .filterNot { case (mr, a) =>
+            dupInstance.resolveVirtualMethod(mr) == ClassRef.Object || a.isFinal
+          }.map { case (mr, a) =>
+            mr -> dupInstance.dataflow(mr)
+          }.filterNot { case (mr, df) =>
+            // invokespecial need special handling
+            df.body.bytecode.forall {
+              case bc @ Bytecode.invokespecial(_, _)
+              if df.mustInstance(bc.objectref, dupInstance) =>
+                false
+              case _ => true
+            }
+          }.filter { case (mr, df) =>
+            df.usedFieldsOf(dupInstance).forall { case (cr, mr) =>
+              val attr = dupInstance.fields(cr -> mr).attribute
+              cr == dupInstance.thisRef || !attr.isPrivate || attr.isFinal
+            }
+          }
+      val copyFields: Map[(ClassRef, FieldRef), (FieldRef, Field)] =
+        entryMethods.flatMap {
+          case (mr, df) =>
+            df.usedFieldsOf(dupInstance).filter {
+              case (cr, fr) => cr != dupInstance.thisRef && dupInstance.fields(cr -> fr).attribute.isPrivateFinal
+            }
+        }.map { case (cr, fr) =>
+          val f = dupInstance.fields(cr -> fr)
+          (cr -> fr) -> (fr.anotherUniqueName(cr.name, fr.name) -> f.copy(classRef = dupInstance.thisRef))
+        }
+      val overridenMethods =
+        entryMethods.map {
+          case (mr, df) =>
+            import Bytecode._
+            mr -> df.body.rewrite {
+              case bc: InstanceFieldAccess if df.mustInstance(bc.objectref, dupInstance) && copyFields.contains(bc.classRef -> bc.fieldRef) =>
+                val (fr, _) = copyFields(bc.classRef -> bc.fieldRef)
+                bc.rewriteClassRef(dupInstance.thisRef).rewriteFieldRef(fr)
+            }
+        }
+      dupInstance
+        .addFields(copyFields.map { case (_, (newFr, f)) => newFr -> f })
+        .addMethods(overridenMethods)
     }
   }
 

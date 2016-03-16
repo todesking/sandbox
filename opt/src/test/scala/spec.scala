@@ -294,5 +294,6 @@ class Spec extends FunSpec with Matchers {
     }
     // TODO: accessor inlining
     // TODO: accept new instance as constant in SetterConstructor
+    // TODO: super method with private field
   }
 }

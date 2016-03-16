@@ -29,6 +29,10 @@ sealed abstract class Instance[A <: AnyRef] {
   // TODO: change to instanceMethods
   def methods: Map[(ClassRef, MethodRef), MethodAttribute]
 
+  def virtualMethods: Map[MethodRef, MethodAttribute] =
+    methods.filter(_._2.isVirtual).map { case ((cr, mr), a) => mr -> a }
+
+  // TODO: change to instanceFields
   def fields: Map[(ClassRef, FieldRef), Field]
 
   def hasVirtualMethod(ref: MethodRef): Boolean =
@@ -95,6 +99,7 @@ object Instance {
         methods,
         Map.empty,
         fields,
+        Map.empty,
         Map.empty
       )
 
@@ -121,7 +126,8 @@ object Instance {
       superMethods: Map[(ClassRef, MethodRef), MethodAttribute],
       thisMethods: Map[MethodRef, MethodBody],
       superFields: Map[(ClassRef, FieldRef), Field], // super class field values
-      thisFields: Map[FieldRef, Field]
+      thisFields: Map[FieldRef, Field],
+      fieldValues: Map[(ClassRef, FieldRef), Field]
   ) extends Instance[A] {
     override final def hashCode() =
       System.identityHashCode(this)
@@ -129,6 +135,18 @@ object Instance {
     override final def equals(that: Any) = that match {
       case that: Duplicate[_] => this eq that
       case _ => false
+    }
+
+    def setFieldValues(vs: Map[(ClassRef, FieldRef), Field]): Duplicate[A] = {
+      require(vs.keySet subsetOf fields.keySet)
+
+      val (thisValues, superValues) =
+        vs.partition { case ((cr, fr), f) => cr == thisRef }
+
+      copy(
+        fieldValues = fieldValues ++ superValues,
+        thisFields = thisFields ++ thisValues.map { case ((cr, fr), f) => (fr -> f) }
+      )
     }
 
     override def toString = s"Instance.Duplicate(${thisRef})"
@@ -175,6 +193,7 @@ ${
     def addFields(fs: Map[FieldRef, Field]): Duplicate[A] =
       fs.foldLeft(this) { case (i, (fr, f)) => i.addField(fr, f) }
 
+    // TODO: default interface method
     override def resolveVirtualMethod(mr: MethodRef): ClassRef = {
       thisMethods.get(mr).map { body =>
         if (body.attribute.isVirtual) thisRef
@@ -246,7 +265,9 @@ ${
       superMethods ++ thisMethods.map { case (k, v) => (thisRef -> k) -> v.attribute }
 
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
-      superFields ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
+      superFields.map {
+        case ((cr, fr), f) => (cr -> fr) -> fieldValues.get(cr -> fr).getOrElse(f)
+      } ++ thisFields.map { case (fref, f) => ((thisRef -> fref) -> f) }
 
     def superClass: Class[_] = thisRef.superClassRef.loadClass
 
