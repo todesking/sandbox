@@ -1,5 +1,7 @@
 package com.todesking.hoge
 
+import scala.language.existentials
+
 import scala.collection.mutable
 
 trait Transformer {
@@ -8,13 +10,13 @@ trait Transformer {
 
   def apply[A <: AnyRef](orig: Instance[A], el: Transformer.EventLogger): Transformer.Result[A] =
     try {
-      el.enterTransformer(this) { el => Transformer.Success(apply0(orig, el)) }
+      el.enterTransformer(this, orig) { el => Transformer.Success(apply0(orig, el)) }
     } catch {
       case e: UnveilException =>
         Transformer.Failure(e)
     }
 
-  protected def apply0[A <: AnyRef](orig: Instance[A], el: Transformer.EventLogger): Instance.Duplicate[A]
+  protected[this] def apply0[A <: AnyRef](orig: Instance[A], el: Transformer.EventLogger): Instance.Duplicate[A]
 }
 object Transformer {
   sealed abstract class Result[A <: AnyRef] {
@@ -40,6 +42,10 @@ object Transformer {
       val el = new EventLogger
       try {
         f(el)
+      } catch {
+        case e: Throwable =>
+          el.fail(e)
+          throw e
       } finally {
         eventBuffer += Event.Grouped(path, el.events)
       }
@@ -61,11 +67,17 @@ object Transformer {
     def enterField[A](cr: ClassRef, fr: FieldRef)(f: EventLogger => A): A = 
       withSubEL(Path.Field(cr, fr))(f)
 
-    def enterTransformer[A](t: Transformer)(f: EventLogger => A): A = 
-      withSubEL(Path.Transformer(t))(f)
+    def enterTransformer[A](t: Transformer, i: Instance[_ <: AnyRef])(f: EventLogger => A): A = 
+      withSubEL(Path.Transformer(t, i))(f)
     
     def logCF(desc: String, cfs: Iterable[(ClassRef, FieldRef)]): Unit =
       eventBuffer += Event.CFs(desc, cfs.toSeq)
+
+    def logMethods(desc: String, ms: Iterable[MethodRef]): Unit =
+      eventBuffer += Event.Methods(desc, ms.toSeq)
+
+    def fail(e: Throwable): Unit =
+      eventBuffer += Event.Fail(e)
 
     def pretty(): String = pretty(0, events)
 
@@ -79,13 +91,18 @@ object Transformer {
 
     private[this] def prettyEvent(event: Event): String = event match {
       case Event.Fail(e) =>
-        s"FAIL: e.toString"
+        s"FAIL: $e"
       case Event.Grouped(path, evs) =>
         prettyPath(path) + "\n" + pretty(1, evs)
       case Event.CFs(desc, cfs) =>
         s"$desc =" + (
           if(cfs.isEmpty) ""
           else cfs.map { case (cr, fr) => s"- $cr\n    .$fr" }.mkString("\n", "\n", "")
+        )
+      case Event.Methods(desc, ms) =>
+        s"$desc =" + (
+          if(ms.isEmpty) ""
+          else ms.map { case mr => s"- $mr" }.mkString("\n", "\n", "")
         )
     }
 
@@ -94,11 +111,11 @@ object Transformer {
         s"""ENTERING FIELD: ${fr.name}
         |  class = $cr
         |  field = $fr""".stripMargin('|')
-      case Path.Transformer(t) =>
+      case Path.Transformer(t, i) =>
         s"""APPLYING TRANSFORMER: ${t.name}""" + (
           if(t.params.isEmpty) ""
           else t.params.map { case (k, v) => s"  $k = $v" }.mkString("\n", "\n", "")
-        )
+        ) + s"\n  instance = ${i.thisRef}"
     }
   }
   def newEventLogger(): EventLogger =
@@ -107,31 +124,20 @@ object Transformer {
   sealed abstract class Path
   object Path {
     case class Field(classRef: ClassRef, fieldRef: FieldRef) extends Path
-    case class Transformer(transformer: com.todesking.hoge.Transformer) extends Path
+    case class Transformer(transformer: com.todesking.hoge.Transformer, instance: Instance[_ <: AnyRef]) extends Path
   }
   sealed abstract class Event
   object Event {
     case class Fail(e: Throwable) extends Event
     case class Grouped(path: Path, events: Seq[Event]) extends Event
     case class CFs(desc: String, cfs: Seq[(ClassRef, FieldRef)]) extends Event
+    case class Methods(desc: String, ms: Seq[MethodRef]) extends Event
   }
 
   object fieldFusion extends Transformer {
     override def name = "fieldFusion"
     override def apply0[A <: AnyRef](orig: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
-      val i = Transformer.lowerPrivateFields.apply0(orig, el)
-      val targetFields =
-        i.fields
-          .filter { case ((cr, fr), f) => f.attribute.isFinal && !f.attribute.isStatic && (cr == i.thisRef || !f.attribute.isPrivate) }
-          .filter { case (_, f) =>
-            f.data match {
-              case Data.Reference(typeRef, instance) =>
-                instance.fields.forall { case (_, f) => f.attribute.isFinal }
-              case _ =>
-                false
-            }
-          }
-      el.logCF("target fields", targetFields.keys)
+      val i = Transformer.lowerPrivateFields.apply(orig, el).get
       val newValues =
         i.fields.map {
           case ((cr, fr), f) =>
@@ -146,13 +152,23 @@ object Transformer {
               }
             }
         }
-      // TODO: replace the fields to fused version
-      targetFields.keys
-        .foldLeft(i.setFieldValues(newValues)) {
-          case (i, (cr, fr)) =>
-            el.enterField(cr, fr) { el =>
-              fieldFusion1(cr, fr).apply(i, el) getOrElse i
+      val newI = i.setFieldValues(newValues)
+      val targetFields =
+        newI.fields
+          .filter { case ((cr, fr), f) => f.attribute.isFinal && !f.attribute.isStatic && (cr == newI.thisRef || !f.attribute.isPrivate) }
+          .filter { case (_, f) =>
+            f.data match {
+              case Data.Reference(typeRef, instance) =>
+                instance.fields.forall { case (_, f) => f.attribute.isFinal }
+              case _ =>
+                false
             }
+          }
+      el.logCF("target fields", targetFields.keys)
+      targetFields.keys
+        .foldLeft(newI) {
+          case (i, (cr, fr)) =>
+            fieldFusion1(cr, fr).apply(i, el) getOrElse i
         }
     }
   }
@@ -182,6 +198,7 @@ object Transformer {
               cr != dupInstance.thisRef && attr.isPrivate
             }
           }
+      el.logMethods("entry methods", entryMethods.keys)
       val copyFields: Map[(ClassRef, FieldRef), (FieldRef, Field)] =
         entryMethods.flatMap {
           case (mr, df) =>
@@ -192,6 +209,7 @@ object Transformer {
           val f = dupInstance.fields(cr -> fr)
           (cr -> fr) -> (fr.anotherUniqueName(fr.name) -> f.copy(classRef = dupInstance.thisRef))
         }
+      el.logCF("lowered fields", copyFields.keys)
       val overridenMethods =
         entryMethods.map {
           case (mr, df) =>
@@ -202,6 +220,7 @@ object Transformer {
                 bc.rewriteClassRef(dupInstance.thisRef).rewriteFieldRef(fr)
             }
         }
+      el.logMethods("overriden methods", overridenMethods.keys)
       dupInstance
         .addFields(copyFields.map { case (_, (newFr, f)) => newFr -> f })
         .addMethods(overridenMethods)
@@ -212,16 +231,17 @@ object Transformer {
   // TODO: support mutable fields(if fref eq original then optimized else original)
   def fieldFusion1(classRef0: ClassRef, fieldRef: FieldRef): Transformer = new Transformer {
     override def name = s"fieldFusion1"
-    override def params = Map("class" -> s"$classRef0", "field" -> s"$fieldRef")
+    override def params = Map("field class" -> s"$classRef0", "field" -> s"$fieldRef")
     override def apply0[A <: AnyRef](instance: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
       val dupInstance = instance.duplicate1
-      // TODO: HOW IT WORKS????
-      val classRef = if (classRef0 < dupInstance.thisRef.superClassRef) dupInstance.thisRef else classRef0
-      instance.fields.get(classRef0, fieldRef).fold {
-        throw new FieldAnalyzeException(classRef, fieldRef, s"Not found: ${classRef}.${fieldRef}")
+      val classRef = if(classRef0 == instance.thisRef) dupInstance.thisRef else classRef0
+      dupInstance.fields.get(classRef, fieldRef).fold {
+        throw new FieldAnalyzeException(classRef, fieldRef, s"Not found")
       } { field =>
         if (!field.isFinal)
           throw new FieldTransformException(classRef, fieldRef, s"Not final")
+        if(classRef > dupInstance.thisRef && field.attribute.isPrivate)
+          throw new FieldTransformException(classRef, fieldRef, s"Inaccessible from subclass")
         field.data match {
           case Data.Reference(t, fieldInstance) =>
             fuse(dupInstance, fieldInstance, classRef)

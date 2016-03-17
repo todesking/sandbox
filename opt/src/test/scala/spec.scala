@@ -263,6 +263,7 @@ class Spec extends FunSpec with Matchers {
       }
     }
     it("field fusion(base)") {
+      pending
       class Base(b: B) {
         def foo(): Int = b.bar()
       }
