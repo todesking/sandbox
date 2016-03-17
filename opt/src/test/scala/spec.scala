@@ -14,20 +14,39 @@ class Spec extends FunSpec with Matchers {
     try { f } catch { case e: UnveilException => throw e; case e: Throwable => println("==== TEST FAILED\n" + i.pretty); throw e }
   }
 
-  override def withFixture(test: NoArgTest) =
-    super.withFixture(test) match {
-      case o @ Failed(t: BytecodeTransformException) =>
+  val el = Transformer.newEventLogger()
+
+  override def withFixture(test: NoArgTest) = {
+    def printEvents(): Unit = {
+      println("=== EVENT LOG:")
+      println(el.pretty)
+    }
+    val result = try {
+      super.withFixture(test)
+    } catch {
+      case e: Throwable =>
+        println("=== TEST FAILED")
+        printEvents()
+        throw e
+    }
+    result match {
+      case Failed(t: BytecodeTransformException) =>
         println("=== FAILED")
         println(t)
         println(t.methodBody.pretty)
-        o
+        printEvents()
       case o @ Failed(t: InvalidClassException) =>
         println("=== INVALID CLASS")
         println(t.instance.pretty)
-        o
-      case o =>
-        o
+        printEvents()
+      case Failed(t) =>
+        println(s"=== TEST FAILED($t)")
+        printEvents()
+      case _ =>
     }
+    el.clear()
+    result
+  }
 
   describe("opt") {
     val defaultCL = ClassLoader.getSystemClassLoader
@@ -203,7 +222,7 @@ class Spec extends FunSpec with Matchers {
       }
       val x = new Base
       val i = Instance.of(x)
-      val ri = Transformer.lowerPrivateFields.apply0(i)
+      val ri = Transformer.lowerPrivateFields.apply(i, el).get
       withThe(ri) {
         ri.thisMethods.keySet should contain(MethodRef.parse("foo()I", defaultCL))
         ri.thisFields.size should be(1)
@@ -237,7 +256,7 @@ class Spec extends FunSpec with Matchers {
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
       dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
 
-      val fi = Transformer.fieldFusion1(fc, ff).apply0(dup)
+      val fi = Transformer.fieldFusion1(fc, ff).apply(dup, el).get
       withThe(fi) {
         fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo should be(expected)
@@ -261,7 +280,7 @@ class Spec extends FunSpec with Matchers {
       dup.dataflow(foo).usedFieldsOf(dup).size should be(1)
       val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
 
-      val fi = Transformer.fieldFusion1(fc, ff).apply0(dup)
+      val fi = Transformer.fieldFusion1(fc, ff).apply(dup, el).get
       withThe(fi) {
         fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo() should be(expected)
@@ -298,8 +317,7 @@ class Spec extends FunSpec with Matchers {
         i.dataflow(foo).usedFieldsOf(i).size should be(1)
       }
 
-      val fused = Transformer.fieldFusion.apply(i).get
-      println(fused.pretty)
+      val fused = Transformer.fieldFusion.apply(i, el).get
       withThe(fused) {
         fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
         fused.materialized.value.foo() should be(expected)

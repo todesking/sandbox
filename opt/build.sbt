@@ -17,3 +17,5 @@ scalacOptions ++= Seq("-feature", "-deprecation")
 testOptions in Test += Tests.Argument("-oF")
 
 scalariformSettings
+
+fork in test := true

@@ -60,8 +60,9 @@ object ClassRef {
     def extend(name: String, cl: ClassLoader): Extend =
       Extend(this, name, cl)
 
+    // TODO: preserve package name
     def extend(cl: ClassLoader): Extend =
-      extend(uniqueNamer(name), cl)
+      extend(uniqueNamer("generated"), cl)
 
     override def renamed(newName: String): Concrete =
       copy(name = newName)

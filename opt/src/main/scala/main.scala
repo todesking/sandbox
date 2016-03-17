@@ -11,26 +11,6 @@ import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
 import com.todesking.scalapp.syntax._
 
-object Main {
-  def main(args: Array[String]): Unit = {
-  }
-}
-
-object Opt {
-  def optimize[A <: AnyRef: ClassTag](orig: A): A = {
-    val instance = Instance.of(orig)
-    instance.value
-  }
-}
-
-abstract class TransformListener {
-  def stage[A](name: String)(f: TransformListener => A): A
-  def process[A](cr: ClassRef, fr: FieldRef)(f: TransformListener => A): A
-  def process[A](cr: ClassRef, mr: MethodRef)(f: TransformListener => A): A
-  def process[A](instance: Instance[_])(f: TransformListener => A): A
-  def log(s: String): Unit
-}
-
 object Log {
   def start(s: String): Unit = {
     println()
@@ -55,7 +35,7 @@ object Log {
     end(name)
   }
   def failure(transformerName: String, e: Exception): Unit = {
-    println(s"==== ERROR at transformer $transformerName")
+    println(s"===== ERROR at transformer $transformerName")
     e match {
     case e: UnveilException.HasMethodBody =>
       println(e)
