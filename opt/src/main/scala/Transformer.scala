@@ -79,7 +79,7 @@ object Transformer {
     }
   }
 
-  // TODO: lowerPrivateMembers
+  // TODO: lowerMembers
   object lowerPrivateFields extends Transformer {
     override def name = "lowerPrivateFields"
     override def apply0[A <: AnyRef](orig: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
@@ -171,20 +171,12 @@ object Transformer {
       val fieldRenaming =
         usedFields.map { case (cr, fr) => (cr -> fr) -> fr.anotherUniqueName(fieldRef.name, fr.name) }.toMap
 
-      // TODO[BUG]: use virtualMethods instead of methods: confused if multiple overriden method exists
-      // TODO[BUG]: use usedVirtualMethods instead of usedMethods
-      // TODO[BUG]: check no invokespecial(objectref = self)
       val targetMethods =
-        dupInstance.methods.collect {
-          case ((cr, mr), a)
-          if cr < ClassRef.Object && !a.isAbstract && a.isVirtual && !a.isFinal && dupInstance.dataflow(cr, mr).usedMethodsOf(dupInstance).forall {
-            case (cr, mr) => dupInstance.methods(cr -> mr).isVirtual
-          } && dupInstance.dataflow(cr, mr).usedFieldsOf(dupInstance).forall {
-            case (cr, fr) => cr == dupInstance.thisRef || dupInstance.fields(cr -> fr).attribute.isFinal
-          } =>
-          // TODO: check abstract/native
-            (cr -> mr) -> dupInstance.methodBody(cr, mr)
-        }
+        (dupInstance.thisMethods).collect {
+          case (mr, a)
+          if dupInstance.dataflow(mr).usedFieldsOf(dupInstance).contains(classRef -> fieldRef) =>
+            (dupInstance.thisRef -> mr) -> dupInstance.methodBody(mr)
+        }.toMap
       el.logCMethods("rewrite target methods", targetMethods.keys)
 
       def fusedMemberAccessRewriter(methodRef: MethodRef, df: DataFlow): PartialFunction[Bytecode, Seq[Bytecode]] = {

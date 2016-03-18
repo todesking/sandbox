@@ -108,7 +108,7 @@ object Instance {
       else MethodBody.parse(allJMethods(cr -> mr))
 
     override lazy val methods: Map[(ClassRef, MethodRef), MethodAttribute] =
-      allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }
+      allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }.filterNot(_._2.isStatic)
 
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
       allJFields.map { case ((cr, fr), f) => (cr -> fr) -> Field.from(f, value) }
