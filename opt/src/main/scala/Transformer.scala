@@ -302,33 +302,19 @@ object Transformer {
         }
       el.logCM("rewrite target methods", targetMethods.keys)
 
-      val copyFields: Map[(ClassRef, FieldRef), (FieldRef, Field)] =
-        targetMethods.flatMap {
-          case ((cr, mr), b) =>
-            b.dataflow(dupInstance).usedFieldsOf(dupInstance).filter {
-              case (cr, fr) => cr != dupInstance.thisRef && dupInstance.fields(cr -> fr).attribute.isPrivateFinal
-            }
-        }.map { case (cr, fr) =>
-          val f = dupInstance.fields(cr -> fr)
-          (cr -> fr) -> (fr.anotherUniqueName(cr.name, fr.name) -> f.copy(classRef = dupInstance.thisRef))
-        }
-
-        val (trueClassRef, trueFieldRef) =
-          if(copyFields.contains(classRef -> fieldRef)) (dupInstance.thisRef -> copyFields(classRef -> fieldRef)._1)
-          else (classRef -> fieldRef)
-
       def fusedMemberAccessRewriter(methodRef: MethodRef, df: DataFlow): PartialFunction[Bytecode, Seq[Bytecode]] = {
         import Bytecode._
         {
           case bc: InstanceFieldAccess if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc) =>
             Seq(bc.rewriteClassRef(dupInstance.thisRef).rewriteFieldRef(fieldRenaming(bc.classRef -> bc.fieldRef)))
+          // TODO: unsupport invokespecial
           case bc @ invokespecial(cr, mr) if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc) =>
             Seq(bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(cr -> mr)))
           case bc @ invokevirtual(cr, mr) if df.mustInstance(bc.objectref, fieldInstance, methodRef, bc) =>
             val definedCR = fieldInstance.resolveVirtualMethod(mr)
             Seq(bc.rewriteClassRef(dupInstance.thisRef).rewriteMethodRef(methodRenaming(definedCR -> mr)))
           case bc @ areturn() if df.mustInstance(bc.objectref, fieldInstance) =>
-            Seq(getfield(trueClassRef, trueFieldRef), areturn())
+            Seq(getfield(classRef, fieldRef), areturn())
           case bc if bc.inputs.exists { in => df.mustInstance(in, fieldInstance) } =>
             throw new TransformException(s"$methodRef: not supported yet: ${bc}")
         }
@@ -343,28 +329,16 @@ object Transformer {
             newMR -> b.rewrite_*(fusedMemberAccessRewriter(fMr, df))
         }
 
-      val fieldResolvedMethods =
-        targetMethods.map {
-          case ((cr, mr), b) =>
-            val df = b.dataflow(dupInstance)
-            import Bytecode._
-            (cr, mr) -> b.rewrite {
-              case bc: FieldAccess if copyFields.contains(bc.classRef -> bc.fieldRef) =>
-                val (fr, _) = copyFields(bc.classRef -> bc.fieldRef)
-                bc.rewriteClassRef(dupInstance.thisRef).rewriteFieldRef(fr)
-            }
-        }
-
-      val additionalFields = fieldRenaming.map { case ((cr, fr), newRef) => newRef -> fieldInstance.fields(cr -> fr) } ++ copyFields.values
+      val additionalFields = fieldRenaming.map { case ((cr, fr), newRef) => newRef -> fieldInstance.fields(cr -> fr) }
       val withNewFields = dupInstance.addFields(additionalFields)
 
       def thisMethods =
-        fieldResolvedMethods.map {
+        targetMethods.map {
           case ((cr, mr), body) =>
             val df = body.dataflow(withNewFields)
             import Bytecode._
             mr -> body.rewrite_*(({
-              case bc @ getfield(cr, fr) if cr == trueClassRef && fr == trueFieldRef && df.mustInstance(bc.objectref, withNewFields, mr, bc) =>
+              case bc @ getfield(cr, fr) if cr == classRef && fr == fieldRef && df.mustInstance(bc.objectref, withNewFields, mr, bc) =>
                 Seq(nop())
             }: PartialFunction[Bytecode, Seq[Bytecode]]).orElse(fusedMemberAccessRewriter(mr, df)))
         }
