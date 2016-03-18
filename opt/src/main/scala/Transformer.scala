@@ -8,7 +8,7 @@ trait Transformer {
   def name: String
   def params: Map[String, String] = Map.empty
 
-  def apply[A <: AnyRef](orig: Instance[A], el: Transformer.EventLogger): Transformer.Result[A] =
+  def apply[A <: AnyRef](orig: Instance[A], el: EventLogger): Transformer.Result[A] =
     try {
       el.enterTransformer(this, orig) { el => Transformer.Success(apply0(orig, el)) }
     } catch {
@@ -16,7 +16,7 @@ trait Transformer {
         Transformer.Failure(e)
     }
 
-  protected[this] def apply0[A <: AnyRef](orig: Instance[A], el: Transformer.EventLogger): Instance.Duplicate[A]
+  protected[this] def apply0[A <: AnyRef](orig: Instance[A], el: EventLogger): Instance.Duplicate[A]
 }
 object Transformer {
   sealed abstract class Result[A <: AnyRef] {
@@ -34,123 +34,8 @@ object Transformer {
     override def getOrElse[B >: Instance.Duplicate[A]](a: => B) = a
     override def flatMap[B <: AnyRef](f: Instance.Duplicate[A] => Result[B]) = Failure[B](error)
   }
-
-  class EventLogger {
-    private[this] val eventBuffer = mutable.ArrayBuffer.empty[Event]
-
-    private[this] def withSubEL[A](path: Path)(f: EventLogger => A): A = {
-      val el = new EventLogger
-      try {
-        f(el)
-      } catch {
-        case e: Throwable =>
-          el.fail(e)
-          throw e
-      } finally {
-        eventBuffer += Event.Grouped(path, el.events)
-      }
-    }
-
-    def clear(): Unit = eventBuffer.clear()
-
-    def events: Seq[Event] = eventBuffer.toSeq
-
-    def apply[A](f: EventLogger => A): A =
-      try {
-        f(this)
-      } catch {
-        case e: Throwable =>
-          eventBuffer += Event.Fail(e)
-          throw e
-      }
-
-    def enterField[A](cr: ClassRef, fr: FieldRef)(f: EventLogger => A): A = 
-      withSubEL(Path.Field(cr, fr))(f)
-
-    def enterTransformer[A](t: Transformer, i: Instance[_ <: AnyRef])(f: EventLogger => A): A = 
-      withSubEL(Path.Transformer(t, i))(f)
-
-    def section[A](title: String)(f: EventLogger => A): A =
-      withSubEL(Path.Section(title))(f)
-    
-    def logCF(desc: String, cfs: Iterable[(ClassRef, FieldRef)]): Unit =
-      eventBuffer += Event.CFs(desc, cfs.toSeq)
-
-    def logCM(desc: String, cms: Iterable[(ClassRef, MethodRef)]): Unit =
-      eventBuffer += Event.CMs(desc, cms.toSeq)
-
-    def logMethods(desc: String, ms: Iterable[MethodRef]): Unit =
-      eventBuffer += Event.Methods(desc, ms.toSeq)
-
-    def fail(e: Throwable): Unit =
-      eventBuffer += Event.Fail(e)
-
-    def pretty(): String = pretty(0, events).split("\n").map { line =>
-      val indent = (line.size - line.replaceAll("^ +", "").size) / 2
-      f"$indent%1X$line"
-    }.mkString("\n")
-
-    private[this] def pretty(indent: Int, evs: Seq[Event]): String = {
-      evs
-        .map(prettyEvent)
-        .flatMap(_.split("\n"))
-        .map { s => "  " * indent + s }
-        .mkString("\n")
-    }
-
-    private[this] def prettyEvent(event: Event): String = event match {
-      case Event.Fail(e) =>
-        s"FAIL: $e"
-      case Event.Grouped(path, evs) =>
-        prettyPath(path) + "\n" + pretty(1, evs)
-      case Event.CFs(desc, cfs) =>
-        s"$desc =" + (
-          if(cfs.isEmpty) ""
-          else cfs.map { case (cr, fr) => s"- $cr\n    .$fr" }.mkString("\n", "\n", "")
-        )
-      case Event.CMs(desc, cms) =>
-        s"$desc =" + (
-          if(cms.isEmpty) ""
-          else cms.map { case (cr, mr) => s"- $cr\n    .$mr" }.mkString("\n", "\n", "")
-        )
-      case Event.Methods(desc, ms) =>
-        s"$desc =" + (
-          if(ms.isEmpty) ""
-          else ms.map { case mr => s"- $mr" }.mkString("\n", "\n", "")
-        )
-    }
-
-    private[this] def prettyPath(path: Path) = path match {
-      case Path.Section(title) =>
-        s"SECTION: $title"
-      case Path.Field(cr, fr) =>
-        s"""ENTERING FIELD: ${fr.name}
-        |  class = $cr
-        |  field = $fr""".stripMargin('|')
-      case Path.Transformer(t, i) =>
-        s"""APPLYING TRANSFORMER: ${t.name}""" + (
-          if(t.params.isEmpty) ""
-          else t.params.map { case (k, v) => s"  $k = $v" }.mkString("\n", "\n", "")
-        ) + s"\n  instance = ${i.thisRef}"
-    }
-  }
   def newEventLogger(): EventLogger =
     new EventLogger
-
-  sealed abstract class Path
-  object Path {
-    case class Field(classRef: ClassRef, fieldRef: FieldRef) extends Path
-    case class Transformer(transformer: com.todesking.hoge.Transformer, instance: Instance[_ <: AnyRef]) extends Path
-    case class Section(title: String) extends Path
-  }
-  sealed abstract class Event
-  object Event {
-    case class Fail(e: Throwable) extends Event
-    case class Grouped(path: Path, events: Seq[Event]) extends Event
-    case class CFs(desc: String, cfs: Seq[(ClassRef, FieldRef)]) extends Event
-    case class CMs(desc: String, cfs: Seq[(ClassRef, MethodRef)]) extends Event
-    case class Methods(desc: String, ms: Seq[MethodRef]) extends Event
-  }
 
   object fieldFusion extends Transformer {
     override def name = "fieldFusion"
@@ -185,7 +70,7 @@ object Transformer {
                 false
             }
           }
-      el.logCF("target fields", targetFields.keys)
+      el.logCFields("target fields", targetFields.keys)
       targetFields.keys
         .foldLeft(newI) {
           case (i, (cr, fr)) =>
@@ -230,7 +115,7 @@ object Transformer {
           val f = dupInstance.fields(cr -> fr)
           (cr -> fr) -> (fr.anotherUniqueName(fr.name) -> f.copy(classRef = dupInstance.thisRef))
         }
-      el.logCF("lowered fields", copyFields.keys)
+      el.logCFields("lowered fields", copyFields.keys)
       val overridenMethods =
         entryMethods.map {
           case (mr, df) =>
@@ -276,10 +161,10 @@ object Transformer {
         throw new FieldTransformException(classRef, fieldRef, s"Can't fuse instance-stateful field")
 
       val usedMethods = dupInstance.usedMethodsOf(fieldInstance) ++ fieldInstance.usedMethodsOf(fieldInstance)
-      el.logCM("used methods of the field", usedMethods)
+      el.logCMethods("used methods of the field", usedMethods)
 
       val usedFields = dupInstance.usedFieldsOf(fieldInstance) ++ fieldInstance.usedFieldsOf(fieldInstance)
-      el.logCF("used fields of the field", usedFields)
+      el.logCFields("used fields of the field", usedFields)
 
       val methodRenaming =
         usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name, mr.name) }.toMap
@@ -300,7 +185,7 @@ object Transformer {
           // TODO: check abstract/native
             (cr -> mr) -> dupInstance.methodBody(cr, mr)
         }
-      el.logCM("rewrite target methods", targetMethods.keys)
+      el.logCMethods("rewrite target methods", targetMethods.keys)
 
       def fusedMemberAccessRewriter(methodRef: MethodRef, df: DataFlow): PartialFunction[Bytecode, Seq[Bytecode]] = {
         import Bytecode._
@@ -328,8 +213,11 @@ object Transformer {
             import Bytecode._
             newMR -> b.rewrite_*(fusedMemberAccessRewriter(fMr, df))
         }
+      el.logMethods("fused methods", fusedMethods.keys)
 
       val additionalFields = fieldRenaming.map { case ((cr, fr), newRef) => newRef -> fieldInstance.fields(cr -> fr) }
+      el.logFields("fused fields", additionalFields.keys)
+
       val withNewFields = dupInstance.addFields(additionalFields)
 
       def thisMethods =
