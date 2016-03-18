@@ -69,9 +69,15 @@ object Transformer {
 
     def enterTransformer[A](t: Transformer, i: Instance[_ <: AnyRef])(f: EventLogger => A): A = 
       withSubEL(Path.Transformer(t, i))(f)
+
+    def section[A](title: String)(f: EventLogger => A): A =
+      withSubEL(Path.Section(title))(f)
     
     def logCF(desc: String, cfs: Iterable[(ClassRef, FieldRef)]): Unit =
       eventBuffer += Event.CFs(desc, cfs.toSeq)
+
+    def logCM(desc: String, cms: Iterable[(ClassRef, MethodRef)]): Unit =
+      eventBuffer += Event.CMs(desc, cms.toSeq)
 
     def logMethods(desc: String, ms: Iterable[MethodRef]): Unit =
       eventBuffer += Event.Methods(desc, ms.toSeq)
@@ -79,7 +85,10 @@ object Transformer {
     def fail(e: Throwable): Unit =
       eventBuffer += Event.Fail(e)
 
-    def pretty(): String = pretty(0, events)
+    def pretty(): String = pretty(0, events).split("\n").map { line =>
+      val indent = (line.size - line.replaceAll("^ +", "").size) / 2
+      f"$indent%1X$line"
+    }.mkString("\n")
 
     private[this] def pretty(indent: Int, evs: Seq[Event]): String = {
       evs
@@ -99,6 +108,11 @@ object Transformer {
           if(cfs.isEmpty) ""
           else cfs.map { case (cr, fr) => s"- $cr\n    .$fr" }.mkString("\n", "\n", "")
         )
+      case Event.CMs(desc, cms) =>
+        s"$desc =" + (
+          if(cms.isEmpty) ""
+          else cms.map { case (cr, mr) => s"- $cr\n    .$mr" }.mkString("\n", "\n", "")
+        )
       case Event.Methods(desc, ms) =>
         s"$desc =" + (
           if(ms.isEmpty) ""
@@ -107,6 +121,8 @@ object Transformer {
     }
 
     private[this] def prettyPath(path: Path) = path match {
+      case Path.Section(title) =>
+        s"SECTION: $title"
       case Path.Field(cr, fr) =>
         s"""ENTERING FIELD: ${fr.name}
         |  class = $cr
@@ -125,12 +141,14 @@ object Transformer {
   object Path {
     case class Field(classRef: ClassRef, fieldRef: FieldRef) extends Path
     case class Transformer(transformer: com.todesking.hoge.Transformer, instance: Instance[_ <: AnyRef]) extends Path
+    case class Section(title: String) extends Path
   }
   sealed abstract class Event
   object Event {
     case class Fail(e: Throwable) extends Event
     case class Grouped(path: Path, events: Seq[Event]) extends Event
     case class CFs(desc: String, cfs: Seq[(ClassRef, FieldRef)]) extends Event
+    case class CMs(desc: String, cfs: Seq[(ClassRef, MethodRef)]) extends Event
     case class Methods(desc: String, ms: Seq[MethodRef]) extends Event
   }
 
@@ -139,18 +157,21 @@ object Transformer {
     override def apply0[A <: AnyRef](orig: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
       val i = Transformer.lowerPrivateFields.apply(orig, el).get
       val newValues =
-        i.fields.map {
-          case ((cr, fr), f) =>
-            el.enterField(cr, fr) { el =>
-              f.data match {
-                case Data.Reference(t, instance) =>
-                  val newInstance: Instance[_ <: AnyRef] =
-                    Transformer.lowerPrivateFields(instance, el).flatMap(Transformer.fieldFusion.apply(_, el)) getOrElse instance
-                  ((cr -> fr) -> f.copy(data = Data.Reference(t, newInstance)))
-                case _ =>
-                  ((cr -> fr) -> f)
+        el.section("transform fields before fusion") { el =>
+          i.fields.map {
+            case ((cr, fr), f) =>
+              el.enterField(cr, fr) { el =>
+                f.data match {
+                  case Data.Reference(t, instance) =>
+                    val newInstance: Instance[_ <: AnyRef] =
+                      // TODO: lowering not necessary
+                      Transformer.lowerPrivateFields(instance, el).flatMap(Transformer.fieldFusion.apply(_, el)) getOrElse instance
+                    ((cr -> fr) -> f.copy(data = Data.Reference(t, newInstance)))
+                  case _ =>
+                    ((cr -> fr) -> f)
+                }
               }
-            }
+          }
         }
       val newI = i.setFieldValues(newValues)
       val targetFields =
@@ -244,18 +265,21 @@ object Transformer {
           throw new FieldTransformException(classRef, fieldRef, s"Inaccessible from subclass")
         field.data match {
           case Data.Reference(t, fieldInstance) =>
-            fuse(dupInstance, fieldInstance, classRef)
+            fuse(dupInstance, fieldInstance, classRef, el)
           case other =>
             throw new FieldTransformException(classRef, fieldRef, s"Field can't fusable: ${other}")
         }
       }
     }
-    def fuse[A <: AnyRef](dupInstance: Instance.Duplicate[A], fieldInstance: Instance[_ <: AnyRef], classRef: ClassRef): Instance.Duplicate[A] = {
+    def fuse[A <: AnyRef](dupInstance: Instance.Duplicate[A], fieldInstance: Instance[_ <: AnyRef], classRef: ClassRef, el: EventLogger): Instance.Duplicate[A] = {
       if (!fieldInstance.fields.values.forall(_.attribute.isFinal))
         throw new FieldTransformException(classRef, fieldRef, s"Can't fuse instance-stateful field")
 
       val usedMethods = dupInstance.usedMethodsOf(fieldInstance) ++ fieldInstance.usedMethodsOf(fieldInstance)
+      el.logCM("used methods of the field", usedMethods)
+
       val usedFields = dupInstance.usedFieldsOf(fieldInstance) ++ fieldInstance.usedFieldsOf(fieldInstance)
+      el.logCF("used fields of the field", usedFields)
 
       val methodRenaming =
         usedMethods.map { case (cr, mr) => (cr -> mr) -> mr.anotherUniqueName(fieldRef.name, mr.name) }.toMap
@@ -276,6 +300,7 @@ object Transformer {
           // TODO: check abstract/native
             (cr -> mr) -> dupInstance.methodBody(cr, mr)
         }
+      el.logCM("rewrite target methods", targetMethods.keys)
 
       val copyFields: Map[(ClassRef, FieldRef), (FieldRef, Field)] =
         targetMethods.flatMap {

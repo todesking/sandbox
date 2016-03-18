@@ -263,7 +263,7 @@ class Spec extends FunSpec with Matchers {
       }
     }
     it("field fusion(base)") {
-      pending
+      pending // this test fail because fieldfusion1 does not use lowerPrivateFields
       class Base(b: B) {
         def foo(): Int = b.bar()
       }
