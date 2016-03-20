@@ -43,6 +43,9 @@ class EventLogger {
 
   def section[A](title: String)(f: EventLogger => A): A =
     withSubEL(Path.Section(title))(f)
+
+  def log(msg: String): Unit =
+    eventBuffer += Event.Message(msg)
   
   def logCFields(desc: String, cfs: Iterable[(ClassRef, FieldRef)]): Unit =
     eventBuffer += Event.CFields(desc, cfs.toSeq)
@@ -74,6 +77,8 @@ class EventLogger {
 
   // TODO[refactor]: fields/methods
   private[this] def prettyEvent(event: Event): String = event match {
+    case Event.Message(msg) =>
+      msg
     case Event.Fail(e) =>
       s"FAIL: $e"
     case Event.Grouped(path, evs) =>
@@ -124,6 +129,7 @@ object EventLogger {
   }
   sealed abstract class Event
   object Event {
+    case class Message(message: String) extends Event
     case class Fail(e: Throwable) extends Event
     case class Grouped(path: Path, events: Seq[Event]) extends Event
     case class CFields(desc: String, cfs: Seq[(ClassRef, FieldRef)]) extends Event

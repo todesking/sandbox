@@ -269,7 +269,7 @@ object Javassist {
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)
-            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val classRef = ClassRef.of(className, jClass.getClassLoader)
             onInstruction(
               index,
               invokevirtual(
@@ -282,7 +282,7 @@ object Javassist {
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)
-            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val classRef = ClassRef.of(className, jClass.getClassLoader)
             onInstruction(
               index,
               invokespecial(
@@ -295,7 +295,7 @@ object Javassist {
             val className = cpool.getMethodrefClassName(constIndex)
             val methodName = cpool.getMethodrefName(constIndex)
             val methodType = cpool.getMethodrefType(constIndex)
-            val classRef = ClassRef.of(jClass.getClassLoader.loadClass(className))
+            val classRef = ClassRef.of(className, jClass.getClassLoader)
             onInstruction(
               index,
               invokestatic(

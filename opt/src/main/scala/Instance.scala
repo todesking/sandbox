@@ -111,7 +111,7 @@ object Instance {
       allJMethods.map { case (k, m) => k -> MethodAttribute.from(m) }.filterNot(_._2.isStatic)
 
     override lazy val fields: Map[(ClassRef, FieldRef), Field] =
-      allJFields.map { case ((cr, fr), f) => (cr -> fr) -> Field.from(f, value) }
+      allJFields.map { case ((cr, fr), f) => (cr -> fr) -> Field.from(f, value) }.filterNot(_._2.attribute.isStatic)
 
     private[this] lazy val jClass = value.getClass
     private[this] lazy val virtualJMethods = Reflect.virtualJMethods(jClass)
@@ -180,14 +180,17 @@ ${
 
     def addMethod(mr: MethodRef, body: MethodBody): Duplicate[A] = {
       require(mr.descriptor == body.descriptor)
+      require(!body.attribute.isStatic)
       copy(thisMethods = thisMethods + (mr -> body))
     }
 
     def addMethods(ms: Map[MethodRef, MethodBody]): Duplicate[A] =
       ms.foldLeft(this) { case (i, (mr, b)) => i.addMethod(mr, b) }
 
-    def addField(fr: FieldRef, field: Field): Duplicate[A] =
+    def addField(fr: FieldRef, field: Field): Duplicate[A] = {
+      require(!field.attribute.isStatic)
       copy(thisFields = thisFields + (fr -> field))
+    }
 
     def addFields(fs: Map[FieldRef, Field]): Duplicate[A] =
       fs.foldLeft(this) { case (i, (fr, f)) => i.addField(fr, f) }

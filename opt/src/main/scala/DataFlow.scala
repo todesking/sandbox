@@ -39,6 +39,9 @@ class DataFlow(val body: MethodBody, self: Data.Reference) {
   def isThis(l: DataLabel): Option[Boolean] =
     isInstance(l, self.instance)
 
+  def mustThis(l: DataLabel): Boolean =
+    mustInstance(l, self.instance)
+
   // TODO: refactor
   def mustInstance(l: DataLabel, i: Instance[_ <: AnyRef], mr: MethodRef, bc: Bytecode): Boolean =
     isInstance(l, i).fold {

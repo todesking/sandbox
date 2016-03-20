@@ -18,7 +18,7 @@ object TypeRef {
     else if (c == Float.javaClass) Float
     else if (c == Double.javaClass) Double
     else if (c == Void.javaClass) Void
-    else if (c.isArray) ???
+    else if (c.isArray) throw new UnveilException("NIMPL") // ???
     else Reference(ClassRef.of(c))
   }
 

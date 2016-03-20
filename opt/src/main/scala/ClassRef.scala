@@ -80,5 +80,8 @@ object ClassRef {
   def of(klass: Class[_]): Concrete =
     ClassRef.Concrete(klass.getName, klass.getClassLoader)
 
+  def of(name: String, cl: ClassLoader): Concrete =
+    of((if(cl == null) ClassLoader.getSystemClassLoader else cl).loadClass(name))
+
   private[this] val uniqueNamer = new UniqueNamer
 }

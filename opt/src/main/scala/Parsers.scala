@@ -24,7 +24,7 @@ object Parsers extends scala.util.parsing.combinator.RegexParsers {
       case "V" => TypeRef.Void
       case `refPat`(ref) =>
         val cName = ref.replaceAll("/", ".")
-        val klass = classLoader.loadClass(cName)
+        val klass = (if(classLoader == null) ClassLoader.getSystemClassLoader else classLoader).loadClass(cName)
         TypeRef.Reference(ClassRef.of(klass))
     }
   }

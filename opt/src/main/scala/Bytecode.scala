@@ -63,19 +63,25 @@ object Bytecode {
   }
 
   sealed trait HasMethodRef extends HasClassRef {
+    override type Self <: HasMethodRef
     def methodRef: MethodRef
     def withNewMehtodRef(newRef: MethodRef): Self
     final def rewriteMethodRef(newRef: MethodRef): Self =
       if (methodRef == newRef) self
       else withNewMehtodRef(newRef)
+    final def rewriteMethodRef(cr: ClassRef, mr: MethodRef): Self =
+      rewriteClassRef(cr).rewriteMethodRef(mr).asInstanceOf[Self]
   }
 
   sealed trait HasFieldRef extends HasClassRef {
+    override type Self <: HasFieldRef
     def fieldRef: FieldRef
     def withNewFieldRef(newRef: FieldRef): Self
     final def rewriteFieldRef(newRef: FieldRef): Self =
       if (fieldRef == newRef) self
       else withNewFieldRef(newRef)
+    final def rewriteFieldRef(cr: ClassRef, fr: FieldRef): Self =
+      rewriteClassRef(cr).rewriteFieldRef(fr).asInstanceOf[Self]
   }
 
   sealed trait HasJumpTargets extends Control {

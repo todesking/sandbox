@@ -318,7 +318,9 @@ class Spec extends FunSpec with Matchers {
         i.dataflow(foo).usedFieldsOf(i).size should be(1)
       }
 
-      val fused = Transformer.fieldFusion.apply(i, el).get
+      val fused = Transformer.fieldFusion(i, el).get
+      println(fused.pretty)
+      println(el.pretty)
       withThe(fused) {
         fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
         fused.materialized.value.foo() should be(expected)
