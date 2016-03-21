@@ -147,7 +147,7 @@ object Javassist {
       case (name, bytes) =>
         classPool.appendClassPath(new ByteArrayClassPath(name, bytes))
     }
-    classPool.appendClassPath(new LoaderClassPath(cl))
+    classPool.appendClassPath(new LoaderClassPath(if(cl == null) ClassLoader.getSystemClassLoader else cl))
     classPool
   }
 

@@ -32,6 +32,9 @@ sealed abstract class Instance[A <: AnyRef] {
   def virtualMethods: Map[MethodRef, MethodAttribute] =
     methods.filter(_._2.isVirtual).map { case ((cr, mr), a) => mr -> a }
 
+  def rewritableVirtualMethods: Map[MethodRef, MethodAttribute] =
+    virtualMethods.filterNot(_._2.isFinal).filterNot(_._2.isNative)
+
   // TODO: change to instanceFields
   def fields: Map[(ClassRef, FieldRef), Field]
 
@@ -40,6 +43,16 @@ sealed abstract class Instance[A <: AnyRef] {
 
   def hasVirtualMethod(ref: String): Boolean =
     hasVirtualMethod(MethodRef.parse(ref, thisRef.classLoader))
+
+  def extendMethods(seed: Set[(ClassRef, MethodRef)]): Set[(ClassRef, MethodRef)] = {
+    var ms: Set[(ClassRef, MethodRef)] = null
+    var ext: Set[(ClassRef, MethodRef)] = seed
+    do {
+      ms = ext
+      ext = ms ++ ms.flatMap { case (cr, mr) => dataflow(cr, mr).usedMethodsOf(this) }
+    } while(ext.size > ms.size)
+    ext
+  }
 
   def resolveVirtualMethod(mr: MethodRef): ClassRef
 
@@ -215,7 +228,7 @@ ${
         superFields
           .keys
           .filter { case (c, f) => c < newSuperRef }
-          .map { case (c, f) => (c, f) -> f.anotherUniqueName(c.name, f.name) }
+          .map { case (c, f) => (c, f) -> f.anotherUniqueName(f.name) }
           .toMap
       val newThisFields =
         superFields

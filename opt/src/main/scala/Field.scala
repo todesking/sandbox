@@ -5,10 +5,8 @@ import scala.language.higherKinds
 
 import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
-// TODO: remove classRef
 // TODO: remove whole
 case class Field(
-    classRef: ClassRef,
     descriptor: FieldDescriptor,
     attribute: FieldAttribute,
     data: Data.Concrete
@@ -18,7 +16,6 @@ case class Field(
 object Field {
   def from(f: JField, obj: AnyRef): Field =
     Field(
-      ClassRef.of(f.getDeclaringClass),
       FieldDescriptor.from(f),
       FieldAttribute.from(f),
       data(f, obj)

@@ -228,7 +228,70 @@ class Spec extends FunSpec with Matchers {
         ri.thisFields.size should be(1)
       }
     }
+    it("dup and accessor") {
+      abstract class Base { def foo: Int }
+      class A extends Base { override val foo = 1 }
+      val dup = Instance.of(new A).duplicate[Base]
+      dup.materialized.value.foo should be(1)
+    }
+    describe("field fusion") {
+      it("when empty") {
+        class A {
+          def foo(): Int = 1
+        }
+        val expected = 1
+
+        val i = Instance.of(new A)
+        i.value.foo() should be(expected)
+
+        val fi = Transformer.fieldFusion.apply(i, el).get
+        fi.materialized.value.foo should be(expected)
+      }
+      it("simple") {
+        class A {
+          def foo(): Int = 1
+        }
+        class B {
+          def bar(): Int = 10
+        }
+        val expected = 10
+
+        val foo = MethodRef.parse("foo()I", defaultCL)
+        val bar = MethodRef.parse("bar()I", defaultCL)
+        val fieldB = FieldRef("b", FieldDescriptor(TypeRef.Reference(ClassRef.of(classOf[B]))))
+
+        val b = Instance.of(new B)
+        val i0 = Instance.of(new A)
+          .duplicate1
+          .addField(fieldB, Field(fieldB.descriptor, FieldAttribute.Final, Data.Reference(b.thisRef.toTypeRef, b)))
+        val i =
+          i0.addMethod(foo,
+            MethodBody(
+              foo.descriptor,
+              MethodAttribute.Public,
+              Seq(
+                Bytecode.aload(0),
+                Bytecode.getfield(i0.thisRef, fieldB),
+                Bytecode.invokevirtual(b.thisRef, bar),
+                Bytecode.ireturn()
+              ),
+              Map.empty
+            )
+          )
+        withThe(i) {
+          i.materialized.value.foo() should be(expected)
+        }
+
+        val fi = Transformer.lowerPrivateFields(i, el).flatMap(Transformer.fieldFusion(_, el)).get
+        withThe(fi) {
+          fi.materialized.value.foo() should be(expected)
+        }
+        println(el.pretty)
+        println(fi.pretty)
+      }
+    }
     it("field fusion(thisMethod)") {
+      pending
       abstract class Base {
         def foo(): Int
       }
@@ -256,7 +319,7 @@ class Spec extends FunSpec with Matchers {
       val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
       dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
 
-      val fi = Transformer.fieldFusion1(fc, ff).apply(dup, el).get
+      val fi = Transformer.fieldFusion.apply(dup, el).get
       withThe(fi) {
         fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo should be(expected)
@@ -281,19 +344,14 @@ class Spec extends FunSpec with Matchers {
       dup.dataflow(foo).usedFieldsOf(dup).size should be(1)
       val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
 
-      val fi = Transformer.fieldFusion1(fc, ff).apply(dup, el).get
+      val fi = Transformer.fieldFusion.apply(dup, el).get
       withThe(fi) {
         fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
         fi.materialized.value.foo() should be(expected)
       }
     }
-    it("dup and accessor") {
-      abstract class Base { def foo: Int }
-      class A extends Base { override val foo = 1 }
-      val dup = Instance.of(new A).duplicate[Base]
-      dup.materialized.value.foo should be(1)
-    }
     it("field fusion(recursive)") {
+      pending
       class A(b: B) {
         def bbb = b
         def foo(): Int = b.bar() + 1000

@@ -11,15 +11,17 @@ class EventLogger {
 
   private[this] def withSubEL[A](path: Path)(f: EventLogger => A): A = {
     val el = new EventLogger
-    try {
-      f(el)
-    } catch {
-      case e: Throwable =>
-        el.fail(e)
-        throw e
-    } finally {
-      eventBuffer += Event.Grouped(path, el.events)
-    }
+    val ret =
+      try {
+        f(el)
+      } catch {
+        case e: Throwable =>
+          el.fail(e)
+          eventBuffer += Event.Grouped(path, el.events)
+          throw e
+      }
+    eventBuffer += Event.Grouped(path, el.events)
+    ret
   }
 
   def clear(): Unit = eventBuffer.clear()

@@ -11,6 +11,8 @@ sealed abstract class MethodAttribute extends Flags[MethodAttribute] {
     this.has(MethodAttribute.Static)
   def isAbstract: Boolean =
     this.has(MethodAttribute.Abstract)
+  def isNative: Boolean =
+    this.has(MethodAttribute.Native)
 }
 object MethodAttribute extends FlagsCompanion[MethodAttribute] {
   def from(m: JMethod): MethodAttribute =
