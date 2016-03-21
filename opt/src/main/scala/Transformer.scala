@@ -213,6 +213,4 @@ object Transformer {
       }
     }
   }
-  def ??[A]: A = ???
-  def ??[A](message: String): A = throw new NotImplementedError(message)
 }
