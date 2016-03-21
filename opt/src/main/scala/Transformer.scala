@@ -183,6 +183,7 @@ object Transformer {
                       el.log(s"[SKIP] the field is leaked in method $mr")
                       mr -> df.body
                     } else {
+                      // TODO: use df.mustFieldRef instead of df.mustInstance when rewriting
                       mr -> df.body.rewrite {
                         case bc @ getfield(cr1, fr1)
                         if df.mustThis(bc.objectref) && cr1 == cr && fr1 == fr =>
