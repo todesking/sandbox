@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 import com.todesking.scalapp.syntax._
 

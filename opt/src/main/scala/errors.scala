@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 class UnveilException(msg: String, err: Throwable) extends RuntimeException(msg, err) {
   def this(msg: String) = this(msg, null)

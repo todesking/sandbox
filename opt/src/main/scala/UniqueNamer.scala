@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 class UniqueNamer() {
   private[this] var id = 0

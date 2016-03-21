@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 sealed abstract class TypeRef {
   def isDoubleWord: Boolean = false

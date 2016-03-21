@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 case class FieldDescriptor(typeRef: TypeRef.Public) {
   def str = typeRef.str

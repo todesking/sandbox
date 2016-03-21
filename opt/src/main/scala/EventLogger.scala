@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 import scala.language.existentials
 
@@ -133,7 +133,7 @@ object EventLogger {
   object Path {
     case class Field(classRef: ClassRef, fieldRef: FieldRef) extends Path
     case class Method(classRef: ClassRef, methodRef: MethodRef) extends Path
-    case class Transformer(transformer: com.todesking.hoge.Transformer, instance: Instance[_ <: AnyRef]) extends Path
+    case class Transformer(transformer: com.todesking.unveil.Transformer, instance: Instance[_ <: AnyRef]) extends Path
     case class Section(title: String) extends Path
   }
   sealed abstract class Event

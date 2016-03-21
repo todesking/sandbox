@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 case class FieldRef(name: String, descriptor: FieldDescriptor) {
   override def toString: String = s"${name}: ${descriptor}"

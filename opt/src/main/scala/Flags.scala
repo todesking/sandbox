@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 trait Flags[Type <: Flags[Type]] {
   def |(that: Flags[Type]): Type

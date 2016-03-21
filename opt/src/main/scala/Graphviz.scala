@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 object Graphviz {
   def drawAttr(attr: Seq[(Symbol, String)]) = s"""[${attr.map { case (k, v) => k.name + "=\"" + v + "\"" }.mkString(", ")}]"""

@@ -1,4 +1,4 @@
-package com.todesking.hoge
+package com.todesking.unveil
 
 object Parsers extends scala.util.parsing.combinator.RegexParsers {
   def parseTypeRef(src: String, cl: ClassLoader): TypeRef.Public =
