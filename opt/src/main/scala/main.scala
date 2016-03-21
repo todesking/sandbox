@@ -19,6 +19,15 @@ case class PartialInstance(
 // TODO: add query methods about types(isDoubleWord etc) for FrameUpdate
 case class FrameItem(label: DataLabel.Out, data: Data, placedBy: Option[Bytecode.Label])
 
+case class CodeFragment(bytecode: Seq[Bytecode], jumpTargets: Map[JumpTarget, Bytecode.Label] = Map.empty) {
+  def prependBytecode(bcs: Seq[Bytecode]): CodeFragment =
+    copy(bytecode = bcs ++ bytecode)
+}
+object CodeFragment {
+  def bytecode(bcs: Bytecode*): CodeFragment =
+    CodeFragment(bcs, Map.empty)
+}
+
 final class InstructionLabel private () extends AbstractLabel
 object InstructionLabel {
   def fresh(): InstructionLabel = new InstructionLabel

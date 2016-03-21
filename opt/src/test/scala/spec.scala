@@ -11,7 +11,7 @@ class Spec extends FunSpec with Matchers {
   }
 
   def withThe(i: Instance[_])(f: => Unit): Unit = {
-    try { f } catch { case e: UnveilException => throw e; case e: Throwable => println("==== TEST FAILED\n" + i.pretty); throw e }
+    try { f } catch { case e: Throwable => println("==== TEST FAILED\n" + i.pretty); throw e }
   }
 
   val el = Transformer.newEventLogger()
@@ -321,24 +321,44 @@ class Spec extends FunSpec with Matchers {
       }
     }
 
-    it("same-instance method inlining") {
-      class A {
-        def foo(): Int = bar() + baz()
-        def bar(): Int = 10
-        private[this] def baz(): Int = 90
-      }
-      val expected = 100
-      val foo = MethodRef.parse("foo()I", defaultCL)
+    describe("method inlining") {
+      it("no control") {
+        class A {
+          def foo(): Int = bar() + baz()
+          def bar(): Int = 10
+          private[this] def baz(): Int = 90
+        }
+        val expected = 100
+        val foo = MethodRef.parse("foo()I", defaultCL)
 
-      val i = Instance.of(new A)
-      i.value.foo() should be(expected)
+        val i = Instance.of(new A)
+        i.value.foo() should be(expected)
 
-      val ri = Transformer.methodInlining(i, el).get
-      withThe(ri) {
-        ri.materialized.value.foo() should be(expected)
-        ri.dataflow(foo).usedMethodsOf(ri) should be('empty)
+        val ri = Transformer.methodInlining(i, el).get
+        withThe(ri) {
+          ri.materialized.value.foo() should be(expected)
+          ri.dataflow(foo).usedMethodsOf(ri) should be('empty)
+        }
       }
-      println(ri.pretty)
+      it("control") {
+        class A {
+          def foo(): Int = bar(10) + baz(1) + baz(0)
+          def bar(n: Int): Int = if(n > 0) 10 else 20
+          private[this] def baz(n: Int): Int = if(n < 0) n + 1 else if(n > 0) n - 1 else 10
+        }
+        val expected = 10 + 0 + 10
+        val foo = MethodRef.parse("foo()I", defaultCL)
+
+        val i = Instance.of(new A)
+        i.value.foo() should be(expected)
+
+        val ri = Transformer.methodInlining(i, el).get
+        withThe(ri) {
+          ri.materialized.value.foo() should be(expected)
+          ri.dataflow(foo).usedMethodsOf(ri) should be('empty)
+        }
+        println(ri.pretty)
+      }
     }
     
     // TODO: Exception handler rejection test

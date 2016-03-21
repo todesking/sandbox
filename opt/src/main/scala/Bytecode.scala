@@ -270,6 +270,7 @@ object Bytecode {
   }
   case class goto(override val jumpTarget: JumpTarget) extends Jump
   case class if_icmple(override val jumpTarget: JumpTarget) extends if_X1cmpXX
+  case class if_icmpge(override val jumpTarget: JumpTarget) extends if_X1cmpXX
   case class if_acmpne(override val jumpTarget: JumpTarget) extends if_X1cmpXX
   case class ifnonnull(override val jumpTarget: JumpTarget) extends Branch {
     val value: DataLabel.In = DataLabel.in("value")
@@ -278,16 +279,20 @@ object Bytecode {
     override def output = None
     override def nextFrame(f: Frame) = update(f).pop1(value)
   }
-  case class iadd() extends Procedure {
+  sealed abstract class PrimitiveBinOp[A <: AnyVal] extends Procedure {
     val value1 = DataLabel.in("value1")
     val value2 = DataLabel.in("value2")
     val out = DataLabel.out("result")
+
+    def operandType: TypeRef.Primitive
+    def op(value1: A, value2: A): A
+
     override def inputs = Seq(value1, value2)
     override def output = Some(out)
     override def effect = None
     override def nextFrame(f: Frame) =
       (f.stack(0), f.stack(1)) match {
-        case (d1, d2) if d1.data.typeRef == TypeRef.Int && d2.data.typeRef == TypeRef.Int =>
+        case (d1, d2) if d1.data.typeRef == operandType && d2.data.typeRef == operandType =>
           update(f)
             .pop1(value2)
             .pop1(value1)
@@ -297,16 +302,24 @@ object Bytecode {
                 d1.data.value.flatMap { v1 =>
                   d2.data.value.map { v2 =>
                     Data.Primitive(
-                      TypeRef.Int,
-                      v1.asInstanceOf[Int] + v2.asInstanceOf[Int]
+                      operandType,
+                      op(v1.asInstanceOf[A], v2.asInstanceOf[A])
                     )
                   }
-                }.getOrElse { Data.Unsure(TypeRef.Int) },
+                }.getOrElse { Data.Unsure(operandType) },
                 Some(label)
               )
             )
-        case (d1, d2) => throw new IllegalArgumentException(s"Type error: ${(d1, d2)}")
+        case (d1, d2) => throw new AnalyzeException(s"Type error: ${(d1, d2)}")
       }
+  }
+  case class iadd() extends PrimitiveBinOp[Int] {
+    override def operandType = TypeRef.Int
+    override def op(value1: Int, value2: Int) = value1 + value2
+  }
+  case class isub() extends PrimitiveBinOp[Int] {
+    override def operandType = TypeRef.Int
+    override def op(value1: Int, value2: Int) = value1 - value2
   }
   case class invokevirtual(override val classRef: ClassRef, override val methodRef: MethodRef) extends InvokeInstanceMethod {
     override type Self = invokevirtual

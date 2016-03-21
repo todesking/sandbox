@@ -65,6 +65,8 @@ object Javassist {
           out.add(0x58)
         case iadd() =>
           out.add(0x60)
+        case isub() =>
+          out.add(0x64)
         case if_acmpne(target) =>
           out.add(0xA6)
           jumps(out.getSize) = (out.getSize - 1) -> target
@@ -77,6 +79,10 @@ object Javassist {
           out.addInvokespecial(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
         case invokestatic(classRef, methodRef) =>
           out.addInvokestatic(classRef.binaryName, methodRef.name, methodRef.descriptor.str)
+        case if_icmpge(target) =>
+          out.add(0xA2)
+          jumps(out.getSize) = (out.getSize - 1) -> target
+          out.add(0x00, 0x03)
         case if_icmple(target) =>
           out.add(0xA4)
           jumps(out.getSize) = (out.getSize - 1) -> target
@@ -215,6 +221,8 @@ object Javassist {
           case 0x3C => // istore_1
             onInstruction(index, istore(1))
           // TODO
+          case 0xA2 => // if_icmpge
+            onInstruction(index, if_icmpge(addr2jt(index + it.s16bitAt(index + 1))))
           case 0xA4 => // if_icmple
             onInstruction(
               index,
@@ -234,8 +242,10 @@ object Javassist {
           // TODO
           case 0xAF => // dreturn
             onInstruction(index, dreturn())
-          case 0x60 =>
+          case 0x60 => // iadd
             onInstruction(index, iadd())
+          case 0x64 => // isub
+            onInstruction(index, isub())
           // TODO
           case 0xB0 => // areturn
             onInstruction(index, areturn())

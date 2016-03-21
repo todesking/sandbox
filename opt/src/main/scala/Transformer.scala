@@ -235,7 +235,6 @@ object Transformer {
       // TODO: if(df.localModified(0)) df.body
       var localOffset = df.maxLocals
       import Bytecode._
-      // TODO: support jump/branch
       df.body.rewrite_* {
         case bc: InvokeInstanceMethod if df.mustThis(bc.objectref) =>
           val mr = bc.methodRef
@@ -251,30 +250,34 @@ object Transformer {
 
           // TODO: if(calleeDf.localModified(0)) ...
           val argOffset = if(calleeDf.body.isStatic) localOffset else localOffset + 1
-          val bcs =
-            (if(calleeDf.body.isStatic) Seq.empty else Seq(pop())) ++
-            mr.descriptor.args.reverse.zipWithIndex.map { case (t, i) => store(t, i + argOffset) } ++
+          val cf =
             calleeDf.body.rewrite_* {
-              case bc: Jump => throw new TransformException(s"Jump instruction is unsupported: $bc")
-              case bc: Branch => throw new TransformException(s"Brahch instruction is unsupported: $bc")
               case bc: LocalAccess =>
-                Seq(bc.rewriteLocalIndex(bc.localIndex + localOffset))
+                CodeFragment.bytecode(bc.rewriteLocalIndex(bc.localIndex + localOffset))
               case bc: XReturn =>
                 val resultLocal = localOffset + calleeDf.maxLocals
-                Seq(store(bc.returnType, resultLocal)) ++ (
+                CodeFragment(
+                  Seq(store(bc.returnType, resultLocal)) ++ (
+                    calleeDf.beforeFrames(bc.label).stack.tail.map { case FrameItem(l, d, _) =>
+                      autoPop(d.typeRef)
+                    }
+                  ) ++ Seq(
+                    load(bc.returnType, resultLocal)
+                  )
+                )
+              case bc: VoidReturn =>
+                CodeFragment(
                   calleeDf.beforeFrames(bc.label).stack.tail.map { case FrameItem(l, d, _) =>
                     autoPop(d.typeRef)
                   }
-                ) ++ Seq(
-                  load(bc.returnType, resultLocal)
                 )
-              case bc: VoidReturn =>
-                calleeDf.beforeFrames(bc.label).stack.tail.map { case FrameItem(l, d, _) =>
-                  autoPop(d.typeRef)
-                }
-            }.bytecode
+            }.asCodeFragment
+            .prependBytecode(
+              mr.descriptor.args.reverse.zipWithIndex.map { case (t, i) => store(t, i + argOffset) } ++
+              (if(calleeDf.body.isStatic) Seq.empty else Seq(pop()))
+            )
           localOffset += calleeDf.maxLocals + 1 // TODO: inefficient if static method
-          bcs
+          cf
       }
     }
   }
