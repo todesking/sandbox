@@ -93,10 +93,9 @@ object Transformer {
     override def name = s"fieldFusion"
     override def apply0[A <: AnyRef](instance: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
       val dupInstance = instance.duplicate1
-      val fused = fuse(
+      fuse(
         "",
         dupInstance,
-        dupInstance.thisRef,
         dupInstance
           .rewritableVirtualMethods
           .keySet
@@ -107,123 +106,110 @@ object Transformer {
               .keySet
               .map { mr => dupInstance.thisRef -> mr }
           ),
-          el
-        )
-      dupInstance
-        .addMethods(fused.rewrittenMethods)
-        .addMethods(fused.newMethods)
-        .addFields(fused.newFields)
+        el
+      )
     }
-    case class FuseResult(
-      rewrittenMethods: Map[MethodRef, MethodBody],
-      newMethods: Map[MethodRef, MethodBody],
-      newFields: Map[FieldRef, Field]
-    )
     // TODO: prevent inf loop
-    private[this] def fuse(
+    private[this] def fuse[A <: AnyRef](
       memberPrefix: String,
-      self: Instance.Duplicate[_ <: AnyRef],
-      thisRef: ClassRef,
+      self: Instance.Duplicate[A],
       methods: Set[(ClassRef, MethodRef)],
       el: EventLogger
-    ): FuseResult = {
-      val dfs = methods.toSeq.map { case (cr, mr) => mr -> self.dataflow(cr, mr) }.toMap
-      el.logCMethods("fuse target methods", methods)
+    ): Instance.Duplicate[A] = {
+      val dfs =
+        methods
+          .toSeq
+          .map { case k @ (cr, mr) => k -> self.dataflow(cr, mr) }
+          .toMap
       val usedFields: Set[(ClassRef, FieldRef)] =
-        dfs.values
-          .map(_.usedFieldsOf(self))
-          .reduceLeftOption(_ ++ _).getOrElse(Set.empty)
-          .filter { case (cr, fr) => self.fields(cr -> fr).attribute.isFinal }
-          .filterNot { case (cr, fr) => cr != self.thisRef && self.fields(cr -> fr).attribute.isPrivate }
+          dfs.values
+            .map(_.usedFieldsOf(self))
+            .reduceLeftOption(_ ++ _).getOrElse(Set.empty)
+            .filter { case (cr, fr) => self.fields(cr -> fr).attribute.isFinal }
       el.logCFields("used fields from target methods", usedFields)
 
-      val blankInstance = Instance.of(new AnyRef).duplicate1
-
-      val (rewrittenMethods, newMethods, newFields) =
-        usedFields.foldLeft(
-          (dfs.mapValues(_.body), Map.empty[MethodRef, MethodBody], Map.empty[FieldRef, Field])
-        ) { case ((methods, newMethods, newFields), (cr, fr)) =>
-          el.enterField(cr, fr) { el =>
-            self.fields(cr -> fr).data match {
-               case Data.Reference(t, fieldInstance) if !fieldInstance.fields.forall(_._2.attribute.isFinal) =>
-                 el.log("Pass: This field is instance-stateful")
-                 (methods, newMethods, newFields)
-               case Data.Reference(t, fieldInstance)  =>
-                 val usedMethods =
-                   fieldInstance.extendMethods(dfs.values.map(_.usedMethodsOf(fieldInstance)).reduceLeftOption(_ ++ _).getOrElse(Set.empty))
-                 el.logCMethods("used methods", usedMethods)
-                 val fused1 = el.section("fuse the field") { el =>
-                   fuse(memberPrefix + fr.name + "__", fieldInstance.duplicate1, thisRef, usedMethods, el)
-                 }
-                 val methodRenaming = usedMethods.map { case k @ (cr, mr) => k -> mr.anotherUniqueName(memberPrefix + fr.name, mr.name) }.toMap
-                 val fieldRenaming = fieldInstance.fields.keys.map { case k @ (cr, fr1) => k -> fr1.anotherUniqueName(memberPrefix + fr.name, fr1.name) }.toMap
-                 val newFields1 = fieldRenaming.map { case((cr, fr), nfr) => nfr -> fieldInstance.fields(cr, fr) }
-                 el.logCFields("rename target fields", fieldRenaming.keys)
-                 val newMethods1 =
-                   usedMethods
-                     .toIterable
-                     .map { case k @ (cr, mr) => k -> fieldInstance.dataflow(cr, mr) }
-                     .toMap
-                     .map { case ((cr, mr), df) =>
-                       methodRenaming(cr -> mr) -> df.body.rewrite {
-                         case bc: Bytecode.InvokeInstanceMethod
-                         if df.mustThis(bc.objectref) =>
-                           bc.rewriteMethodRef(thisRef, methodRenaming(bc.classRef, bc.methodRef))
-                         case bc: Bytecode.InstanceFieldAccess
-                         if df.mustThis(bc.objectref) =>
-                           bc.rewriteFieldRef(thisRef, fieldRenaming(bc.classRef, bc.fieldRef))
-                       }
+      usedFields.foldLeft(self) { case (self, (fcr, fr)) =>
+        el.enterField(fcr, fr) { el =>
+          self.fields(fcr -> fr).data match {
+            // TODO[refactor]: instance.isInstanceStateful
+            case Data.Reference(t, fieldInstance) if !fieldInstance.fields.forall(_._2.attribute.isFinal) =>
+              el.log("Pass: This field is instance-stateful")
+              self
+            case Data.Reference(t, fieldInstance)  =>
+              val usedMethods = fieldInstance.extendMethods(
+                methods.flatMap { case (cr, mr) =>
+                  self.dataflow(cr, mr).usedMethodsOf(fieldInstance)
+                }
+              )
+              val methodRenaming =
+                usedMethods.map { case k @ (cr, mr) =>
+                  k -> mr.anotherUniqueName(memberPrefix + fr.name, mr.name)
+                }.toMap
+              val fieldRenaming =
+                fieldInstance.fields.keys.map { case k @ (cr, fr1) =>
+                  k -> fr1.anotherUniqueName(memberPrefix + fr.name, fr1.name)
+                }.toMap
+              val newFields = fieldRenaming.map { case((cr, fr), nfr) => nfr -> fieldInstance.fields(cr, fr) }
+              val newMethods =
+                 usedMethods
+                   .toIterable
+                   .map { case k @ (cr, mr) => k -> fieldInstance.dataflow(cr, mr) }
+                   .toMap
+                   .map { case ((cr, mr), df) =>
+                     methodRenaming(cr -> mr) -> df.body.rewrite {
+                       case bc: Bytecode.InvokeInstanceMethod
+                       if df.mustThis(bc.objectref) =>
+                         bc.rewriteMethodRef(self.thisRef, methodRenaming(bc.classRef, bc.methodRef))
+                       case bc: Bytecode.InstanceFieldAccess
+                       if df.mustThis(bc.objectref) =>
+                         bc.rewriteFieldRef(self.thisRef, fieldRenaming(bc.classRef, bc.fieldRef))
                      }
-                  val dummyInstance = self.addFields(newFields ++ newFields1)
-                  val rewrittenMethods =
-                    methods
-                      .mapValues { b =>
-                      val df = b.dataflow(dummyInstance)
-                      import Bytecode._
-                      val memberAccessOnly =
-                        b.bytecode
-                          .filter { bc => bc.inputs.exists { i => df.mustInstance(i, fieldInstance) } }
-                          .forall {
-                            case bc @ getfield(_, _) => true
-                            case bc: InvokeInstanceMethod
-                            if !bc.args.exists { a => df.mustInstance(a, fieldInstance) } => true
-                            case bc => false
-                          }
-                      if(!memberAccessOnly) {
-                        b
-                      } else {
-                        b.rewrite_* {
-                          case bc @ getfield(cr1, fr1)
-                          if df.mustThis(bc.objectref) && cr1 == cr && fr1 == fr =>
-                            Seq(nop())
+                   }
+              val rewrittenMethods =
+                methods
+                  .map { case (cr, mr) =>
+                    val df = self.dataflow(cr, mr)
+                    import Bytecode._
+                    val memberAccessOnly =
+                      df.body.bytecode
+                        .filter { bc => bc.inputs.exists { i => df.mustInstance(i, fieldInstance) } }
+                        .forall {
+                          case bc @ getfield(_, _) => true
                           case bc: InvokeInstanceMethod
-                          if df.mustInstance(bc.objectref, fieldInstance) =>
-                            Seq(
-                              methodRenaming.get(bc.classRef, bc.methodRef).fold(bc) { mr =>
-                                bc.rewriteMethodRef(thisRef, mr)
-                              }
-                            )
-                          case bc: InstanceFieldAccess
-                          if df.mustInstance(bc.objectref, fieldInstance) =>
-                            Seq(
-                              fieldRenaming.get(bc.classRef, bc.fieldRef).fold(bc) { case fr =>
-                                bc.rewriteFieldRef(thisRef, fr)
-                              }
-                            )
+                          if !bc.args.exists { a => df.mustInstance(a, fieldInstance) } => true
+                          case bc => false
                         }
+                    if(!memberAccessOnly) {
+                      el.log(s"[SKIP] the field is leaked in method $mr")
+                      mr -> df.body
+                    } else {
+                      mr -> df.body.rewrite {
+                        case bc @ getfield(cr1, fr1)
+                        if df.mustThis(bc.objectref) && cr1 == cr && fr1 == fr =>
+                          nop()
+                        case bc: InvokeInstanceMethod
+                        if df.mustInstance(bc.objectref, fieldInstance) =>
+                          methodRenaming.get(bc.classRef, bc.methodRef).fold(bc) { mr =>
+                            bc.rewriteMethodRef(self.thisRef, mr)
+                          }
+                        case bc: InstanceFieldAccess
+                        if df.mustInstance(bc.objectref, fieldInstance) =>
+                          fieldRenaming.get(bc.classRef, bc.fieldRef).fold(bc) { case fr =>
+                            bc.rewriteFieldRef(self.thisRef, fr)
+                          }
                       }
                     }
-                  (rewrittenMethods, newMethods ++ newMethods1, newFields ++ newFields1)
-               case _ =>
-                 el.log("Pass")
-                 (methods, newMethods, newFields)
-            }
+                  }.toMap
+              val newSelf = self.addFields(newFields).addMethods(newMethods).addMethods(rewrittenMethods)
+              el.section(s"Fuse new methods from ${fr.name}") { el =>
+                fuse(memberPrefix + fr.name + "__", newSelf, newMethods.keys.map { case mr => (self.thisRef -> mr) }.toSet, el)
+              }
+            case _ =>
+              el.log("Pass")
+              self
           }
         }
-      el.logMethods("rewritten methods", rewrittenMethods.keys)
-      el.logMethods("new methods", newMethods.keys)
-      el.logFields("new fields", newFields.keys)
-      FuseResult(rewrittenMethods, newMethods, newFields)
+      }
     }
   }
   def ??[A]: A = ???

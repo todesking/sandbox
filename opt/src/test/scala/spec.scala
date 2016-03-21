@@ -290,68 +290,7 @@ class Spec extends FunSpec with Matchers {
         println(fi.pretty)
       }
     }
-    it("field fusion(thisMethod)") {
-      pending
-      abstract class Base {
-        def foo(): Int
-      }
-      class A(b: B) extends Base {
-        override def foo(): Int = b.bar() + 10 + b.baz()
-      }
-      class B {
-        private[this] val x = 1
-        def bar(): Int = x
-        def baz(): Int = bar() + bazzz()
-        def bazzz() = 99
-      }
-      val expected = 111
-      val i = Instance.of(new A(new B))
-      i.value.foo should be(expected)
-
-      val dup = i.duplicate[Base]
-
-      val ri = dup.materialized
-      ri.value.foo should be(expected)
-
-      val foo = MethodRef.parse("foo()I", defaultCL)
-      // A.outer + Base.outer + b
-      dup.fields.size should be(3)
-      val (fc, ff) = dup.fields.keys.find(_._2.name.indexOf("__b") != -1).get
-      dup.dataflow(dup.thisRef, foo).usedFieldsOf(dup).size should be(1)
-
-      val fi = Transformer.fieldFusion.apply(dup, el).get
-      withThe(fi) {
-        fi.dataflow(fi.thisRef, foo).usedFieldsOf(fi).size should be(0)
-        fi.materialized.value.foo should be(expected)
-      }
-    }
-    it("field fusion(base)") {
-      pending // this test fail because fieldfusion1 does not use lowerPrivateFields
-      class Base(b: B) {
-        def foo(): Int = b.bar()
-      }
-      class B {
-        def bar(): Int = 999
-      }
-      val expected = 999
-      val foo = MethodRef.parse("foo()I", defaultCL)
-
-      val i = Instance.of(new Base(new B))
-      i.value.foo() should be(expected)
-      i.dataflow(i.thisRef, foo).usedFieldsOf(i).size should be(1)
-
-      val dup = i.duplicate1
-      dup.dataflow(foo).usedFieldsOf(dup).size should be(1)
-      val (fc, ff) = dup.fields.keys.find(_._2.name == "b").get
-
-      val fi = Transformer.fieldFusion.apply(dup, el).get
-      withThe(fi) {
-        fi.dataflow(foo).usedFieldsOf(fi).size should be(0)
-        fi.materialized.value.foo() should be(expected)
-      }
-    }
     it("field fusion(recursive)") {
-      pending
       class A(b: B) {
         def bbb = b
         def foo(): Int = b.bar() + 1000
@@ -371,7 +310,7 @@ class Spec extends FunSpec with Matchers {
       val a = new A(b)
       a.foo() should be(expected)
 
-      val i = Instance.of(a)
+      val i = Transformer.lowerPrivateFields(Instance.of(a), el).get
       withThe(i) {
         i.dataflow(foo).usedFieldsOf(i).size should be(1)
       }
@@ -381,6 +320,7 @@ class Spec extends FunSpec with Matchers {
       println(el.pretty)
       withThe(fused) {
         fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
+        fused.usedMethodsOf(Instance.of(c)) should be('empty)
         fused.materialized.value.foo() should be(expected)
       }
     }

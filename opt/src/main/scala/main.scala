@@ -11,41 +11,11 @@ import java.lang.reflect.{ Method => JMethod, Field => JField, Modifier }
 
 import com.todesking.scalapp.syntax._
 
-object Log {
-  def start(s: String): Unit = {
-    println()
-    println(s"===== START $s =====")
-  }
-  def end(s: String): Unit = {
-    println(s"^^^^^ END $s ^^^^^")
-  }
-  def classAndMethods(name: String, ms: Iterable[(ClassRef, MethodRef)]): Unit = {
-    start(name)
-    ms.foreach { case (cr, mr) =>
-      println(s"[C] $cr")
-      println(s"  [M] .$mr")
-    }
-    end(name)
-  }
-  def methods(name: String, ms: Iterable[MethodRef]): Unit = {
-    start(name)
-    ms.foreach { case mr =>
-      println(s"[M] $mr")
-    }
-    end(name)
-  }
-  def failure(transformerName: String, e: Exception): Unit = {
-    println(s"===== ERROR at transformer $transformerName")
-    e match {
-    case e: UnveilException.HasMethodBody =>
-      println(e)
-      println(e.methodBody.pretty)
-    case e =>
-      println(e)
-    }
-  }
-}
-
+case class PartialInstance(
+  thisRef: ClassRef, 
+  fields: Map[(ClassRef, FieldRef), Field],
+  methods: Map[(ClassRef, MethodRef), MethodBody]
+)
 // TODO: add query methods about types(isDoubleWord etc) for FrameUpdate
 case class FrameItem(label: DataLabel.Out, data: Data, placedBy: Option[Bytecode.Label])
 
