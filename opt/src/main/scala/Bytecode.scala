@@ -29,6 +29,8 @@ object Bytecode {
     def fresh(): Label = new Label
   }
 
+  // TODO[refactor]: rename load, store, etc to autoXxx
+
   def load(t: TypeRef, n: Int): Bytecode =
     t match {
       case TypeRef.Int => iload(n)
@@ -43,6 +45,10 @@ object Bytecode {
       case unk =>
         throw new IllegalArgumentException(s"Unsupported store instruction for ${unk}")
     }
+
+  def autoPop(t: TypeRef): Bytecode =
+    if(t.isDoubleWord) pop2()
+    else pop()
 
   sealed trait FallThrough extends Bytecode
 
@@ -114,6 +120,7 @@ object Bytecode {
     override final val inputs = Seq(in)
     override final def output = None
     override final def nextFrame(f: Frame) = update(f).ret(in)
+    def returnType: TypeRef.Public
   }
   // Void return
   sealed abstract class VoidReturn extends Return {
@@ -130,14 +137,18 @@ object Bytecode {
     override def nextFrame(f: Frame) = update(f).pop1(value2).pop1(value1)
   }
 
-  sealed abstract class Load1 extends Shuffle {
-    def n: Int
-    override def nextFrame(f: Frame) = update(f).load1(n)
+  sealed abstract class LocalAccess extends Shuffle {
+    override type Self <: LocalAccess
+    def localIndex: Int
+    def rewriteLocalIndex(n: Int): Self
   }
 
-  sealed abstract class Store1 extends Shuffle {
-    def n: Int
-    override def nextFrame(f: Frame) = update(f).store1(n)
+  sealed abstract class Load1 extends LocalAccess {
+    override def nextFrame(f: Frame) = update(f).load1(localIndex)
+  }
+
+  sealed abstract class Store1 extends LocalAccess {
+    override def nextFrame(f: Frame) = update(f).store1(localIndex)
   }
 
   sealed abstract class ConstX extends Procedure {
@@ -214,15 +225,38 @@ object Bytecode {
   case class pop() extends Shuffle {
     override def nextFrame(f: Frame) = update(f).pop1()
   }
+  case class pop2() extends Shuffle {
+    override def nextFrame(f: Frame) = update(f).pop2()
+  }
   case class vreturn() extends VoidReturn
-  case class iload(n: Int) extends Load1
-  case class aload(n: Int) extends Load1
-  case class istore(n: Int) extends Store1
-  case class astore(n: Int) extends Store1
-  case class ireturn() extends XReturn
-  case class dreturn() extends XReturn
-  case class lreturn() extends XReturn
+  case class iload(override val localIndex: Int) extends Load1 {
+    override type Self = iload
+    override def rewriteLocalIndex(m: Int) = if(localIndex == m) self else iload(m)
+  }
+  case class aload(override val localIndex: Int) extends Load1 {
+    override type Self = aload
+    override def rewriteLocalIndex(m: Int) = if(localIndex == m) self else aload(m)
+  }
+  case class istore(override val localIndex: Int) extends Store1 {
+    override type Self = istore
+    override def rewriteLocalIndex(m: Int) = if(localIndex == m) self else istore(m)
+  }
+  case class astore(override val localIndex: Int) extends Store1 {
+    override type Self = astore
+    override def rewriteLocalIndex(m: Int) = if(localIndex == m) self else astore(m)
+  }
+
+  case class ireturn() extends XReturn {
+    override def returnType = TypeRef.Int
+  }
+  case class dreturn() extends XReturn {
+    override def returnType = TypeRef.Double
+  }
+  case class lreturn() extends XReturn {
+    override def returnType = TypeRef.Long
+  }
   case class areturn() extends XReturn {
+    override def returnType = TypeRef.Reference(ClassRef.Object)
     def objectref: DataLabel.In = in
   }
   case class iconst(value: Int) extends Const1 {

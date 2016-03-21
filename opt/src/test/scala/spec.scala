@@ -286,46 +286,63 @@ class Spec extends FunSpec with Matchers {
         withThe(fi) {
           fi.materialized.value.foo() should be(expected)
         }
-        println(el.pretty)
-        println(fi.pretty)
+      }
+      it("nested") {
+        class A(b: B) {
+          def bbb = b
+          def foo(): Int = b.bar() + 1000
+        }
+        class B(c: C) {
+          def bar(): Int = c.baz() + 1
+        }
+        class C {
+          def baz(): Int = 999
+        }
+        val expected = 2000
+        val foo = MethodRef.parse("foo()I", defaultCL)
+        val bar = MethodRef.parse("bar()I", defaultCL)
+
+        val c = new C
+        val b = new B(c)
+        val a = new A(b)
+        a.foo() should be(expected)
+
+        val i = Transformer.lowerPrivateFields(Instance.of(a), el).get
+        withThe(i) {
+          i.dataflow(foo).usedFieldsOf(i).size should be(1)
+        }
+
+        val fused = Transformer.fieldFusion(i, el).get
+        withThe(fused) {
+          fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
+          fused.usedMethodsOf(Instance.of(c)) should be('empty)
+          fused.materialized.value.foo() should be(expected)
+        }
       }
     }
-    it("field fusion(recursive)") {
-      class A(b: B) {
-        def bbb = b
-        def foo(): Int = b.bar() + 1000
+
+    it("same-instance method inlining") {
+      class A {
+        def foo(): Int = bar() + baz()
+        def bar(): Int = 10
+        private[this] def baz(): Int = 90
       }
-      class B(c: C) {
-        def bar(): Int = c.baz() + 1
-      }
-      class C {
-        def baz(): Int = 999
-      }
-      val expected = 2000
+      val expected = 100
       val foo = MethodRef.parse("foo()I", defaultCL)
-      val bar = MethodRef.parse("bar()I", defaultCL)
 
-      val c = new C
-      val b = new B(c)
-      val a = new A(b)
-      a.foo() should be(expected)
+      val i = Instance.of(new A)
+      i.value.foo() should be(expected)
 
-      val i = Transformer.lowerPrivateFields(Instance.of(a), el).get
-      withThe(i) {
-        i.dataflow(foo).usedFieldsOf(i).size should be(1)
+      val ri = Transformer.methodInlining(i, el).get
+      withThe(ri) {
+        ri.materialized.value.foo() should be(expected)
+        ri.dataflow(foo).usedMethodsOf(ri) should be('empty)
       }
-
-      val fused = Transformer.fieldFusion(i, el).get
-      println(fused.pretty)
-      println(el.pretty)
-      withThe(fused) {
-        fused.dataflow(foo).usedFieldsOf(fused) should be('empty)
-        fused.usedMethodsOf(Instance.of(c)) should be('empty)
-        fused.materialized.value.foo() should be(expected)
-      }
+      println(ri.pretty)
     }
+    
+    // TODO: Exception handler rejection test
     // TODO: accessor inlining
     // TODO: accept new instance as constant in SetterConstructor
-    // TODO: super method with private field
   }
 }

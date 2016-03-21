@@ -39,6 +39,8 @@ class EventLogger {
 
   def enterField[A](cr: ClassRef, fr: FieldRef)(f: EventLogger => A): A = 
     withSubEL(Path.Field(cr, fr))(f)
+  def enterMethod[A](cr: ClassRef, mr: MethodRef)(f: EventLogger => A): A =
+    withSubEL(Path.Method(cr, mr))(f)
 
   def enterTransformer[A](t: Transformer, i: Instance[_ <: AnyRef])(f: EventLogger => A): A = 
     withSubEL(Path.Transformer(t, i))(f)
@@ -114,6 +116,10 @@ class EventLogger {
       s"""ENTERING FIELD: ${fr.name}
       |  class = $cr
       |  field = $fr""".stripMargin('|')
+    case Path.Method(cr, mr) =>
+      s"""ENTERING METHOD: ${mr.name}
+      |  class = $cr
+      |  method = $mr""".stripMargin('|')
     case Path.Transformer(t, i) =>
       s"""APPLYING TRANSFORMER: ${t.name}""" + (
         if(t.params.isEmpty) ""
@@ -126,6 +132,7 @@ object EventLogger {
   sealed abstract class Path
   object Path {
     case class Field(classRef: ClassRef, fieldRef: FieldRef) extends Path
+    case class Method(classRef: ClassRef, methodRef: MethodRef) extends Path
     case class Transformer(transformer: com.todesking.hoge.Transformer, instance: Instance[_ <: AnyRef]) extends Path
     case class Section(title: String) extends Path
   }

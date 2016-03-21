@@ -136,6 +136,7 @@ object Transformer {
               el.log("Pass: This field is instance-stateful")
               self
             case Data.Reference(t, fieldInstance)  =>
+              // TODO: log
               val usedMethods = fieldInstance.extendMethods(
                 methods.flatMap { case (cr, mr) =>
                   self.dataflow(cr, mr).usedMethodsOf(fieldInstance)
@@ -213,4 +214,70 @@ object Transformer {
       }
     }
   }
+
+  object methodInlining extends Transformer {
+    override def name = "methodInlining"
+    override def apply0[A <: AnyRef](orig: Instance[A], el: EventLogger): Instance.Duplicate[A] = {
+      orig
+        .rewritableVirtualMethods
+        .keys
+        .filterNot { mr => orig.resolveVirtualMethod(mr) == ClassRef.Object }
+        .foldLeft(orig.duplicate1) { case (self, mr) =>
+          val cr = orig.resolveVirtualMethod(mr)
+          el.log(s"Inlining $mr")
+          val inlined =
+            el.enterMethod(cr, mr) { el => inline(orig.dataflow(cr, mr), Set(cr -> mr)) }
+          self.addMethod(mr, inlined)
+        }
+    }
+
+    private[this] def inline(df: DataFlow, ignore: Set[(ClassRef, MethodRef)]): MethodBody = {
+      // TODO: if(df.localModified(0)) df.body
+      var localOffset = df.maxLocals
+      import Bytecode._
+      // TODO: support jump/branch
+      df.body.rewrite_* {
+        case bc: InvokeInstanceMethod if df.mustThis(bc.objectref) =>
+          val mr = bc.methodRef
+          val cr =
+            bc match {
+              case invokespecial(cr, mr) =>
+                // TODO[BUG]: resolve special
+                cr
+              case invokevirtual(cr, mr) =>
+                df.self.instance.resolveVirtualMethod(mr)
+            }
+          val calleeDf = df.self.instance.dataflow(cr, mr)
+
+          // TODO: if(calleeDf.localModified(0)) ...
+          val argOffset = if(calleeDf.body.isStatic) localOffset else localOffset + 1
+          val bcs =
+            (if(calleeDf.body.isStatic) Seq.empty else Seq(pop())) ++
+            mr.descriptor.args.reverse.zipWithIndex.map { case (t, i) => store(t, i + argOffset) } ++
+            calleeDf.body.rewrite_* {
+              case bc: Jump => throw new TransformException(s"Jump instruction is unsupported: $bc")
+              case bc: Branch => throw new TransformException(s"Brahch instruction is unsupported: $bc")
+              case bc: LocalAccess =>
+                Seq(bc.rewriteLocalIndex(bc.localIndex + localOffset))
+              case bc: XReturn =>
+                val resultLocal = localOffset + calleeDf.maxLocals
+                Seq(store(bc.returnType, resultLocal)) ++ (
+                  calleeDf.beforeFrames(bc.label).stack.tail.map { case FrameItem(l, d, _) =>
+                    autoPop(d.typeRef)
+                  }
+                ) ++ Seq(
+                  load(bc.returnType, resultLocal)
+                )
+              case bc: VoidReturn =>
+                calleeDf.beforeFrames(bc.label).stack.tail.map { case FrameItem(l, d, _) =>
+                  autoPop(d.typeRef)
+                }
+            }.bytecode
+          localOffset += calleeDf.maxLocals + 1 // TODO: inefficient if static method
+          bcs
+      }
+    }
+  }
+
+  // TODO: eliminate load-pop pair etc
 }

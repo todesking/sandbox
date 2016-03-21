@@ -8,7 +8,7 @@ import scala.collection.mutable
 
 import java.lang.reflect.{ Method => JMethod, Constructor => JConstructor }
 
-class DataFlow(val body: MethodBody, self: Data.Reference) {
+class DataFlow(val body: MethodBody, val self: Data.Reference) {
   def possibleValues(l: DataLabel): Seq[Data] = l match {
     case l: DataLabel.Out =>
       dataMerges.get(l) map { ms =>
@@ -249,7 +249,8 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     liveBytecode: Seq[Bytecode],
     maxLocals: Int,
     maxStackDepth: Int,
-    dataPlacers: Map[DataLabel.In, Bytecode]
+    dataPlacers: Map[DataLabel.In, Bytecode],
+    beforeFrames: Map[Bytecode.Label, Frame]
     ) = {
     val dataMerges = new AbstractLabel.Merger[DataLabel.Out](DataLabel.out("merged"))
     val effectMerges = new AbstractLabel.Merger[Effect](Effect.fresh())
@@ -329,6 +330,6 @@ ${eName.id(initialFrame.effect)} -> start [style="dotted"]
     val maxLocals = allFrames.flatMap(_.locals.keys).max + 1
     val maxStackDepth = allFrames.map(_.stack.size).max
 
-    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, maxLocals, maxStackDepth, dataPlacers.toMap)
+    (binding.toMap, dataValues.toMap, dataMerges.toMap, effectDependencies.toMap, effectMerges.toMap, liveBcs.values.toSeq, maxLocals, maxStackDepth, dataPlacers.toMap, preFrames.toMap)
   }
 }

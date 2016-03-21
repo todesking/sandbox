@@ -61,6 +61,8 @@ object Javassist {
           out.add(0x59)
         case pop() =>
           out.add(0x57)
+        case pop2() =>
+          out.add(0x58)
         case iadd() =>
           out.add(0x60)
         case if_acmpne(target) =>
