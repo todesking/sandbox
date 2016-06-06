@@ -1,6 +1,5 @@
 scalaVersion := "2.11.7"
 
-libraryDependencies ++= Seq(
-)
+libraryDependencies += "org.scalatest" % "scalatest_2.11" % "2.2.6" % "test"
 
 scalariformSettings
