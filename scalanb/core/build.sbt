@@ -4,7 +4,9 @@ version := "0.0.1-SNAPSHOT"
 
 addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 
+libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
 libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
+
 libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.0"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
@@ -23,6 +25,10 @@ scalacOptions ++= Seq(
 )
 scalacOptions in (Compile, console) ~= {_.filterNot(_ == "-Ywarn-unused-import")}
 scalacOptions in (Test, console) := { (scalacOptions in (Compile, console)).value }
+
+// For REPL classpath problem
+fork in run := true
+connectInput := true
 
 scalariformSettings(true)
 
