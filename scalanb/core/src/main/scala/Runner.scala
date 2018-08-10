@@ -16,6 +16,6 @@ object Runner {
 
     val _ = run.invoke(target, builder)
 
-    println(builder.bang())
+    println(ipynb.JsonMapping.toJson(builder.bang(), pretty = true))
   }
 }

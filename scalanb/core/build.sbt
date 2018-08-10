@@ -7,7 +7,7 @@ addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.fu
 libraryDependencies += "org.scala-lang" % "scala-compiler" % scalaVersion.value
 libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value
 
-libraryDependencies += "org.json4s" %% "json4s-native" % "3.6.0"
+libraryDependencies += "com.typesafe.play" %% "play-json" % "2.6.9"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 

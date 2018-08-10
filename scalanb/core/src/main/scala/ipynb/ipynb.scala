@@ -1,37 +1,74 @@
 package com.todesking.scalanb.ipynb
 
+import play.api.libs.json.JsValue
+
+object JsonMapping {
+  import scala.language.implicitConversions
+  import play.api.libs.json._
+
+  private[this] def jso(kvs: (Symbol, JsValue)*): JsObject =
+    JsObject(kvs.map { case (k, v) => (k.name -> v) })
+
+  private[this] implicit def autoconv[A: Writes](v: A): JsValue = implicitly[Writes[A]].writes(v)
+
+  private[this] implicit def wSeq[A: Writes] = Writes[Seq[A]] { s =>
+    val w = implicitly[Writes[A]]
+    JsArray(s.map(w.writes))
+  }
+  implicit lazy val wNotebook: Writes[Notebook] = Json.writes[Notebook]
+  implicit lazy val wCell: Writes[Cell] = Writes[Cell] {
+    case c @ Cell.Markdown(source) =>
+      jso('cell_type -> c.cellType, 'source -> source)
+    case c @ Cell.Code(source, Cell.CodeMetadata(collapsed, scroll), outputs) =>
+      jso('cell_type -> c.cellType, 'source -> source, 'metadata -> jso('collapsed -> collapsed, 'scroll -> scroll), 'outputs -> outputs)
+  }
+  implicit lazy val wOutput: Writes[Output] = Writes[Output] {
+    case v @ Output.Stream(name, text) =>
+      jso('outputType -> v.outputType, 'name -> name, 'text -> text)
+    case v @ Output.DisplayData(data, metadata) =>
+      jso('outputType -> v.outputType, 'data -> data, 'metadata -> metadata)
+    case v @ Output.ExecuteResult(data, metadata, executionCount) =>
+      jso('outputType -> v.outputType, 'data -> data, 'metadata -> metadata, 'executionCount -> executionCount)
+    case v @ Output.Error(ename, evalue, traceback) =>
+      jso('outputType -> v.outputType, 'ename -> ename, 'evalue -> evalue, 'traceback -> traceback)
+  }
+
+  def toJson(v: Notebook, pretty: Boolean): String =
+    toJson[Notebook](v, pretty)
+  def toJson[A: Writes](v: A, pretty: Boolean): String =
+    if (pretty) Json.prettyPrint(v)
+    else Json.stringify(v)
+}
+
+object Data {
+  import play.api.libs.json._
+
+  def text(v: String): Map[String, JsValue] =
+    Map("text/plain" -> JsString(v))
+
+  def html(v: String): Map[String, JsValue] =
+    Map("text/html" -> JsString(v))
+}
+
 case class Notebook(
-  metadata: Map[String, Notebook.Metadata],
+  metadata: Map[String, JsValue],
   nbformat: Int,
   nbformatMinor: Int,
   cells: Seq[Cell])
 
-object Notebook {
-  class Metadata
-  object Metadata {
-    case class KernelInfo(name: String) extends Metadata
-    case class LanguageInfo(name: String, version: String, codemirrorMode: Option[String]) extends Metadata
-  }
-}
-
-abstract class Cell(val cellType: String) {
-  def metadata: Cell.Metadata = Cell.EmptyMetadata
+sealed abstract class Cell(val cellType: String) {
   def source: String
 }
 object Cell {
-  class Metadata
-  case object EmptyMetadata extends Metadata
-
-  case class Markdown(
-    source: String,
-    attachments: Map[String, Map[String, String]]) extends Cell("markdown")
+  case class Markdown(source: String) extends Cell("markdown")
 
   case class Code(
     source: String,
-    override val metadata: CodeMetadata,
+    metadata: CodeMetadata,
     outputs: Seq[Output]) extends Cell("code") {
   }
-  case class CodeMetadata(collapsed: Boolean, autoscroll: Boolean) extends Metadata
+
+  case class CodeMetadata(collapsed: Boolean, autoscroll: Boolean)
 }
 
 class Output(val outputType: String) {
@@ -41,11 +78,11 @@ object Output {
     name: String,
     text: String) extends Output("stream")
   case class DisplayData(
-    data: Map[String, String],
+    data: Map[String, JsValue],
     metadata: Map[String, String]) extends Output("display_data")
   case class ExecuteResult(
-    data: Map[String, String],
-    metadata: Map[String, String],
+    data: Map[String, JsValue],
+    metadata: Map[String, JsValue],
     executionCount: Int) extends Output("execute_result")
   case class Error(
     ename: String,

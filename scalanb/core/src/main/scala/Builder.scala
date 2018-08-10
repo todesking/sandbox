@@ -26,7 +26,7 @@ trait Builder {
   def stdout(s: String): Unit
   def stderr(s: String): Unit
 
-  def bang(): String
+  def bang(): ipynb.Notebook
 }
 
 object Builder {
@@ -54,7 +54,7 @@ object Builder {
     }
 
     override def markdownCell(s: String) =
-      addCell(Cell.Markdown(s, Map()))
+      addCell(Cell.Markdown(s))
 
     override def flush(res: Option[Output]) =
       if (currentSrc.nonEmpty) {
@@ -87,7 +87,11 @@ object Builder {
 
     override def bang() = {
       flush(None)
-      cells.mkString("\n")
+      ipynb.Notebook(
+        metadata = Map(),
+        nbformat = 4,
+        nbformatMinor = 0,
+        cells)
     }
   }
 
