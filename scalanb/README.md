@@ -1,6 +1,22 @@
 # scalanb: Scala notebook
 
-Status: Vaporware
+Status: PoC
+
+## Installation
+
+```sbt
+// In build.sbt
+
+// REPL and batch
+libraryDependencies += "com.todesking" %% "scalanb" % "0.0.1"
+
+// Spark REPL and Spark batch
+libraryDependencies += "com.todesking" %% "scalanb-spark" % "0.0.1"
+
+// To use batch notebook, you need macro paradise plugin and additional compiler options.
+addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
+scalacOptions += "-Yrangepos"
+```
 
 ## Example: Batch Notebook
 
