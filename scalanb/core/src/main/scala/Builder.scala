@@ -79,6 +79,7 @@ object Builder {
         this.currentSrc = Seq()
 
         addCell(Cell.Code(
+          executionCount = 1,
           source = source,
           metadata = Cell.CodeMetadata(
             collapsed = false, autoscroll = false),

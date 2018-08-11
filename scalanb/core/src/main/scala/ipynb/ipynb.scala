@@ -15,22 +15,32 @@ object JsonMapping {
     val w = implicitly[Writes[A]]
     JsArray(s.map(w.writes))
   }
-  implicit lazy val wNotebook: Writes[Notebook] = Json.writes[Notebook]
+  implicit lazy val wNotebook: Writes[Notebook] = Writes[Notebook] {
+    case Notebook(metadata, nbformat, nbformatMinor, cells) =>
+      jso('metadata -> metadata, 'nbformat -> nbformat, 'nbformat_minor -> nbformatMinor, 'cells -> cells)
+  }
   implicit lazy val wCell: Writes[Cell] = Writes[Cell] {
     case c @ Cell.Markdown(source) =>
       jso('cell_type -> c.cellType, 'source -> source)
-    case c @ Cell.Code(source, Cell.CodeMetadata(collapsed, scroll), outputs) =>
-      jso('cell_type -> c.cellType, 'source -> source, 'metadata -> jso('collapsed -> collapsed, 'scroll -> scroll), 'outputs -> outputs)
+    case c @ Cell.Code(executionCount, source, Cell.CodeMetadata(collapsed, scroll), outputs) =>
+      jso(
+        'cell_type -> c.cellType,
+        'execution_count -> executionCount,
+        'source -> source,
+        'metadata -> jso(
+          'collapsed -> collapsed,
+          'scroll -> scroll),
+        'outputs -> outputs)
   }
   implicit lazy val wOutput: Writes[Output] = Writes[Output] {
     case v @ Output.Stream(name, text) =>
-      jso('outputType -> v.outputType, 'name -> name, 'text -> text)
+      jso('output_type -> v.outputType, 'name -> name, 'text -> text)
     case v @ Output.DisplayData(data, metadata) =>
-      jso('outputType -> v.outputType, 'data -> data, 'metadata -> metadata)
+      jso('output_type -> v.outputType, 'data -> data, 'metadata -> metadata)
     case v @ Output.ExecuteResult(data, metadata, executionCount) =>
-      jso('outputType -> v.outputType, 'data -> data, 'metadata -> metadata, 'executionCount -> executionCount)
+      jso('output_type -> v.outputType, 'data -> data, 'metadata -> metadata, 'execution_count -> executionCount)
     case v @ Output.Error(ename, evalue, traceback) =>
-      jso('outputType -> v.outputType, 'ename -> ename, 'evalue -> evalue, 'traceback -> traceback)
+      jso('output_type -> v.outputType, 'ename -> ename, 'evalue -> evalue, 'traceback -> traceback)
   }
 
   def toJson(v: Notebook, pretty: Boolean): String =
@@ -63,6 +73,7 @@ object Cell {
   case class Markdown(source: String) extends Cell("markdown")
 
   case class Code(
+    executionCount: Int,
     source: String,
     metadata: CodeMetadata,
     outputs: Seq[Output]) extends Cell("code") {
