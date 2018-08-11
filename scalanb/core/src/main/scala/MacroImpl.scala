@@ -26,6 +26,7 @@ object MacroImpl {
           } catch {
             case e: _root_.scala.Throwable =>
               scalanb__builder.error(e)
+              throw new _root_.scala.RuntimeException("Error occured during processing notebook", e)
           }
         }"""
         c.Expr[Any](q"class $tpname() { $body }")
@@ -33,15 +34,10 @@ object MacroImpl {
   }
 
   private[this] def readContent(c: Context)(t: c.Tree): String = {
-    if (t.pos.source.content.isEmpty) {
+    if (t.pos == c.universe.NoPosition || t.pos.source.content.isEmpty) {
       "<source unavailable>"
     } else {
-      def dig(t: c.Tree): (Int, Int) = {
-        val xs = (t.pos.start, t.pos.end) +: t.children.map(dig)
-        (xs.map(_._1).min, xs.map(_._2).max)
-      }
-      val (start, end) = dig(t)
-      t.pos.source.content.slice(start, end + 1).mkString("")
+      t.pos.source.content.slice(t.pos.start, t.pos.end + 1).mkString("")
     }
   }
 }
