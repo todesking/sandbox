@@ -32,6 +32,7 @@ trait Builder {
 object Builder {
   class OnMemory(override val format: Format) extends Builder {
 
+    private[this] var executionCount = 1
     private[this] var cells = Seq.empty[Cell]
     private[this] var currentSrc = Seq.empty[String]
     private[this] var currentStdout = Seq.empty[String]
@@ -79,11 +80,13 @@ object Builder {
         this.currentSrc = Seq()
 
         addCell(Cell.Code(
-          executionCount = 1,
+          executionCount = executionCount,
           source = source,
           metadata = Cell.CodeMetadata(
             collapsed = false, autoscroll = false),
           outputs = outputs))
+
+        this.executionCount += 1
       }
 
     override def build() = {
