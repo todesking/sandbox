@@ -17,6 +17,7 @@ object Runner {
         f(builder)
       } catch {
         case e: Throwable =>
+          builder.error(e)
           // TODO: Write incomplete notebook
           throw e
       }
@@ -48,12 +49,20 @@ object Runner {
     val format = Format.Default
     val builder = new Builder.OnMemory(format)
 
-    run(builder) { builder =>
-      val target = targetClass.newInstance()
-      val _ = runMethod.invoke(target, builder)
-    }
+    try {
+      run(builder) { builder =>
+        val target = targetClass.newInstance()
+        val _ = try {
+          runMethod.invoke(target, builder)
+        } catch {
+          case e: java.lang.reflect.InvocationTargetException =>
+            throw e.getCause
+        }
+      }
+    } finally {
 
-    out.notebook(builder.build())
-    println(s"scalanb: Notebook log saved to ${out.path}")
+      out.notebook(builder.build())
+      println(s"scalanb: Notebook log saved to ${out.path}")
+    }
   }
 }
