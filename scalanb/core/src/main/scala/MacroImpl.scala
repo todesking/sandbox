@@ -26,7 +26,7 @@ object MacroImpl {
           } catch {
             case e: _root_.scala.Throwable =>
               scalanb__builder.error(e)
-              throw new _root_.scala.RuntimeException("Error occured during processing notebook", e)
+              throw e
           }
         }"""
         c.Expr[Any](q"class $tpname() { $body }")

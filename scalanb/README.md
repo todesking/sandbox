@@ -48,7 +48,7 @@ $ sbt 'runMain NB'
 
 Result: (screenshot here)
 
-In default, notebooks (`.ipynb`) are saved to `~/.scalanb/hist/'
+In default, notebooks (`.ipynb`) are saved to `~/.scalanb/hist/`
 
 
 To specify history location, use `--out` option.

@@ -26,7 +26,7 @@ trait Builder {
   def stdout(s: String): Unit
   def stderr(s: String): Unit
 
-  def bang(): ipynb.Notebook
+  def build(): ipynb.Notebook
 }
 
 object Builder {
@@ -86,7 +86,7 @@ object Builder {
           outputs = outputs))
       }
 
-    override def bang() = {
+    override def build() = {
       flush(None)
       ipynb.Notebook(
         metadata = Map(),
