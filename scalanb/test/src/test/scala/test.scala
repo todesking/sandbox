@@ -8,6 +8,10 @@ class NBTest {
   println(s"abc = $abc")
   abc
 
+  System.out.println("Hello from System.out.println")
+  println("Hello from Console.println")
+  System.err.println("Boo!")
+  Console.err.println("Boo!2")
   val b = abc + 1
   val c = abc * b
   c
