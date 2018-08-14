@@ -1,4 +1,4 @@
-package com.todesking.scalanb
+package com.todesking.scalanb.util
 
 // TODO: Support ALL methods
 abstract class TappedPrintStream(original: java.io.PrintStream) extends java.io.PrintStream(original) {

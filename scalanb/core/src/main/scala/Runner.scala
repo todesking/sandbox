@@ -1,5 +1,8 @@
 package com.todesking.scalanb
 
+import com.todesking.scalanb.util.TappedPrintStream
+import com.todesking.scalanb.util.IO
+
 object Runner {
   def main(args: Array[String]): Unit = {
     val Seq(className) = args.toSeq
@@ -24,17 +27,6 @@ object Runner {
 
     val nakedOut = System.out
 
-    def invoke(): Unit = {
-      try {
-        val target = targetClass.newInstance()
-        val _ = run.invoke(target, builder)
-      } catch {
-        case e: Throwable =>
-          // TODO: Write incomplete notebook
-          throw e
-      }
-    }
-
     val tappedOut = TappedPrintStream(System.out) { str =>
       builder.stdout(str)
     }
@@ -42,14 +34,14 @@ object Runner {
       builder.stderr(str)
     }
 
-    // Ensure to initialize Console
-    val _ = Console.out
-
-    System.setOut(tappedOut)
-    System.setErr(tappedErr)
-    Console.withOut(tappedOut) {
-      Console.withErr(tappedErr) {
-        invoke()
+    IO.withOuts(tappedOut, tappedErr) {
+      try {
+        val target = targetClass.newInstance()
+        val _ = run.invoke(target, builder)
+      } catch {
+        case e: Throwable =>
+          // TODO: Write incomplete notebook
+          throw e
       }
     }
 
