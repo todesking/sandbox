@@ -15,7 +15,13 @@ object Format {
       Output.ExecuteResult(Data.text(value.toString), Map(), 1)
     }
     override def error(t: Throwable) = {
-      Output.Error(s"Exception: ${t.getClass.getName}", t.getMessage, t.getStackTrace.map(_.toString))
+      val stackTraceMessage = t.getStackTrace.map { st =>
+        s"  ${st.toString}"
+      }
+      Output.Error(
+        "Exception",
+        "(Does Jupyter really use this field??)",
+        Seq(t.toString) ++ stackTraceMessage)
     }
   }
 }
