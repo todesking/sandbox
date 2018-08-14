@@ -7,13 +7,22 @@ object IO {
     // Ensure to initialize Console
     val _ = Console
 
+    val oldout = System.out
+    val olderr = System.err
+
     System.setOut(stdout)
     System.setErr(stderr)
-    Console.withOut(stdout) {
-      Console.withErr(stderr) {
-        f
+
+    val ret =
+      Console.withOut(stdout) {
+        Console.withErr(stderr) {
+          f
+        }
       }
-    }
+
+    System.setOut(oldout)
+    System.setErr(olderr)
+    ret
   }
 
 }

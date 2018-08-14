@@ -4,28 +4,8 @@ import com.todesking.scalanb.util.TappedPrintStream
 import com.todesking.scalanb.util.IO
 
 object Runner {
-  def main(args: Array[String]): Unit = {
-    val Seq(className) = args.toSeq
-
-    val targetClass = Class.forName(className)
-    val run = targetClass.getMethod("scalanb__run", classOf[Builder])
-
-    // TODO: tap stdout/stderr
-
-    val notebookName = targetClass.getSimpleName
-    val sdf = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss")
-    val logName = s"${sdf.format(new java.util.Date())}_$notebookName"
-
-    val fs = java.nio.file.FileSystems.getDefault
-    val basePath = fs.getPath(sys.props("user.home"), ".scalanb", "hist")
-
-    val out = new FileOut(basePath, logName)
-    out.prepare()
-
-    val format = Format.Default
+  def run(format: Format, out: FileOut)(f: Builder => Unit): Unit = {
     val builder = new Builder.OnMemory(format)
-
-    val nakedOut = System.out
 
     val tappedOut = TappedPrintStream(System.out) { str =>
       builder.stdout(str)
@@ -36,8 +16,7 @@ object Runner {
 
     IO.withOuts(tappedOut, tappedErr) {
       try {
-        val target = targetClass.newInstance()
-        val _ = run.invoke(target, builder)
+        f(builder)
       } catch {
         case e: Throwable =>
           // TODO: Write incomplete notebook
@@ -46,7 +25,37 @@ object Runner {
     }
 
     out.notebook(builder.build())
+  }
 
-    nakedOut.println(s"Notebook log saved to ${out.path}")
+  def newOut(name: String): FileOut = {
+    val sdf = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss")
+    val logName = s"${sdf.format(new java.util.Date())}_$name"
+
+    val fs = java.nio.file.FileSystems.getDefault
+    val basePath = fs.getPath(sys.props("user.home"), ".scalanb", "hist")
+
+    val out = new FileOut(basePath, logName)
+    out.prepare()
+    out
+  }
+
+  def main(args: Array[String]): Unit = {
+    val Seq(className) = args.toSeq
+
+    val targetClass = Class.forName(className)
+    val runMethod = targetClass.getMethod("scalanb__run", classOf[Builder])
+
+    val notebookName = targetClass.getSimpleName
+    val format = Format.Default
+    val nakedOut = System.out
+
+    val out = newOut(notebookName)
+
+    run(format, out) { builder =>
+      val target = targetClass.newInstance()
+      val _ = runMethod.invoke(target, builder)
+    }
+
+    nakedOut.println(s"scalanb: Notebook log saved to ${out.path}")
   }
 }
