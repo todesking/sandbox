@@ -13,15 +13,17 @@ object IO {
     System.setOut(stdout)
     System.setErr(stderr)
 
-    val ret =
+    val ret = try {
       Console.withOut(stdout) {
         Console.withErr(stderr) {
           f
         }
       }
+    } finally {
+      System.setOut(oldout)
+      System.setErr(olderr)
+    }
 
-    System.setOut(oldout)
-    System.setErr(olderr)
     ret
   }
 

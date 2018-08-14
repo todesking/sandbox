@@ -33,6 +33,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 class ScalanbREPL extends ILoop(None, new JPrintWriter(Console.out, true)) {
+  protected def hook(interp: Interp)(
+    src: String,
+    trees: Seq[interp.global.Tree],
+    inSilent: Boolean)(eval: () => Either[Throwable, Any]): Either[Throwable, Any] =
+    eval()
+
   @deprecated("", "")
   private[this] def updateCP(): Unit = {
     if (addedClasspath != "")
@@ -46,10 +52,10 @@ class ScalanbREPL extends ILoop(None, new JPrintWriter(Console.out, true)) {
   class Interp extends ILoopInterpreter {
     import reporter.{ printMessage, printUntruncatedMessage }
 
-    private[this] var silentMode: Boolean = false
+    private[this] var _inSilent: Boolean = false
     private[this] def silent[A](f: => A): A = {
-      silentMode = true
-      try { f } finally { silentMode = false }
+      _inSilent = true
+      try { f } finally { _inSilent = false }
     }
 
     override def interpret(line: String, synthetic: Boolean): IR.Result = {
@@ -59,8 +65,9 @@ class ScalanbREPL extends ILoop(None, new JPrintWriter(Console.out, true)) {
          *  which tacks a newline on the end.  Since that breaks all the
          *  output checking, we have to take one off to balance.
          */
-        println(s"Running(synthetic=$synthetic, silent=$silentMode): $line")
-        req.lineRep.callEither(naming.sessionNames.print) match {
+        hook(this)(line, req.trees, _inSilent) { () =>
+          req.lineRep.callEither(naming.sessionNames.print)
+        } match {
           case Right(retval) =>
             val result = retval.toString
             if (printResults && result != "")

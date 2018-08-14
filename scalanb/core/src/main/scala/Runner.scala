@@ -4,9 +4,7 @@ import com.todesking.scalanb.util.TappedPrintStream
 import com.todesking.scalanb.util.IO
 
 object Runner {
-  def run(format: Format, out: FileOut)(f: Builder => Unit): Unit = {
-    val builder = new Builder.OnMemory(format)
-
+  def run[A](builder: Builder)(f: Builder => A): A = {
     val tappedOut = TappedPrintStream(System.out) { str =>
       builder.stdout(str)
     }
@@ -23,8 +21,6 @@ object Runner {
           throw e
       }
     }
-
-    out.notebook(builder.build())
   }
 
   def newOut(name: String): FileOut = {
@@ -46,16 +42,18 @@ object Runner {
     val runMethod = targetClass.getMethod("scalanb__run", classOf[Builder])
 
     val notebookName = targetClass.getSimpleName
-    val format = Format.Default
-    val nakedOut = System.out
 
     val out = newOut(notebookName)
 
-    run(format, out) { builder =>
+    val format = Format.Default
+    val builder = new Builder.OnMemory(format)
+
+    run(builder) { builder =>
       val target = targetClass.newInstance()
       val _ = runMethod.invoke(target, builder)
     }
 
-    nakedOut.println(s"scalanb: Notebook log saved to ${out.path}")
+    out.notebook(builder.build())
+    println(s"scalanb: Notebook log saved to ${out.path}")
   }
 }
