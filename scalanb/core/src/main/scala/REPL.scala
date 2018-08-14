@@ -23,6 +23,8 @@ object REPL {
           eval()
         }
         result match {
+          case Left(t: java.lang.reflect.InvocationTargetException) =>
+            builder.error(t.getCause)
           case Left(t) =>
             builder.error(t)
           case Right(v) =>
