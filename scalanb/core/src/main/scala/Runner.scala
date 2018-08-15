@@ -60,7 +60,6 @@ object Runner {
         }
       }
     } finally {
-
       out.notebook(builder.build())
       println(s"scalanb: Notebook log saved to ${out.path}")
     }
