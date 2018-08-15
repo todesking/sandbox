@@ -1,18 +1,20 @@
 package com.todesking.scalanb
 
-import scala.reflect.runtime.universe.TypeTag
 import com.todesking.scalanb.ipynb.Output
 import com.todesking.scalanb.ipynb.Data
 
 trait Format {
-  def apply[A: TypeTag](value: A): Output
+  def apply(value: Any): Output
+  def apply(value: Any, str: String): Output
   def error(t: Throwable): Output
 }
 
 object Format {
   object Default extends Format {
-    override def apply[A: TypeTag](value: A): Output = {
-      Output.ExecuteResult(Data.text(value.toString), Map(), 1)
+    override def apply(value: Any) =
+      apply(value, s"$value")
+    override def apply(value: Any, str: String): Output = {
+      Output.ExecuteResult(Data.text(str), Map(), 1)
     }
     override def error(t: Throwable) = {
       val stackTraceMessage = t.getStackTrace.map { st =>

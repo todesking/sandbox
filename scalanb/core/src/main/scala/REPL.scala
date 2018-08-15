@@ -14,7 +14,7 @@ object REPL {
       override def hook(interp: Interp)(
         src: String,
         trees: Seq[interp.global.Tree],
-        inSilent: Boolean)(eval: () => Either[Throwable, Any]) = {
+        inSilent: Boolean)(eval: () => Either[Throwable, (Any, String)]) = {
 
         if (!inSilent)
           builder.code(src)
@@ -27,9 +27,9 @@ object REPL {
             builder.error(t.getCause)
           case Left(t) =>
             builder.error(t)
-          case Right(v) =>
-            if (!inSilent && v.toString != "")
-              builder.expr(v)
+          case Right((v, s)) =>
+            if (!inSilent && s != "")
+              builder.expr(v, s)
         }
         result
       }

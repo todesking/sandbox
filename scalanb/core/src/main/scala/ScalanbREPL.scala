@@ -36,7 +36,7 @@ class ScalanbREPL extends ILoop(None, new JPrintWriter(Console.out, true)) {
   protected def hook(interp: Interp)(
     src: String,
     trees: Seq[interp.global.Tree],
-    inSilent: Boolean)(eval: () => Either[Throwable, Any]): Either[Throwable, Any] =
+    inSilent: Boolean)(eval: () => Either[Throwable, (Any, String)]): Either[Throwable, (Any, String)] =
     eval()
 
   @deprecated("", "")
@@ -66,9 +66,12 @@ class ScalanbREPL extends ILoop(None, new JPrintWriter(Console.out, true)) {
          *  output checking, we have to take one off to balance.
          */
         hook(this)(line, req.trees, _inSilent) { () =>
-          req.lineRep.callEither(naming.sessionNames.print)
+          for {
+            value <- req.lineRep.evalEither.right
+            str <- req.lineRep.callEither(naming.sessionNames.print).right
+          } yield (value, str.toString)
         } match {
-          case Right(retval) =>
+          case Right((retval, str)) =>
             val result = retval.toString
             if (printResults && result != "")
               printMessage(result stripSuffix "\n")

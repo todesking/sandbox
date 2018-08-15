@@ -3,8 +3,6 @@ package com.todesking.scalanb
 import com.todesking.scalanb.ipynb.Cell
 import com.todesking.scalanb.ipynb.Output
 
-import scala.reflect.runtime.universe.TypeTag
-
 trait Builder {
   val format: Format
 
@@ -15,8 +13,11 @@ trait Builder {
 
   def expr(value: Unit): Unit = {}
 
-  def expr[A: TypeTag](value: A): Unit =
+  def expr[A](value: A): Unit =
     flush(Some(format(value)))
+
+  def expr(value: Any, str: String): Unit =
+    flush(Some(format(value, str))) // TODO
 
   def markdownCell(src: String): Unit
 
