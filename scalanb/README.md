@@ -43,7 +43,7 @@ class MyNotebook {
 and
 
 ```shellsession
-$ sbt 'runMain NB'
+$ sbt 'runMain MyNotebook'
 ```
 
 Result: (screenshot here)
@@ -73,7 +73,7 @@ $ ls ~/.scalanb/hist/
 ## Example: Save history to HDFS
 
 ```shellsession
-$ sbt 'runMain NB --out=hdfs:path=/tmp/hist/'
+$ sbt 'runMain MyNotebook --out=hdfs:path=/tmp/hist/'
 ```
 
 ## Example: Spark Batch Notebook

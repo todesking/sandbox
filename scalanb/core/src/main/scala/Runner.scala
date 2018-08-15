@@ -36,13 +36,12 @@ object Runner {
     out
   }
 
-  def main(args: Array[String]): Unit = {
-    val Seq(className) = args.toSeq
+  type TargetType = {
+    def scalanb__run(builder: Builder): Unit
+  }
 
-    val targetClass = Class.forName(className)
-    val runMethod = targetClass.getMethod("scalanb__run", classOf[Builder])
-
-    val notebookName = targetClass.getSimpleName
+  def runBatch(args: Array[String], target: TargetType, notebookName: String): Unit = {
+    import scala.language.reflectiveCalls
 
     val out = newOut(notebookName)
 
@@ -51,9 +50,8 @@ object Runner {
 
     try {
       run(builder) { builder =>
-        val target = targetClass.newInstance()
         val _ = try {
-          runMethod.invoke(target, builder)
+          target.scalanb__run(builder)
         } catch {
           case e: java.lang.reflect.InvocationTargetException =>
             throw e.getCause

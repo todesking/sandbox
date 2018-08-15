@@ -19,7 +19,7 @@ object MacroImpl {
       }
     }
 
-    def makeBody(c: Context)(stats: Seq[c.universe.Tree]): c.universe.Tree = {
+    def makeRunMethod(c: Context)(stats: Seq[c.universe.Tree]): c.universe.Tree = {
       import c.universe._
       q"""
           def scalanb__run(scalanb__builder: _root_.com.todesking.scalanb.Builder): _root_.scala.Unit = {
@@ -27,13 +27,31 @@ object MacroImpl {
           }"""
     }
 
+    def makeMain(c: Context)(tpname: c.universe.TypeName, notebookName: String): c.universe.Tree = {
+      import c.universe._
+      q"""
+      def main(args: Array[String]): Unit = {
+        val target = new ${tpname}()
+        _root_.com.todesking.scalanb.Runner.runBatch(args, target, $notebookName)
+      }
+      """
+    }
+
     def apply(c: Context)(annottees: c.Expr[Any]*): c.Expr[Any] = {
       import c.universe._
       annottees.map(_.tree) match {
         case Seq(q"class $tpname () { ..$stats }") =>
-          val newStats = processStats(c)(stats)
-          val body = makeBody(c)(newStats)
-          c.Expr[Any](q"class $tpname() { $body }")
+          val notebookName = tpname.toString
+          val runMethod = makeRunMethod(c)(processStats(c)(stats))
+          val mainMethod = makeMain(c)(tpname, notebookName)
+          c.Expr[Any](q"""
+            class $tpname() {
+              $runMethod
+            }
+            object ${tpname.toTermName} {
+              $mainMethod
+            }
+          """)
       }
     }
 
