@@ -1,10 +1,13 @@
+val Scala2_11 = "2.11.12"
+val Scala2_12 = "2.12.6"
+
 val versionSetting = Seq(
   version := "0.0.1-SNAPSHOT"
 )
 
 val coreCross = Seq(
-  scalaVersion := "2.12.6",
-  crossScalaVersions := Seq("2.11.12", "2.12.6")
+  scalaVersion := Scala2_11,
+  crossScalaVersions := Seq(Scala2_11, Scala2_12)
 )
 lazy val core = project
   .settings(versionSetting)
@@ -15,8 +18,8 @@ lazy val test = project
   .settings(coreCross)
 
 val sparkCross = Seq(
-  scalaVersion := "2.11.12",
-  crossScalaVersions := Seq("2.11.12")
+  scalaVersion := Scala2_11,
+  crossScalaVersions := Seq(Scala2_11)
 )
 lazy val spark = project
   .dependsOn(core)
