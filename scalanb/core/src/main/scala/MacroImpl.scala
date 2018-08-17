@@ -7,7 +7,7 @@ object MacroImpl {
     def processStats(c: Context)(stats: Seq[c.universe.Tree]): Seq[c.universe.Tree] = {
       import c.universe._
       stats.flatMap {
-        case st: DefTree =>
+        case st if st.isDef || st.isType || !st.isTerm => // TODO: I don't know how to detect not-a-value trees
           val src = readContent(c)(st)
           Seq(
             q"scalanb__builder.code(${Literal(Constant(src))})",
