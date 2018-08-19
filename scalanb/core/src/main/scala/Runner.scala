@@ -24,16 +24,20 @@ object Runner {
     }
   }
 
-  def newOut(name: String): FileOut = {
+  def newLogName(name: String): String = {
     val sdf = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss")
-    val logName = s"${sdf.format(new java.util.Date())}_$name"
+    s"${sdf.format(new java.util.Date())}_$name"
+  }
 
-    val fs = java.nio.file.FileSystems.getDefault
-    val basePath = fs.getPath(sys.props("user.home"), ".scalanb", "hist")
-
-    val out = new FileOut(basePath, logName)
-    out.prepare()
-    out
+  def newOut(outType: String, args: Map[String, String]): Out = {
+    import scala.collection.JavaConverters._
+    val loader = java.util.ServiceLoader.load(classOf[OutFactory])
+    loader.iterator.asScala
+      .toSeq
+      .filter(_.name == outType)
+      .headOption
+      .getOrElse { throw new RuntimeException(s"Unknown out type: $outType") }
+      .newOut(args)
   }
 
   type TargetType = {
@@ -43,7 +47,8 @@ object Runner {
   def runBatch(args: Array[String], target: TargetType, notebookName: String): Unit = {
     import scala.language.reflectiveCalls
 
-    val out = newOut(notebookName)
+    val logName = newLogName(notebookName)
+    val out = newOut("file", Map())
 
     val builder = new Builder.OnMemory()
 
@@ -57,8 +62,8 @@ object Runner {
         }
       }
     } finally {
-      out.notebook(builder.build())
-      println(s"scalanb: Notebook log saved to ${out.path}")
+      val filePath = out.notebook(logName, builder.build())
+      println(s"scalanb: Notebook log saved to ${filePath}")
     }
   }
 }

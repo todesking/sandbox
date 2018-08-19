@@ -14,10 +14,12 @@ object Runner {
   def runBatch(args: Array[String], target: TargetType, notebookName: String): Unit = {
     import scala.language.reflectiveCalls
 
+    val logName = scalanb.Runner.newLogName(notebookName)
+
     val spark = SparkSession.builder()
       .appName(s"Notebook:$notebookName").getOrCreate()
 
-    val out = scalanb.Runner.newOut(notebookName)
+    val out = scalanb.Runner.newOut("file", Map())
 
     val builder = new Builder.OnMemory()
 
@@ -31,8 +33,8 @@ object Runner {
         }
       }
     } finally {
-      out.notebook(builder.build())
-      println(s"scalanb: Notebook log saved to ${out.path}")
+      val filePath = out.notebook(logName, builder.build())
+      println(s"scalanb: Notebook log saved to ${filePath}")
     }
   }
 }
