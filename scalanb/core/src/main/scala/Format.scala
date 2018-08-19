@@ -1,22 +1,26 @@
 package com.todesking.scalanb
 
 import com.todesking.scalanb.ipynb.Output
-import com.todesking.scalanb.ipynb.Data
 
-trait Format {
-  def apply(value: Any): Output
-  def apply(value: Any, str: String): Output
-  def error(t: Throwable): Output
+trait Format[-A] {
+  def apply(value: A): Value
 }
 
-object Format {
-  object Default extends Format {
-    override def apply(value: Any) =
-      apply(value, s"$value")
-    override def apply(value: Any, str: String): Output = {
-      Output.ExecuteResult(Data.text(str), Map(), 1)
-    }
-    override def error(t: Throwable) = {
+trait ErrorFormat {
+  def apply(t: Throwable): Output.Error
+}
+
+trait FormatLowPriorityImplicit {
+  implicit val defaultAny: Format[Any] = new Format[Any] {
+    override def apply(value: Any) = Value.text(s"$value")
+  }
+}
+object Format extends FormatLowPriorityImplicit {
+}
+
+object ErrorFormat {
+  implicit val default: ErrorFormat = new ErrorFormat {
+    override def apply(t: Throwable) = {
       val stackTraceMessage = t.getStackTrace.map { st =>
         s"  ${st.toString}"
       }

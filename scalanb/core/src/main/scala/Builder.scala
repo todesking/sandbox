@@ -4,25 +4,25 @@ import com.todesking.scalanb.ipynb.Cell
 import com.todesking.scalanb.ipynb.Output
 
 trait Builder {
-  val format: Format
+  protected def executionCount: Int
 
-  // res: result or error
   protected def flush(res: Option[Output]): Unit
 
   def code(src: String): Unit
 
   def expr(value: Unit): Unit = {}
+  def expr(value: Nothing): Unit = {}
 
-  def expr[A](value: A): Unit =
-    flush(Some(format(value)))
+  def expr(value: Value): Unit =
+    flush(Some(Output.ExecuteResult(value.data, Map(), executionCount)))
 
-  def expr(value: Any, str: String): Unit =
-    flush(Some(format(value, str))) // TODO
+  def expr[A: Format](value: A): Unit =
+    expr(implicitly[Format[A]].apply(value))
 
   def markdownCell(src: String): Unit
 
-  def error(t: Throwable): Unit =
-    flush(Some(format.error(t)))
+  def error(t: Throwable)(implicit format: ErrorFormat): Unit =
+    flush(Some(format.apply(t)))
 
   def stdout(s: String): Unit
   def stderr(s: String): Unit
@@ -31,9 +31,9 @@ trait Builder {
 }
 
 object Builder {
-  class OnMemory(override val format: Format) extends Builder {
+  class OnMemory extends Builder {
 
-    private[this] var executionCount = 1
+    private[this] var _executionCount = 1
     private[this] var cells = Seq.empty[Cell]
     private[this] var currentSrc = Seq.empty[String]
     private[this] var currentStdout = Seq.empty[String]
@@ -42,6 +42,8 @@ object Builder {
     private[this] def addCell(c: Cell) = {
       this.cells = this.cells :+ c
     }
+
+    override def executionCount = _executionCount
 
     override def code(s: String) = {
       this.currentSrc = this.currentSrc :+ s
@@ -87,7 +89,7 @@ object Builder {
             collapsed = false, autoscroll = false),
           outputs = outputs))
 
-        this.executionCount += 1
+        this._executionCount += 1
       }
 
     override def build() = {

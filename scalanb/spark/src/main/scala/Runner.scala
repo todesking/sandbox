@@ -19,8 +19,7 @@ object Runner {
 
     val out = scalanb.Runner.newOut(notebookName)
 
-    val format = Format.Default
-    val builder = new Builder.OnMemory(format)
+    val builder = new Builder.OnMemory()
 
     try {
       scalanb.Runner.run(builder) { builder =>

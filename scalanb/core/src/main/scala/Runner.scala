@@ -45,8 +45,7 @@ object Runner {
 
     val out = newOut(notebookName)
 
-    val format = Format.Default
-    val builder = new Builder.OnMemory(format)
+    val builder = new Builder.OnMemory()
 
     try {
       run(builder) { builder =>
