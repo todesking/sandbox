@@ -9,6 +9,12 @@ trait Out {
   def notebook(name: String, ast: ipynb.Notebook): String
 }
 
+class MultiOut(outs: Seq[Out]) extends Out {
+  override def prepare() = outs.foreach(_.prepare())
+  override def notebook(name: String, ast: ipynb.Notebook) =
+    outs.map(_.notebook(name, ast)).mkString(", ")
+}
+
 trait OutFactory {
   def name: String
   def newOut(args: Map[String, String]): Out

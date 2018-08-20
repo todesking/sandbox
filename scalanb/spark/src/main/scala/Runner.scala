@@ -15,11 +15,12 @@ object Runner {
     import scala.language.reflectiveCalls
 
     val logName = scalanb.Runner.newLogName(notebookName)
+    val (parsedArgs, _) = scalanb.Runner.parseArgs(args)
 
     val spark = SparkSession.builder()
       .appName(s"Notebook:$notebookName").getOrCreate()
 
-    val out = scalanb.Runner.newOut("file", Map())
+    val out = parsedArgs.out
 
     val builder = new Builder.OnMemory()
 
