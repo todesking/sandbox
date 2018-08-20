@@ -31,66 +31,94 @@ trait Builder {
 }
 
 object Builder {
-  class OnMemory extends Builder {
+  case class ExecLog(
+    code: String,
+    startAt: Long,
+    duration: Long,
+    stdout: Seq[String],
+    stderr: Seq[String]) {
+    def addStdout(s: String) = copy(stdout = this.stdout :+ s)
+    def addStderr(s: String) = copy(stderr = this.stderr :+ s)
+    def setDuration(t: Long) = copy(duration = t)
+  }
+  object ExecLog {
+    def apply(code: String, startAt: Long): ExecLog = ExecLog(code, startAt, startAt, Seq(), Seq())
+  }
 
+  class OnMemory extends Builder {
     private[this] var _executionCount = 1
+    override def executionCount = _executionCount
+
     private[this] var cells = Seq.empty[Cell]
-    private[this] var currentSrc = Seq.empty[String]
-    private[this] var currentStdout = Seq.empty[String]
-    private[this] var currentStderr = Seq.empty[String]
+
+    private[this] var execLogs = Seq.empty[ExecLog]
+    private[this] var currentExecLog: Option[ExecLog] = None
+
+    val showTimeMillis = 5 * 1000
 
     private[this] def addCell(c: Cell) = {
       this.cells = this.cells :+ c
     }
 
-    override def executionCount = _executionCount
-
     override def code(s: String) = {
-      this.currentSrc = this.currentSrc :+ s
+      currentExecLog.foreach { el =>
+        val duration = System.currentTimeMillis() - el.startAt
+        if (duration > showTimeMillis) {
+          this.currentExecLog = None
+          flush(None)
+          this.currentExecLog = Some(el)
+          val out = ipynb.Output.DisplayData(Value.text(f"Execution time: ${duration / 1000.0}%.2f").data, Map())
+          flush(Some(out))
+        } else {
+          this.execLogs = this.execLogs :+ el.setDuration(duration)
+        }
+      }
+      this.currentExecLog = Some(ExecLog(s, System.currentTimeMillis()))
     }
 
     override def stdout(s: String) = {
-      this.currentStdout = this.currentStdout :+ s
+      this.currentExecLog = currentExecLog.map(_.addStdout(s))
     }
 
     override def stderr(s: String) = {
-      this.currentStderr = this.currentStderr :+ s
+      this.currentExecLog = currentExecLog.map(_.addStderr(s))
     }
 
-    override def markdownCell(s: String) =
+    override def markdownCell(s: String) = {
+      flush(None)
       addCell(Cell.Markdown(s))
+    }
 
-    override def flush(res: Option[Output]) =
-      if (currentSrc.nonEmpty) {
-        var outputs = Seq.empty[Output]
-        if (currentStdout.nonEmpty) {
+    override def flush(res: Option[Output]) = {
+      val els = execLogs ++ currentExecLog
+      var outputs = Seq.empty[Output]
+      els.foreach { el =>
+        if (el.stdout.nonEmpty) {
           outputs = outputs :+ Output.Stream(
             "stdout",
-            currentStdout.mkString("\n"))
-          currentStdout = Seq()
+            el.stdout.mkString(""))
         }
-        if (currentStderr.nonEmpty) {
+        if (el.stderr.nonEmpty) {
           outputs = outputs :+ Output.Stream(
             "stderr",
-            currentStderr.mkString("\n"))
-          currentStderr = Seq()
+            el.stderr.mkString(""))
         }
-        res.foreach { r =>
-          outputs = outputs :+ r
-        }
-
-        val source = currentSrc.mkString("\n")
-        this.currentSrc = Seq()
-
+      }
+      res.foreach { r =>
+        outputs = outputs :+ r
+      }
+      if (els.nonEmpty) {
         addCell(Cell.Code(
           executionCount = executionCount,
-          source = source,
+          source = els.map(_.code).mkString("\n"),
           metadata = Cell.CodeMetadata(
             collapsed = false, autoscroll = false),
           outputs = outputs))
-
-        this._executionCount += 1
       }
+      this._executionCount += 1
+      this.currentExecLog = None
+      this.execLogs = Seq()
+    }
 
     override def build() = {
       flush(None)
