@@ -2,7 +2,6 @@ import com.todesking.{ scalanb => nb }
 
 @nb.Notebook
 class NBTest {
-  scalanb__builder
   println("hello")
 
   val abc = 1

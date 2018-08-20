@@ -89,19 +89,18 @@ object Builder {
       addCell(Cell.Markdown(s))
     }
 
-    override def flush(res: Option[Output]) = {
-      val els = execLogs ++ currentExecLog
+    private[this] def flushCell(els: Seq[ExecLog], res: Option[Output]): Unit = {
       var outputs = Seq.empty[Output]
       els.foreach { el =>
         if (el.stdout.nonEmpty) {
           outputs = outputs :+ Output.Stream(
             "stdout",
-            el.stdout.mkString(""))
+            el.stdout.mkString("") + "\n")
         }
         if (el.stderr.nonEmpty) {
           outputs = outputs :+ Output.Stream(
             "stderr",
-            el.stderr.mkString(""))
+            el.stderr.mkString("") + "\n")
         }
       }
       res.foreach { r =>
@@ -114,8 +113,13 @@ object Builder {
           metadata = Cell.CodeMetadata(
             collapsed = false, autoscroll = false),
           outputs = outputs))
+        this._executionCount += 1
       }
-      this._executionCount += 1
+    }
+
+    override def flush(res: Option[Output]) = {
+      flushCell(execLogs, None)
+      flushCell(currentExecLog.toSeq, res)
       this.currentExecLog = None
       this.execLogs = Seq()
     }
