@@ -9,6 +9,9 @@ PYENV_ROOT="$BASE/pyenv"
 PYV35=3.5.6
 PYV36=3.6.6
 
+git submodule init
+git submodule update
+
 for v in $PYV35 $PYV36; do
 	if [ ! -e "$PYENV_ROOT/versions/$v" ]; then
 		./pyenv/bin/pyenv install "$v"
