@@ -1,3 +1,6 @@
+// vim: shiftwidth=2 expandtab foldmethod=marker
+
+// include {{{
 #include <iostream>
 #include <string>
 #include <vector>
@@ -5,13 +8,18 @@
 #include <set>
 #include <map>
 #include <queue>
+#include <stack>
 #include <cmath>
 #include <utility>
 #include <cstdlib>
+// }}}
+
+// misc {{{
 using namespace std;
 typedef long long ll;
 #define rep(i, n) for (int i = 0; i < (int)(n); i++)
 #define rep2(i, s, n) for (int i = (s); i < (int)(n); i++)
+// }}}
 
 // debug(...) {{{
 bool debug_enabled = false;
@@ -23,11 +31,23 @@ template<class T> void debug1(const vector<T>& x) {
   cout << "[";
   auto i = x.begin();
   while(i != x.end()) {
-	cout << *i;
+    debug1(*i);
 	++i;
 	if(i != x.end()) cout << ", ";
   }
   cout << "]";
+}
+template<class K, class V> void debug1(const map<K, V>& x) {
+  cout << "{";
+  auto i = x.begin();
+  while(i != x.end()) {
+    debug1(get<0>(*i));
+    cout << ": ";
+    debug1(get<1>(*i));
+    ++i;
+    if(i != x.end()) cout << ", ";
+  }
+  cout << "}";
 }
 
 void debug2() { cout << endl; }
