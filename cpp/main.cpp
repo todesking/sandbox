@@ -22,7 +22,11 @@ typedef long long ll;
 // }}}
 
 // debug(...) {{{
-bool debug_enabled = false;
+static bool debug_enabled = false;
+static int debug_max_elms = 10;
+
+static int debug_max_count = 50;
+static int debug_current_count = 0;
 
 void debug1(char const * x) { cout << x; }
 template<class T> void debug1(const T& x) { cout << x; }
@@ -34,6 +38,10 @@ template<class T> void debug1(const vector<T>& x) {
     debug1(*i);
 	++i;
 	if(i != x.end()) cout << ", ";
+    if(std::distance(x.begin(), i) > debug_max_elms) {
+      cout << "...";
+      break;
+    }
   }
   cout << "]";
 }
@@ -59,6 +67,8 @@ template<class T, class... Ts> void debug2(const T& x, const Ts&... xs) {
 
 template<class T, class... Ts> void debug(const T& x, const Ts&... xs) {
   if(debug_enabled) {
+    ++debug_current_count;
+    if(debug_current_count > debug_max_count) debug_enabled = false;
 	cout << "[D] ";
 	debug1(x);
 	debug2(xs...);
