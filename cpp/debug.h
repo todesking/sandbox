@@ -2,7 +2,7 @@
 #include <map>
 #include <vector>
 
-bool debug_enabled = false;
+bool debug_enabled = true;
 int debug_max_elms = 10;
 
 int debug_max_count = 50;
