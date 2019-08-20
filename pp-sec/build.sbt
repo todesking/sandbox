@@ -13,3 +13,7 @@ scalacOptions ++= Seq(
 )
 scalacOptions in (Compile, console) ~= {_.filterNot(_ == "-Ywarn-unused-import")}
 scalacOptions in (Test, console) := { (scalacOptions in (Compile, console)).value }
+
+lazy val core = project in file(".")
+lazy val bench = (project in file("./bench")).dependsOn(core)
+
