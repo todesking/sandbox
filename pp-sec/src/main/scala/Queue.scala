@@ -10,6 +10,17 @@ trait Queue[T] {
 object Queue {
   // ref: [PFDS] Chris Okasaki(著), 稲葉一浩, 遠藤侑介(訳) (2017). 純粋関数型データ構造 株式会社ドワンゴ
 
+  // Baseline implementation. Just a wrapper of scala.collection.immutable.Queue
+  class Impl0[T](private[this] val q: scala.collection.immutable.Queue[T]) extends Queue[T] {
+    override def isEmpty = q.isEmpty
+    override def enQueue(t: T) = new Impl0(q.enqueue(t))
+    override def deQueue() =
+      if (isEmpty) throw new IllegalStateException("Queue is empty")
+      else new Impl0(q.dequeue._2)
+    override def head = q.headOption
+  }
+  def empty0[T]: Impl0[T] = new Impl0(scala.collection.immutable.Queue.empty)
+
   // Simple immutable Queue (Queue in [PFDS] 5.2)
   // enQueue, head, isEmpty is O(1)
   // deQueue is O(1)(amortized), O(N)(worst-case)
@@ -35,7 +46,7 @@ object Queue {
   // Immutable Queue with delayed stream (BankersQueue in [PFDS] 6.3.2)
   // head, isEmpty is O(1)
   // enQueue and deQueue is O(1)(amortized), O(N)(worst-case)
-  // Slower than Impl1 when not reused(due to lazy list overhead)
+  // Slower than Impl1 when not reused(due to the algorithm and lazy list overhead)
   class Impl2[T](
     private[this] val lenf: Int,
     private[this] val f: LazyList[T],
@@ -61,7 +72,7 @@ object Queue {
 
   // Immutable queue that every operation is O(1) (even in worst-case)
   // (Real-time queue in [PFDS] 7.2)
-  // Slower than Impl1 when not reused(due to lazy list overhead)
+  // Slower than Impl1 when not reused(due to the algorithm and lazy list overhead)
   class Impl3[T](
     private[this] val f: LazyList[T],
     private[this] val r: List[T],

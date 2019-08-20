@@ -52,6 +52,10 @@ trait QueueTest extends org.scalatest.FunSpec {
   }
 }
 
+class QueueTest0 extends QueueTest {
+  override def newEmptyQueue[T] = Queue.empty0
+}
+
 class QueueTest1 extends QueueTest {
   override def newEmptyQueue[A] = Queue.empty1
 }
