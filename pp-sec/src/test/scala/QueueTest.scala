@@ -5,7 +5,7 @@ import ppsec.queue.Queue
 trait QueueTest extends org.scalatest.FunSpec {
   def newEmptyQueue[A]: Queue[A]
 
-  describe("empty queue") {
+  describe("Empty queue") {
     it("should immutable empty queue") {
       val x = newEmptyQueue[Int]
       assert(x.isEmpty)
@@ -34,5 +34,8 @@ trait QueueTest extends org.scalatest.FunSpec {
 }
 
 class QueueTest1 extends QueueTest {
-  override def newEmptyQueue[A] = Queue.empty[A]
+  override def newEmptyQueue[A] = Queue.empty1
+}
+class QueueTest2 extends QueueTest {
+  override def newEmptyQueue[A] = Queue.empty2
 }
