@@ -30,6 +30,25 @@ trait QueueTest extends org.scalatest.FunSpec {
         newEmptyQueue[Int].deQueue
       }
     }
+    it("should not break while complex operation") {
+      val e = newEmptyQueue[Int]
+      val q1 =
+        e
+          .enQueue(1) // [1]
+          .deQueue
+          .enQueue(2)
+          .enQueue(3) // [2, 3]
+          .deQueue
+          .enQueue(4)
+          .enQueue(5)
+          .enQueue(6) // [3, 4, 5, 6]
+          .deQueue
+      assert(!q1.isEmpty)
+      assert(q1.head == Some(4))
+      assert(q1.deQueue.head == Some(5))
+      assert(q1.deQueue.deQueue.head == Some(6))
+      assert(q1.deQueue.deQueue.deQueue.head == None)
+    }
   }
 }
 
