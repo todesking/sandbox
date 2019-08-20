@@ -39,3 +39,6 @@ class QueueTest1 extends QueueTest {
 class QueueTest2 extends QueueTest {
   override def newEmptyQueue[A] = Queue.empty2
 }
+class QueueTest3 extends QueueTest {
+  override def newEmptyQueue[A] = Queue.empty3
+}
