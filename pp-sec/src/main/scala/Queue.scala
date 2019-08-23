@@ -4,6 +4,8 @@ trait Queue[T] {
   def isEmpty: Boolean
   def enQueue(t: T): Queue[T]
   // Removes the element at the beginning of the immutable queue, and returns the new queue.
+  // Throws IllegalStateException if the queue is empty.
+  // (Not NosuchElementException: Because the error is not about "such element")
   def deQueue(): Queue[T]
   def head: Option[T]
 }
