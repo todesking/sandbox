@@ -19,7 +19,33 @@
 #include "./debug.h"
 #else
 #define debug(...)
+#define debugn(...)
+#define debug_reset()
 #endif
+
+#include <cstdio>
+
+template<class T>
+std::string bin(int bits, const T& x) {
+  char buf[bits + 1];
+  buf[bits] = '\0';
+  for(int i = 0; i < bits; i++) {
+    if((x >> i) & 1) {
+      buf[bits - i - 1] = '1';
+    } else {
+      buf[bits - i - 1] = '0';
+    }
+  }
+  return std::string(buf);
+}
+std::string bin(int x) {
+  if(x < 0) return bin(32, x);
+  for(int i = 4; i < 31; i++) {
+    int y = 1 << i;
+    if(x < y) return bin(i, x);
+  }
+  return bin(32, x);
+}
 // }}}
 
 // misc {{{
