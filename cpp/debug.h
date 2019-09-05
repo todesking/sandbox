@@ -6,44 +6,44 @@
 
 // debug {{{
 bool debug_enabled = true;
-int debug_max_elms = 10;
+int debug_max_elms = 40;
 
-int debug_max_count = 50;
+int debug_max_count = 100;
 int debug_current_count = 0;
 
-void debug1(char const * x) { std::cout << x; }
-template<class T> void debug1(const T& x) { std::cout << x; }
-template<class T1, class T2> void debug1(const std::pair<T1, T2>& x) { std::cout << "(" << x.first << ", " << x.second << ")"; }
+void debug1(char const * x) { std::cerr << x; }
+template<class T> void debug1(const T& x) { std::cerr << x; }
+template<class T1, class T2> void debug1(const std::pair<T1, T2>& x) { std::cerr << "(" << x.first << ", " << x.second << ")"; }
 template<class T> void debug1(const std::vector<T>& x) {
-  std::cout << "[";
+  std::cerr << "[";
   auto i = x.begin();
   while(i != x.end()) {
     debug1(*i);
 	++i;
-	if(i != x.end()) std::cout << ", ";
+	if(i != x.end()) std::cerr << ", ";
     if(std::distance(x.begin(), i) > debug_max_elms) {
-      std::cout << "...";
+      std::cerr << "...";
       break;
     }
   }
-  std::cout << "]";
+  std::cerr << "]";
 }
 template<class K, class V> void debug1(const std::map<K, V>& x) {
-  std::cout << "{";
+  std::cerr << "{";
   auto i = x.begin();
   while(i != x.end()) {
     debug1(std::get<0>(*i));
-    std::cout << ": ";
+    std::cerr << ": ";
     debug1(std::get<1>(*i));
     ++i;
-    if(i != x.end()) std::cout << ", ";
+    if(i != x.end()) std::cerr << ", ";
   }
-  std::cout << "}";
+  std::cerr << "}";
 }
 
-void debug_impl2() { std::cout << std::endl; }
+void debug_impl2() { std::cerr << std::endl; }
 template<class T, class... Ts> void debug_impl2(const T& x, const Ts&... xs) {
-  std::cout << ' ';
+  std::cerr << ' ';
   debug1(x);
   debug_impl2(xs...);
 }
@@ -52,7 +52,7 @@ void debug_check() {
   if(debug_enabled) {
     ++debug_current_count;
     if(debug_current_count > debug_max_count) {
-      std::cout << "... (debug log disabled)" << std::endl;
+      std::cerr << "... (debug log disabled)" << std::endl;
       debug_enabled = false;
     }
   }
@@ -66,7 +66,7 @@ void debug_reset() {
 template<class T, class... Ts> void debug(const T& x, const Ts&... xs) {
   debug_check();
   if(debug_enabled) {
-	std::cout << "[D] ";
+	std::cerr << "[D] ";
 	debug1(x);
 	debug_impl2(xs...);
   }
@@ -92,16 +92,16 @@ bool debugn_started = false;
 struct debugn_end{};
 
 void debugn1_impl(const char* name, debugn_end end) {
-  if(debugn_started) std::cout << std::endl;
+  if(debugn_started) std::cerr << std::endl;
   debugn_started = false;
 }
 template<class T>
 void debugn1_impl(const char* name, const T& value) {
-  std::cout << name << ": " << value << ", ";
+  std::cerr << name << ": " << value << ", ";
 }
 void debugn_begin() {
   debugn_started = true;
-  std::cout << "[D] ";
+  std::cerr << "[D] ";
 }
 
 // }}}

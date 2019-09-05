@@ -6,12 +6,16 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <map>
+#include <unordered_map>
 #include <queue>
 #include <stack>
 #include <cmath>
 #include <utility>
 #include <cstdlib>
+#include <random>
+#include <chrono>
 // }}}
 
 // debug(...) {{{
@@ -50,7 +54,12 @@ std::string bin(int x) {
 
 // misc {{{
 using namespace std;
-typedef long long ll;
+template<class T, class U>
+
+using umap = unordered_map<T, U>;
+template<class T>
+using uset = unordered_set<T>;
+
 #define rep(i, n) for (int i = 0; i < (int)(n); i++)
 #define rep2(i, s, n) for (int i = (s); i < (int)(n); i++)
 
@@ -68,6 +77,21 @@ void reverse(T& arr) {
   std::reverse(arr.begin(), arr.end());
 }
 
+class Random {
+  public:
+  std::uniform_int_distribution<> uniform_int;
+  std::mt19937 rnd;
+  std::bernoulli_distribution bern_dist;
+  int uniform(int l, int r) {
+    return uniform_int(rnd, std::uniform_int_distribution<>::param_type(l, r));
+  }
+  int next(int N) {
+    return uniform(0, N - 1);
+  }
+  int bern(double p) {
+    return bern_dist(rnd, std::bernoulli_distribution::param_type(p));
+  }
+};
 // }}}
 
 // main {{{
@@ -78,23 +102,4 @@ int main() {
 // }}}
 
 void solve() {
-  int N;
-  cin >> N;
-  vector<int> H(N);
-  rep(i, N) {
-    cin >> H[i];
-  }
-
-  int sum = 0;
-  while(true) {
-    int i = 0;
-    while(i < N && H[i] == 0) i++;
-    if(i == N) break;
-    while(i < N && H[i] > 0) {
-      H[i]--;
-      i++;
-    }
-    sum++;
-  }
-  cout << sum << endl;
 }
