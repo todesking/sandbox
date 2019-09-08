@@ -60,6 +60,8 @@ using umap = unordered_map<T, U>;
 template<class T>
 using uset = unordered_set<T>;
 
+typedef long long ll;
+
 #define rep(i, n) for (int i = 0; i < (int)(n); i++)
 #define rep2(i, s, n) for (int i = (s); i < (int)(n); i++)
 

@@ -14,8 +14,8 @@ int debug_current_count = 0;
 void debug1(char const * x) { std::cerr << x; }
 template<class T> void debug1(const T& x) { std::cerr << x; }
 template<class T1, class T2> void debug1(const std::pair<T1, T2>& x) { std::cerr << "(" << x.first << ", " << x.second << ")"; }
-template<class T> void debug1(const std::vector<T>& x) {
-  std::cerr << "[";
+template<class T> void debug1_coll(const T& x, const char* left, const char* right) {
+  std::cerr << left;
   auto i = x.begin();
   while(i != x.end()) {
     debug1(*i);
@@ -26,7 +26,13 @@ template<class T> void debug1(const std::vector<T>& x) {
       break;
     }
   }
-  std::cerr << "]";
+  std::cerr << right;
+}
+template<class T> void debug1(const std::set<T>& x) {
+  debug1_coll(x, "{", "}");
+}
+template<class T> void debug1(const std::vector<T>& x) {
+  debug1_coll(x, "[", "]");
 }
 template<class K, class V> void debug1(const std::map<K, V>& x) {
   std::cerr << "{";
@@ -97,7 +103,9 @@ void debugn1_impl(const char* name, debugn_end end) {
 }
 template<class T>
 void debugn1_impl(const char* name, const T& value) {
-  std::cerr << name << ": " << value << ", ";
+  std::cerr << name << ": ";
+  debug1(value);
+  std::cerr << ", ";
 }
 void debugn_begin() {
   debugn_started = true;
