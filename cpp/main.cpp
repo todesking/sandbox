@@ -1,6 +1,7 @@
 // vim: shiftwidth=2 expandtab foldmethod=marker
 
 // include {{{
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <vector>
