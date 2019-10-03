@@ -3,6 +3,7 @@
 // include {{{
 #include <algorithm>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <vector>
 #include <map>
@@ -23,6 +24,7 @@
 #ifdef LOCAL_DEBUG
 #include "./debug.h"
 #else
+bool debug_enabled = false;
 #define debug(...)
 #define debugn(...)
 #define debug_reset()
@@ -95,11 +97,22 @@ class Random {
     return bern_dist(rnd, std::bernoulli_distribution::param_type(p));
   }
 };
+
+template <class A>
+ostream& out_vec(const vector<A>& x, const string& sep) {
+  rep(i, x.size()) {
+    cout << x[i];
+    if(i < x.size() - 1)
+      cout << sep;
+  }
+  return cout;
+}
 // }}}
 
 // main {{{
 void solve();
 int main() {
+  cout << setprecision(20);
   solve();
 }
 // }}}
