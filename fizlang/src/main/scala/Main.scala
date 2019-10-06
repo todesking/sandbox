@@ -14,10 +14,16 @@ object Expr {
 }
 
 object Parser extends RegexParsers {
-  def parseExpr(src: String): Either[String, Expr] = parseAll(expr, src) match {
-    case Success(e, _)    => Right(e)
-    case NoSuccess(e, in) => Left(e + "\n" + in.pos.longString)
-  }
+  def parseExpr(src: String): Either[String, Expr] =
+    translate(parseAll(expr, src))
+  def parseToplevel(src: String): Either[String, Seq[(String, Expr)]] =
+    translate(parseAll(toplevel, src))
+
+  private[this] def translate[A](a: ParseResult[A]): Either[String, A] =
+    a match {
+      case Success(e, _)    => Right(e)
+      case NoSuccess(e, in) => Left(e + "\n" + in.pos.longString)
+    }
 
   val keywords = Set(
     "fun",
@@ -27,6 +33,18 @@ object Parser extends RegexParsers {
   )
 
   val E = Expr
+
+  def toplevel: Parser[Seq[(String, Expr)]] = term.+
+
+  def term = top_let
+
+  def top_let = ("let" ~> name) ~ name.* ~ ("=" ~> expr) <~ ";" ^^ {
+    case name ~ params ~ body =>
+      name -> params.foldRight(body) {
+        case (p, e) =>
+          E.Fun(p, e)
+      }
+  }
 
   def expr: Parser[Expr] = op | app | fun | ifelse | expr1
   def expr1: Parser[Expr] = paren | lit_int | lit_str | ref
@@ -44,7 +62,10 @@ object Parser extends RegexParsers {
     case param ~ body => E.Fun(param, body)
   }
   def name = "[a-z]+".r ^? { case n if !keywords.contains(n) => n }
-  def app = expr1 ~ expr1 ^^ { case l ~ r                    => E.App(l, r) }
+  def app = expr1 ~ expr1.+ ^^ {
+    case l ~ rs =>
+      rs.foldLeft(l) { case (l, r) => E.App(l, r) }
+  }
   def ifelse = ("if" ~> expr) ~ ("then" ~> expr) ~ ("else" ~> expr) ^^ {
     case cond ~ th ~ el => E.If(cond, th, el)
   }
@@ -79,6 +100,22 @@ object Interpreter {
       case Right(expr) => eval(expr, env)
     }
   }
+  def runScript(src: String, env: Env = defaultEnv): Env =
+    Parser.parseToplevel(src) match {
+      case Left(msg) => throw new Error(s"Parse error: $msg")
+      case Right(xs) =>
+        xs.foldLeft(env) {
+          case (env, (name, expr)) =>
+            val v = eval(expr, env)
+            env + (name -> v)
+        }
+    }
+  def runMain(src: String, env: Env = defaultEnv): Any = {
+    val e = runScript(src, env)
+    val main = evalFun(E.Ref("main"), e)
+    eval(main.body, e + (main.param -> ()))
+  }
+
   def eval(expr: Expr, env: Env = defaultEnv): Any = expr match {
     case E.Lit(value) => value
     case E.IntPlus(l, r) =>
@@ -133,6 +170,15 @@ object Main {
     }
     println(s"=> $result")
   }
+  def testScript(s: String): Unit = {
+    println(s)
+    val result = try {
+      Interpreter.runMain(s)
+    } catch {
+      case e: Interpreter.Error => "[Error] " + e.getMessage
+    }
+    println(s"=> $result")
+  }
   def main(args: Array[String]): Unit = {
     test("1")
     test(""""Hello world!"""")
@@ -141,5 +187,11 @@ object Main {
     test("println(1 + 2)")
     test("if true then 1 else 2")
     test("if false then 1 else 2")
+    testScript("""
+      let a = 1;
+      let b = 2;
+      let add x y = x + y ;
+      let main x = add a b ;
+    """)
   }
 }
