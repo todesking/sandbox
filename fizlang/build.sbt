@@ -10,7 +10,6 @@ scalacOptions ++= {
   "-Woctal-literal",
   "-Wself-implicit",
   "-Wunused:imports",
-  "-Wunused:patvars",
   "-Wunused:privates",
   "-Wunused:locals",
   "-Wunused:explicits",
