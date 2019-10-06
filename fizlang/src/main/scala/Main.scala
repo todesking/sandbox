@@ -68,7 +68,10 @@ object Interpreter {
     "println" -> { x: Any =>
       println(x)
     }
-  ).map { case (k, v) => k -> Instinct(k, v) }.toMap
+  ).map { case (k, v) => k -> Instinct(k, v) }.toMap ++ Map(
+    "true" -> true,
+    "false" -> false
+  )
 
   def runExpr(src: String, env: Env = defaultEnv): Any = {
     Parser.parseExpr(src) match {
@@ -136,5 +139,7 @@ object Main {
     test("1 + 2")
     test("(fun x => x + 1) 10")
     test("println(1 + 2)")
+    test("if true then 1 else 2")
+    test("if false then 1 else 2")
   }
 }
