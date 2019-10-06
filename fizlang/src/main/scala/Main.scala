@@ -62,14 +62,21 @@ object Interpreter {
   class Error(msg: String) extends RuntimeException(msg)
 
   case class FunData(param: String, body: Expr, env: Env)
+  case class Instinct(name: String, f: Any => Any)
 
-  def runExpr(src: String, env: Env = Map()): Any = {
+  val defaultEnv = Seq(
+    "println" -> { x: Any =>
+      println(x)
+    }
+  ).map { case (k, v) => k -> Instinct(k, v) }.toMap
+
+  def runExpr(src: String, env: Env = defaultEnv): Any = {
     Parser.parseExpr(src) match {
       case Left(msg)   => throw new Error("Parse error: " + msg)
       case Right(expr) => eval(expr, env)
     }
   }
-  def eval(expr: Expr, env: Env = Map()): Any = expr match {
+  def eval(expr: Expr, env: Env = defaultEnv): Any = expr match {
     case E.Lit(value) => value
     case E.IntPlus(l, r) =>
       evalInt(l, env) + evalInt(r, env)
@@ -81,9 +88,14 @@ object Interpreter {
       if (evalBool(cond, env)) eval(th, env)
       else eval(el, env)
     case E.App(f, a) =>
-      val fun = evalFun(f, env)
+      val fun = eval(f, env)
       val arg = eval(a, env)
-      eval(fun.body, fun.env + (fun.param -> arg))
+      fun match {
+        case FunData(param, body, env) =>
+          eval(body, env + (param -> arg))
+        case Instinct(_, f) =>
+          f(arg)
+      }
     case E.Fun(param, body) =>
       FunData(param, body, env)
     case E.Ref(name) =>
@@ -91,17 +103,17 @@ object Interpreter {
         throw new Error(s"Name not found: $name")
       }
   }
-  def evalInt(expr: Expr, env: Env = Map()): Int =
+  def evalInt(expr: Expr, env: Env = defaultEnv): Int =
     eval(expr, env) match {
       case x: Int => x
       case unk    => throw new Error(s"Expected int: $unk")
     }
-  def evalBool(expr: Expr, env: Env = Map()): Boolean =
+  def evalBool(expr: Expr, env: Env = defaultEnv): Boolean =
     eval(expr, env) match {
       case x: Boolean => x
       case unk        => throw new Error(s"Expected bool: $unk")
     }
-  def evalFun(expr: Expr, env: Env = Map()): FunData =
+  def evalFun(expr: Expr, env: Env = defaultEnv): FunData =
     eval(expr, env) match {
       case f: FunData => f
       case unk        => throw new Error(s"Expected fun: $unk")
@@ -123,5 +135,6 @@ object Main {
     test(""""Hello world!"""")
     test("1 + 2")
     test("(fun x => x + 1) 10")
+    test("println(1 + 2)")
   }
 }
