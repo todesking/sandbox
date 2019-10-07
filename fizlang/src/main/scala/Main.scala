@@ -20,6 +20,7 @@ object Expr {
   case class Ref(param: String) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
   case class Block(body: Seq[Expr]) extends Expr
+  case class LetRec(defs: Seq[(String, Fun)], body: Expr) extends Expr
 }
 
 object Parser extends RegexParsers {
@@ -82,7 +83,7 @@ object Parser extends RegexParsers {
     }
   }
 
-  def expr: Parser[Expr] = fun | ifelse | guard | let | expr1
+  def expr: Parser[Expr] = fun | ifelse | guard | let | let_rec | expr1
   def name = "[a-z][a-z_]*".r ^? { case n if !keywords.contains(n) => n }
   def fun = ("fun" ~> name) ~ ("=>" ~> expr) ^^ {
     case param ~ body => E.Fun(param, body)
@@ -106,6 +107,22 @@ object Parser extends RegexParsers {
       }
       E.App(E.Fun(n, body), value)
   }
+  def let_rec =
+    ("let" ~ "rec") ~> rep1sep(name ~ name.+ ~ ("=" ~> expr), ";") ~ ("in" ~> expr) ^^ {
+      case defs ~ body =>
+        E.LetRec(
+          defs.map {
+            case (name ~ params ~ expr) =>
+              name -> params
+                .foldRight(expr) {
+                  case (p, e) =>
+                    E.Fun(p, e)
+                }
+                .asInstanceOf[Expr.Fun]
+          },
+          body
+        )
+    }
 
   def atom: Parser[Expr] = paren | block | lit_int | lit_str | lit_char | ref
   def expr1 =
@@ -172,6 +189,7 @@ object Parser extends RegexParsers {
 }
 
 object Interpreter {
+  var debug: Boolean = false
   val E = Expr
   type Env = Map[String, Any]
   class Error(msg: String) extends RuntimeException(msg)
@@ -271,6 +289,13 @@ object Interpreter {
     case E.Fun(param, body) =>
       FunData(param, body, env)
     case E.Ref(name) =>
+      if (debug) {
+        try {
+          println(s"Deref $name => ${env.get(name)}")
+        } catch {
+          case e: StackOverflowError =>
+        }
+      }
       env.get(name).getOrElse {
         throw new Error(s"Name not found: $name")
       }
@@ -279,6 +304,17 @@ object Interpreter {
         case (_, expr) =>
           eval(expr, env)
       }
+    case E.LetRec(defs, body) =>
+      val funs = defs.map {
+        case (name, fun) =>
+          name -> FunData(fun.param, fun.body, null)
+      }
+      val newEnv = env ++ funs
+      funs.foreach {
+        case (k, fun) =>
+          fun.env = newEnv
+      }
+      eval(body, newEnv)
   }
   private[this] def typeError(expected: String, value: Any, expr: Expr) = {
     val tpe = if (value == null) "null" else value.getClass
@@ -355,15 +391,17 @@ object Main {
       let add x y = x + y ;
       let main x = add a b ;
     """, 3)
+    // Interpreter.debug = true
     test(
       """
       let num_to_str n =
-          let last_digit n =
-              char_to_string (int_to_char $ char_to_int '0' + n % 10) in
-          let impl n s =
-              if n < 10 then last_digit n
-              else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
-          impl n "" in
+        let last_digit n =
+            char_to_string (int_to_char $ char_to_int '0' + n % 10) in
+        let rec impl n s =
+          let s = string_concat $ last_digit n $ s in
+          if n < 10 then s
+          else impl $ n / 10 $ s in
+        impl n "" in
       num_to_str 123
   """,
       "123"
@@ -383,29 +421,32 @@ object Main {
     testScript(
       """
       let main args =
-        let rec is_even n =
-          if n == 0 then true
-          else is_odd $ n - 1 in
-        let rec is_odd n =
-          if n == 0 then false
-          else is_even $ n - 1 in
+        let rec
+          is_even n =
+            if n == 0 then true
+            else is_odd $ n - 1 ;
+          is_odd n =
+            if n == 0 then false
+            else is_even $ n - 1 in
         is_even 14 ;
     """,
       true
     )
 
+    // Interpreter.debug = true
     testScript(
       """
-      let main x = 1
+      let main x =
         foreach 1 30 $ println . fizzbuzz_str ;
 
       let num_to_str n =
-          let last_digit n =
-              char_to_string (int_to_char $ char_to_int '0' + n % 10) in
-          let impl n s =
-              if n < 10 then last_digit n
-              else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
-          impl n "" ;
+        let last_digit n =
+            char_to_string (int_to_char $ char_to_int '0' + n % 10) in
+        let rec impl n s =
+          let s = string_concat $ last_digit n $ s in
+          if n < 10 then s
+          else impl $ n / 10 $ s in
+        impl n "" ;
 
       let fizzbuzz_str n = if
           | n % 15 == 0 then "FizzBuzz"
@@ -413,8 +454,8 @@ object Main {
           | n % 5 == 0 then "Buzz"
           | else num_to_str n ;
 
-      let foreach from to f = if
-          | from <= to then { f from; foreach $ from + 1 $ to }
+      let rec foreach from to f = if
+          | from <= to then { f from; foreach $ from + 1 $ to $ f }
           | else unit
           ;
     """,
