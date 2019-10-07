@@ -25,7 +25,7 @@ object Expr {
 object Parser extends RegexParsers {
   def parseExpr(src: String): Either[String, Expr] =
     translate(parseAll(expr, src))
-  def parseToplevel(src: String): Either[String, Seq[(String, Expr)]] =
+  def parseToplevel(src: String): Either[String, Seq[(String, Boolean, Expr)]] =
     translate(parseAll(toplevel, src))
 
   private[this] def translate[A](a: ParseResult[A]): Either[String, A] =
@@ -40,21 +40,29 @@ object Parser extends RegexParsers {
     "then",
     "else",
     "let",
-    "in"
+    "in",
+    "rec"
   )
 
   val E = Expr
 
-  def toplevel: Parser[Seq[(String, Expr)]] = term.+
+  def toplevel: Parser[Seq[(String, Boolean, Expr)]] = term.+
 
   def term = top_let
 
-  def top_let = ("let" ~> name) ~ name.+ ~ ("=" ~> expr) <~ ";" ^^ {
-    case name ~ params ~ body =>
-      name -> params.foldRight(body) {
-        case (p, e) =>
-          E.Fun(p, e)
-      }
+  def top_let = ("let" ~> "rec".?) ~ name ~ name.* ~ ("=" ~> expr) <~ ";" ^? {
+    case Some(_) ~ name ~ (params @ _ :: _) ~ body =>
+      (
+        name,
+        true,
+        params.foldRight(body) { case (p, e) => E.Fun(p, e) }
+      )
+    case None ~ name ~ params ~ body =>
+      (
+        name,
+        false,
+        params.foldRight(body) { case (p, e) => E.Fun(p, e) }
+      )
   }
 
   private[this] def opSyntax(
@@ -168,7 +176,7 @@ object Interpreter {
   type Env = Map[String, Any]
   class Error(msg: String) extends RuntimeException(msg)
 
-  case class FunData(param: String, body: Expr, env: Env)
+  case class FunData(param: String, body: Expr, var env: Env)
   case class Instinct(name: String, f: Any => Any)
 
   val defaultEnv = Seq(
@@ -205,11 +213,18 @@ object Interpreter {
     Parser.parseToplevel(src) match {
       case Left(msg) => throw new Error(s"Parse error: $msg")
       case Right(xs) =>
-        xs.foldLeft(env) {
-          case (env, (name, expr)) =>
-            val v = eval(expr, env)
-            env + (name -> v)
-        }
+        val finalEnv =
+          xs.foldLeft(env) {
+            case (env, (name, rec, expr)) =>
+              val v = eval(expr, env)
+              env + (name -> v)
+          }
+        xs.filter(_._2)
+          .foreach {
+            case (name, rec, expr) =>
+              finalEnv(name).asInstanceOf[FunData].env = finalEnv
+          }
+        finalEnv
     }
   def runMain(src: String, env: Env = defaultEnv): Any = {
     val e = runScript(src, env)
@@ -299,12 +314,15 @@ object Main {
     }
     println(s"=> $result")
   }
-  def testScript(s: String): Unit = {
+  def testScript(s: String, expected: Any): Unit = {
     println(s"> $s")
     val result = try {
-      Interpreter.runMain(s)
+      val e = Interpreter.runMain(s)
+      if (e == expected) e.toString
+      else throw new AssertionError(s"[Unexpected] $e != $expected")
     } catch {
       case e: Interpreter.Error => "[Error] " + e.getMessage
+      case e: AssertionError    => e.getMessage
     }
     println(s"=> $result")
   }
@@ -336,7 +354,7 @@ object Main {
       let b = 2;
       let add x y = x + y ;
       let main x = add a b ;
-    """)
+    """, 3)
     test(
       """
       let num_to_str n =
@@ -349,6 +367,31 @@ object Main {
       num_to_str 123
   """,
       "123"
+    )
+    testScript(
+      """
+      let rec is_even n =
+        if n == 0 then true
+        else is_odd $ n - 1 ;
+      let rec is_odd n =
+        if n == 0 then false
+        else is_even $ n - 1 ;
+      let main x = is_even 13 ;
+    """,
+      false
+    )
+    testScript(
+      """
+      let main args =
+        let rec is_even n =
+          if n == 0 then true
+          else is_odd $ n - 1 in
+        let rec is_odd n =
+          if n == 0 then false
+          else is_even $ n - 1 in
+        is_even 14 ;
+    """,
+      true
     )
 
     testScript(
@@ -374,7 +417,8 @@ object Main {
           | from <= to then { f from; foreach $ from + 1 $ to }
           | else unit
           ;
-    """
+    """,
+      ()
     )
   }
 }
