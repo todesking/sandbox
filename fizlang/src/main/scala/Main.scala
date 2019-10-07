@@ -39,7 +39,8 @@ object Parser extends RegexParsers {
     "if",
     "then",
     "else",
-    "let"
+    "let",
+    "in"
   )
 
   val E = Expr
@@ -73,7 +74,7 @@ object Parser extends RegexParsers {
     }
   }
 
-  def expr: Parser[Expr] = fun | ifelse | guard | expr1
+  def expr: Parser[Expr] = fun | ifelse | guard | let | expr1
   def name = "[a-z][a-z_]*".r ^? { case n if !keywords.contains(n) => n }
   def fun = ("fun" ~> name) ~ ("=>" ~> expr) ^^ {
     case param ~ body => E.Fun(param, body)
@@ -89,6 +90,14 @@ object Parser extends RegexParsers {
             E.If(cond, body, rest)
         }
     }
+  def let = ("let" ~> name) ~ name.* ~ ("=" ~> expr) ~ ("in" ~> expr) ^^ {
+    case n ~ params ~ e ~ body =>
+      val value = params.foldLeft(e) {
+        case (e, p) =>
+          E.Fun(p, e)
+      }
+      E.App(E.Fun(n, body), value)
+  }
 
   def atom: Parser[Expr] = paren | block | lit_int | lit_str | ref
   def expr1 =
@@ -313,6 +322,8 @@ object Main {
     test("1 <= 1", true)
     test("1 < 2", true)
     test("unit", ())
+    test("let x = 10 in let y = 20 in let x = 3 in x + y", 23)
+    test("let add x y = x + y in add 20 22", 42)
     testScript("""
       let a = 1;
       let b = 2;
