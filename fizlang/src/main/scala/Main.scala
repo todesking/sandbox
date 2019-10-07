@@ -9,6 +9,8 @@ object Expr {
   case class IntMul(l: Expr, r: Expr) extends Expr
   case class IntDiv(l: Expr, r: Expr) extends Expr
   case class IntMod(l: Expr, r: Expr) extends Expr
+  case class Eq(l: Expr, r: Expr) extends Expr
+  case class Not(expr: Expr) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class Fun(param: String, body: Expr) extends Expr
   case class Ref(param: String) extends Expr
@@ -87,13 +89,19 @@ object Parser extends RegexParsers {
     case (l, op, r) =>
       E.App(l, r)
   }
-  def expr2: Parser[Expr] = opSyntax(expr3, "[-+]".r) {
+  def expr2: Parser[Expr] = opSyntax(expr3, "==|!=".r) {
+    case (l, "==", r) =>
+      E.Eq(l, r)
+    case (l, "!=", r) =>
+      E.Not(E.Eq(l, r))
+  }
+  def expr3: Parser[Expr] = opSyntax(expr4, "[-+]".r) {
     case (l, "+", r) =>
       E.IntPlus(l, r)
     case (l, "-", r) =>
       E.IntMinus(l, r)
   }
-  def expr3: Parser[Expr] = opSyntax(expr4, "[*/%]".r) {
+  def expr4: Parser[Expr] = opSyntax(expr5, "[*/%]".r) {
     case (l, "*", r) =>
       E.IntMul(l, r)
     case (l, "/", r) =>
@@ -101,15 +109,15 @@ object Parser extends RegexParsers {
     case (l, "%", r) =>
       E.IntMod(l, r)
   }
-  def expr4: Parser[Expr] = opSyntax(expr5, ".") {
+  def expr5: Parser[Expr] = opSyntax(expr6, ".") {
     case (l, ".", r) =>
       E.Fun("$x", E.App(l, E.App(r, E.Ref("$x"))))
   }
-  def expr5: Parser[Expr] = expr6 ~ rep(expr6) ^^ {
+  def expr6: Parser[Expr] = expr7 ~ rep(expr7) ^^ {
     case x ~ xs =>
       xs.foldLeft(x) { case (l, r) => E.App(l, r) }
   }
-  def expr6: Parser[Expr] = paren | lit_int | lit_str | ref
+  def expr7: Parser[Expr] = paren | lit_int | lit_str | ref
 
   def paren = ("(" ~> expr) <~ ")"
   def lit_int = "[0-9]+".r ^^ { x =>
@@ -188,6 +196,10 @@ object Interpreter {
       evalInt(l, env) / evalInt(r, env)
     case E.IntMod(l, r) =>
       evalInt(l, env) % evalInt(r, env)
+    case E.Eq(l, r) =>
+      eval(l, env) == eval(r, env)
+    case E.Not(expr) =>
+      !evalBool(expr, env)
     case E.If(cond, th, el) =>
       if (evalBool(cond, env)) eval(th, env)
       else eval(el, env)
@@ -256,6 +268,8 @@ object Main {
     test("if false then 1 else 2")
     test("println . char_to_string . int_to_char $ 42")
     test("if | false then 1 | true then 2 | else 3")
+    test("1 == 2")
+    test("1 != 2")
     testScript("""
       let a = 1;
       let b = 2;
