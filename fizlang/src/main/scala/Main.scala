@@ -99,7 +99,7 @@ object Parser extends RegexParsers {
       E.App(E.Fun(n, body), value)
   }
 
-  def atom: Parser[Expr] = paren | block | lit_int | lit_str | ref
+  def atom: Parser[Expr] = paren | block | lit_int | lit_str | lit_char | ref
   def expr1 =
     Seq(
       opSyntax("$") {
@@ -154,6 +154,9 @@ object Parser extends RegexParsers {
   }
   def lit_str = ("\"" ~> """[^"]*""".r) <~ "\"" ^^ { x =>
     E.Lit(x)
+  }
+  def lit_char = ("'" ~> ".".r) <~ "'" ^^ { c =>
+    E.Lit(c.head)
   }
   def ref = name ^^ { x =>
     E.Ref(x)
@@ -262,20 +265,24 @@ object Interpreter {
           eval(expr, env)
       }
   }
+  private[this] def typeError(expected: String, value: Any) = {
+    val tpe = if (value == null) "null" else value.getClass
+    new Error(s"Expected $expected: $value: ${tpe}")
+  }
   def evalInt(expr: Expr, env: Env = defaultEnv): Int =
     eval(expr, env) match {
       case x: Int => x
-      case unk    => throw new Error(s"Expected int: $unk")
+      case unk    => throw typeError("int", unk)
     }
   def evalBool(expr: Expr, env: Env = defaultEnv): Boolean =
     eval(expr, env) match {
       case x: Boolean => x
-      case unk        => throw new Error(s"Expected bool: $unk")
+      case unk        => throw typeError("bool", unk)
     }
   def evalFun(expr: Expr, env: Env = defaultEnv): FunData =
     eval(expr, env) match {
       case f: FunData => f
-      case unk        => throw new Error(s"Expected fun: $unk")
+      case unk        => throw typeError("fun", unk)
     }
 }
 
@@ -335,6 +342,14 @@ object Main {
       let main x =
         foreach 1 30 $ println . fizzbuzz_str ;
 
+      let num_to_str n =
+          let last_digit n =
+              char_to_string $ int_to_char $ (char_to_int '0') + (n % 10) in
+          let impl n s =
+              if n < 10 then last_digit n
+              else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
+          impl n "" ;
+
       let fizzbuzz_str n = if
           | n % 15 == 0 then "FizzBuzz"
           | n % 3 == 0 then "Fizz"
@@ -345,14 +360,6 @@ object Main {
           | from <= to then { f from; foreach $ from + 1 $ to }
           | else unit
           ;
-
-      let num_to_str n =
-          let last_digit n =
-              char_to_string $ int_to_char $ (char_to_int '0') + (n % 10) in
-          let impl n s =
-              if n < 10 then last_digit n
-              else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
-          impl n "" ;
     """)
   }
 }
