@@ -10,6 +10,10 @@ object Expr {
   case class IntDiv(l: Expr, r: Expr) extends Expr
   case class IntMod(l: Expr, r: Expr) extends Expr
   case class Eq(l: Expr, r: Expr) extends Expr
+  case class Gt(l: Expr, r: Expr) extends Expr
+  case class Ge(l: Expr, r: Expr) extends Expr
+  case class Le(l: Expr, r: Expr) extends Expr
+  case class Lt(l: Expr, r: Expr) extends Expr
   case class Not(expr: Expr) extends Expr
   case class If(cond: Expr, th: Expr, el: Expr) extends Expr
   case class Fun(param: String, body: Expr) extends Expr
@@ -93,11 +97,19 @@ object Parser extends RegexParsers {
         case (l, op, r) =>
           E.App(l, r)
       },
-      opSyntax("==|!=".r) {
+      opSyntax("==|!=|<=|>=|<|>".r) {
         case (l, "==", r) =>
           E.Eq(l, r)
         case (l, "!=", r) =>
           E.Not(E.Eq(l, r))
+        case (l, "<", r) =>
+          E.Lt(l, r)
+        case (l, ">", r) =>
+          E.Gt(l, r)
+        case (l, "<=", r) =>
+          E.Le(l, r)
+        case (l, ">=", r) =>
+          E.Ge(l, r)
       },
       opSyntax("[-+]".r) {
         case (l, "+", r) =>
@@ -206,6 +218,14 @@ object Interpreter {
       evalInt(l, env) % evalInt(r, env)
     case E.Eq(l, r) =>
       eval(l, env) == eval(r, env)
+    case E.Gt(l, r) =>
+      evalInt(l, env) > evalInt(r, env)
+    case E.Ge(l, r) =>
+      evalInt(l, env) >= evalInt(r, env)
+    case E.Le(l, r) =>
+      evalInt(l, env) <= evalInt(r, env)
+    case E.Lt(l, r) =>
+      evalInt(l, env) < evalInt(r, env)
     case E.Not(expr) =>
       !evalBool(expr, env)
     case E.If(cond, th, el) =>
@@ -287,6 +307,10 @@ object Main {
     test("1 == 2", false)
     test("1 != 2", true)
     test("{ 1; println 2; 3 }", 3)
+    test("1 >= 1", true)
+    test("1 > 2", false)
+    test("1 <= 1", true)
+    test("1 < 2", true)
     testScript("""
       let a = 1;
       let b = 2;
