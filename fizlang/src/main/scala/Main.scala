@@ -49,7 +49,7 @@ object Parser extends RegexParsers {
 
   def term = top_let
 
-  def top_let = ("let" ~> name) ~ name.* ~ ("=" ~> expr) <~ ";" ^^ {
+  def top_let = ("let" ~> name) ~ name.+ ~ ("=" ~> expr) <~ ";" ^^ {
     case name ~ params ~ body =>
       name -> params.foldRight(body) {
         case (p, e) =>
@@ -92,8 +92,8 @@ object Parser extends RegexParsers {
     }
   def let = ("let" ~> name) ~ name.* ~ ("=" ~> expr) ~ ("in" ~> expr) ^^ {
     case n ~ params ~ e ~ body =>
-      val value = params.foldLeft(e) {
-        case (e, p) =>
+      val value = params.foldRight(e) {
+        case (p, e) =>
           E.Fun(p, e)
       }
       E.App(E.Fun(n, body), value)
@@ -265,24 +265,24 @@ object Interpreter {
           eval(expr, env)
       }
   }
-  private[this] def typeError(expected: String, value: Any) = {
+  private[this] def typeError(expected: String, value: Any, expr: Expr) = {
     val tpe = if (value == null) "null" else value.getClass
-    new Error(s"Expected $expected: $value: ${tpe}")
+    new Error(s"Expected $expected: $value: ${tpe}, location: $expr")
   }
   def evalInt(expr: Expr, env: Env = defaultEnv): Int =
     eval(expr, env) match {
       case x: Int => x
-      case unk    => throw typeError("int", unk)
+      case unk    => throw typeError("int", unk, expr)
     }
   def evalBool(expr: Expr, env: Env = defaultEnv): Boolean =
     eval(expr, env) match {
       case x: Boolean => x
-      case unk        => throw typeError("bool", unk)
+      case unk        => throw typeError("bool", unk, expr)
     }
   def evalFun(expr: Expr, env: Env = defaultEnv): FunData =
     eval(expr, env) match {
       case f: FunData => f
-      case unk        => throw typeError("fun", unk)
+      case unk        => throw typeError("fun", unk, expr)
     }
 }
 
@@ -330,21 +330,35 @@ object Main {
     test("1 < 2", true)
     test("unit", ())
     test("let x = 10 in let y = 20 in let x = 3 in x + y", 23)
-    test("let add x y = x + y in add 20 22", 42)
+    test("let div x y = x / y in div 10 3", 3)
     testScript("""
       let a = 1;
       let b = 2;
       let add x y = x + y ;
       let main x = add a b ;
     """)
+    test(
+      """
+      let num_to_str n =
+          let last_digit n =
+              char_to_string (int_to_char $ char_to_int '0' + n % 10) in
+          let impl n s =
+              if n < 10 then last_digit n
+              else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
+          impl n "" in
+      num_to_str 123
+  """,
+      "123"
+    )
 
-    testScript("""
-      let main x =
+    testScript(
+      """
+      let main x = 1
         foreach 1 30 $ println . fizzbuzz_str ;
 
       let num_to_str n =
           let last_digit n =
-              char_to_string $ int_to_char $ (char_to_int '0') + (n % 10) in
+              char_to_string (int_to_char $ char_to_int '0' + n % 10) in
           let impl n s =
               if n < 10 then last_digit n
               else impl $ n / 10 $ (string_concat $ last_digit n $ s) in
@@ -360,6 +374,7 @@ object Main {
           | from <= to then { f from; foreach $ from + 1 $ to }
           | else unit
           ;
-    """)
+    """
+    )
   }
 }
