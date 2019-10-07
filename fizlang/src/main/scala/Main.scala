@@ -246,12 +246,15 @@ object Interpreter {
 }
 
 object Main {
-  def test(s: String): Unit = {
+  def test(s: String, expected: Any): Unit = {
     println(s"> $s")
     val result = try {
-      Interpreter.runExpr(s).toString
+      val e = Interpreter.runExpr(s)
+      if (e == expected) e.toString
+      else throw new AssertionError(s"[Unexpected] $e != $expected")
     } catch {
       case e: Interpreter.Error => "[Error] " + e.getMessage
+      case e: AssertionError    => e.getMessage
     }
     println(s"=> $result")
   }
@@ -265,21 +268,21 @@ object Main {
     println(s"=> $result")
   }
   def main(args: Array[String]): Unit = {
-    test("1")
-    test(""""Hello world!"""")
-    test("1 + 2")
-    test("1 * 2")
-    test("1 / 2")
-    test("1 % 2")
-    test("(fun x => x + 1) 10")
-    test("println(1 + 2)")
-    test("if true then 1 else 2")
-    test("if false then 1 else 2")
-    test("println . char_to_string . int_to_char $ 42")
-    test("if | false then 1 | true then 2 | else 3")
-    test("1 == 2")
-    test("1 != 2")
-    test("{ 1; println 2; 3 }")
+    test("1", 1)
+    test(""""Hello world!"""", "Hello world!")
+    test("1 + 2", 3)
+    test("1 * 2", 2)
+    test("1 / 2", 0)
+    test("1 % 2", 1)
+    test("(fun x => x + 1) 10", 11)
+    test("println(1 + 2)", ())
+    test("if true then 1 else 2", 1)
+    test("if false then 1 else 2", 2)
+    test("char_to_string . int_to_char $ 42", "*")
+    test("if | false then 1 | true then 2 | else 3", 2)
+    test("1 == 2", false)
+    test("1 != 2", true)
+    test("{ 1; println 2; 3 }", 3)
     testScript("""
       let a = 1;
       let b = 2;
