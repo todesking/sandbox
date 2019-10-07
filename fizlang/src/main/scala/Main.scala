@@ -179,7 +179,8 @@ object Interpreter {
     }
   ).map { case (k, v) => k -> Instinct(k, v) }.toMap ++ Map(
     "true" -> true,
-    "false" -> false
+    "false" -> false,
+    "unit" -> ()
   )
 
   def runExpr(src: String, env: Env = defaultEnv): Any = {
@@ -311,6 +312,7 @@ object Main {
     test("1 > 2", false)
     test("1 <= 1", true)
     test("1 < 2", true)
+    test("unit", ())
     testScript("""
       let a = 1;
       let b = 2;
@@ -330,7 +332,7 @@ object Main {
 
       let foreach from to f = if
           | from <= to then { f from; foreach $ from + 1 $ to }
-          | else ()
+          | else unit
           ;
 
       let num_to_str n =
