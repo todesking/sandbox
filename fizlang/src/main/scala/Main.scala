@@ -31,7 +31,8 @@ object Parser extends RegexParsers {
     "fun",
     "if",
     "then",
-    "else"
+    "else",
+    "let"
   )
 
   val E = Expr
@@ -48,26 +49,25 @@ object Parser extends RegexParsers {
       }
   }
 
-  private[this] def repseps1[A, B](
-      x: Parser[A],
-      sep: Parser[B]
-  ): Parser[A ~ Seq[(B, A)]] = {
+  private[this] def opSyntax(
+      x: Parser[Expr],
+      sep: Parser[String]
+  )(
+      handle: PartialFunction[(Expr, String, Expr), Expr]
+  ): Parser[Expr] = {
     x ~ (sep ~ x).* ^^ {
       case x ~ xs =>
         new ~(x, xs.map { case b ~ a => (b, a) })
+    } ^^ {
+      case x ~ xs =>
+        xs.foldLeft(x) {
+          case (l, (op, r)) =>
+            handle((l, op, r))
+        }
     }
   }
-  private[this] def handleOp(
-      f: PartialFunction[(Expr, String, Expr), Expr]
-  ): (Expr ~ Seq[(String, Expr)]) => Expr = {
-    case x ~ xs =>
-      xs.foldLeft(x) {
-        case (l, (op, r)) =>
-          f((l, op, r))
-      }
-  }
 
-  def expr: Parser[Expr] = fun | ifelse | expr1
+  def expr: Parser[Expr] = fun | ifelse | guard | expr1
   def name = "[a-z][a-z_]*".r ^? { case n if !keywords.contains(n) => n }
   def fun = ("fun" ~> name) ~ ("=>" ~> expr) ^^ {
     case param ~ body => E.Fun(param, body)
@@ -75,20 +75,25 @@ object Parser extends RegexParsers {
   def ifelse = ("if" ~> expr) ~ ("then" ~> expr) ~ ("else" ~> expr) ^^ {
     case cond ~ th ~ el => E.If(cond, th, el)
   }
-  def expr1: Parser[Expr] = repseps1(expr2, "$") ^^ {
-    case x ~ xs =>
-      xs.foldLeft(x) {
-        case (l, (op, r)) =>
-          E.App(l, r)
-      }
+  def guard =
+    ("if" ~ "|") ~> rep1sep((expr <~ "then") ~ expr, "|") ~ (("|" ~ "else") ~> expr) ^^ {
+      case ifs ~ el =>
+        ifs.foldRight(el) {
+          case (cond ~ body, rest) =>
+            E.If(cond, body, rest)
+        }
+    }
+  def expr1: Parser[Expr] = opSyntax(expr2, "$") {
+    case (l, op, r) =>
+      E.App(l, r)
   }
-  def expr2: Parser[Expr] = repseps1(expr3, "[-+]".r) ^^ handleOp {
+  def expr2: Parser[Expr] = opSyntax(expr3, "[-+]".r) {
     case (l, "+", r) =>
       E.IntPlus(l, r)
     case (l, "-", r) =>
       E.IntMinus(l, r)
   }
-  def expr3: Parser[Expr] = repseps1(expr4, "[*/%]".r) ^^ handleOp {
+  def expr3: Parser[Expr] = opSyntax(expr4, "[*/%]".r) {
     case (l, "*", r) =>
       E.IntMul(l, r)
     case (l, "/", r) =>
@@ -96,7 +101,7 @@ object Parser extends RegexParsers {
     case (l, "%", r) =>
       E.IntMod(l, r)
   }
-  def expr4: Parser[Expr] = repseps1(expr5, ".") ^^ handleOp {
+  def expr4: Parser[Expr] = opSyntax(expr5, ".") {
     case (l, ".", r) =>
       E.Fun("$x", E.App(l, E.App(r, E.Ref("$x"))))
   }
@@ -250,6 +255,7 @@ object Main {
     test("if true then 1 else 2")
     test("if false then 1 else 2")
     test("println . char_to_string . int_to_char $ 42")
+    test("if | false then 1 | true then 2 | else 3")
     testScript("""
       let a = 1;
       let b = 2;
@@ -259,17 +265,17 @@ object Main {
 
     testScript("""
       let main x =
-        foreach 1 30 $ print . fizzbuzz_str
+        foreach 1 30 $ println . fizzbuzz_str ;
 
       let fizzbuzz_str n = if
-          | n % 15 == 0 => "FizzBuzz"
-          | n % 3 == 0 => "Fizz"
-          | n % 5 == 0 => "Buzz"
-          | else => num_to_str n ;
+          | n % 15 == 0 then "FizzBuzz"
+          | n % 3 == 0 then "Fizz"
+          | n % 5 == 0 then "Buzz"
+          | else num_to_str n ;
 
       let foreach from to f = if
-          | from <= to => { f from; foreach $ from + 1 $ to }
-          | else => ()
+          | from <= to then { f from; foreach $ from + 1 $ to }
+          | else ()
           ;
 
       let num_to_str n =
