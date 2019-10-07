@@ -53,11 +53,10 @@ object Parser extends RegexParsers {
   }
 
   private[this] def opSyntax(
-      x: Parser[Expr],
       sep: Parser[String]
   )(
       handle: PartialFunction[(Expr, String, Expr), Expr]
-  ): Parser[Expr] = {
+  ): Parser[Expr] => Parser[Expr] = { x: Parser[Expr] =>
     x ~ (sep ~ x).* ^^ {
       case x ~ xs =>
         new ~(x, xs.map { case b ~ a => (b, a) })
@@ -86,39 +85,44 @@ object Parser extends RegexParsers {
             E.If(cond, body, rest)
         }
     }
-  def expr1: Parser[Expr] = opSyntax(expr2, "$") {
-    case (l, op, r) =>
-      E.App(l, r)
-  }
-  def expr2: Parser[Expr] = opSyntax(expr3, "==|!=".r) {
-    case (l, "==", r) =>
-      E.Eq(l, r)
-    case (l, "!=", r) =>
-      E.Not(E.Eq(l, r))
-  }
-  def expr3: Parser[Expr] = opSyntax(expr4, "[-+]".r) {
-    case (l, "+", r) =>
-      E.IntPlus(l, r)
-    case (l, "-", r) =>
-      E.IntMinus(l, r)
-  }
-  def expr4: Parser[Expr] = opSyntax(expr5, "[*/%]".r) {
-    case (l, "*", r) =>
-      E.IntMul(l, r)
-    case (l, "/", r) =>
-      E.IntDiv(l, r)
-    case (l, "%", r) =>
-      E.IntMod(l, r)
-  }
-  def expr5: Parser[Expr] = opSyntax(expr6, ".") {
-    case (l, ".", r) =>
-      E.Fun("$x", E.App(l, E.App(r, E.Ref("$x"))))
-  }
-  def expr6: Parser[Expr] = expr7 ~ rep(expr7) ^^ {
-    case x ~ xs =>
-      xs.foldLeft(x) { case (l, r) => E.App(l, r) }
-  }
-  def expr7: Parser[Expr] = paren | block | lit_int | lit_str | ref
+
+  def atom: Parser[Expr] = paren | block | lit_int | lit_str | ref
+  def expr1 =
+    Seq(
+      opSyntax("$") {
+        case (l, op, r) =>
+          E.App(l, r)
+      },
+      opSyntax("==|!=".r) {
+        case (l, "==", r) =>
+          E.Eq(l, r)
+        case (l, "!=", r) =>
+          E.Not(E.Eq(l, r))
+      },
+      opSyntax("[-+]".r) {
+        case (l, "+", r) =>
+          E.IntPlus(l, r)
+        case (l, "-", r) =>
+          E.IntMinus(l, r)
+      },
+      opSyntax("[*/%]".r) {
+        case (l, "*", r) =>
+          E.IntMul(l, r)
+        case (l, "/", r) =>
+          E.IntDiv(l, r)
+        case (l, "%", r) =>
+          E.IntMod(l, r)
+      },
+      opSyntax(".") {
+        case (l, ".", r) =>
+          E.Fun("$x", E.App(l, E.App(r, E.Ref("$x"))))
+      }, { next: Parser[Expr] =>
+        next ~ rep(next) ^^ {
+          case x ~ xs =>
+            xs.foldLeft(x) { case (l, r) => E.App(l, r) }
+        }
+      }
+    ).foldRight(atom) { case (f, next) => f(next) }
 
   def paren = ("(" ~> expr) <~ ")"
   def block = ("{" ~> rep1sep(expr, ";")) <~ "}" ^^ { body =>
