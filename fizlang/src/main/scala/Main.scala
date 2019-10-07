@@ -15,6 +15,7 @@ object Expr {
   case class Fun(param: String, body: Expr) extends Expr
   case class Ref(param: String) extends Expr
   case class App(fun: Expr, arg: Expr) extends Expr
+  case class Block(body: Seq[Expr]) extends Expr
 }
 
 object Parser extends RegexParsers {
@@ -117,9 +118,12 @@ object Parser extends RegexParsers {
     case x ~ xs =>
       xs.foldLeft(x) { case (l, r) => E.App(l, r) }
   }
-  def expr7: Parser[Expr] = paren | lit_int | lit_str | ref
+  def expr7: Parser[Expr] = paren | block | lit_int | lit_str | ref
 
   def paren = ("(" ~> expr) <~ ")"
+  def block = ("{" ~> rep1sep(expr, ";")) <~ "}" ^^ { body =>
+    E.Block(body)
+  }
   def lit_int = "[0-9]+".r ^^ { x =>
     E.Lit(x.toInt)
   }
@@ -218,6 +222,11 @@ object Interpreter {
       env.get(name).getOrElse {
         throw new Error(s"Name not found: $name")
       }
+    case E.Block(body) =>
+      body.foldLeft((): Any) {
+        case (_, expr) =>
+          eval(expr, env)
+      }
   }
   def evalInt(expr: Expr, env: Env = defaultEnv): Int =
     eval(expr, env) match {
@@ -270,6 +279,7 @@ object Main {
     test("if | false then 1 | true then 2 | else 3")
     test("1 == 2")
     test("1 != 2")
+    test("{ 1; println 2; 3 }")
     testScript("""
       let a = 1;
       let b = 2;
