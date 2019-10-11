@@ -31,14 +31,6 @@ namespace pp_tuple { // {{{
       using swallow = int[];
       (void)swallow{0, (void(os << (Is == 0? "" : ", ") << std::get<Is>(t)), 0)...};
     }
-  template<class Ch, class Tr, class... Args>
-    auto operator<<(std::basic_ostream<Ch, Tr>& os, std::tuple<Args...> const& t)
-    -> std::basic_ostream<Ch, Tr>&
-    {
-      os << "(";
-      print_tuple(os, t, gen_seq<sizeof...(Args)>());
-      return os << ")";
-    }
 } // }}}
 
 template<class ...T>
