@@ -69,20 +69,20 @@ typedef long long ll;
 #define rep2(i, s, n) for (int i = (s); i < (int)(n); i++)
 
 template<class T>
-void sort(T& arr) {
+void sort(T& arr) { // {{{
   std::sort(arr.begin(), arr.end());
-}
+} // }}}
 template<class T, class By>
-void sort_by(T& arr, By by) {
+void sort_by(T& arr, By by) { // {{{
   std::sort(arr.begin(), arr.end(), [by](auto l, auto r){return  by(l) < by(r); });
-}
+} // }}}
 
 template<class T>
-void reverse(T& arr) {
+void reverse(T& arr) { // {{{
   std::reverse(arr.begin(), arr.end());
-}
+} // }}}
 
-class Random {
+class Random { // {{{
   public:
   std::uniform_int_distribution<> uniform_int;
   std::mt19937 rnd;
@@ -96,17 +96,17 @@ class Random {
   int bern(double p) {
     return bern_dist(rnd, std::bernoulli_distribution::param_type(p));
   }
-};
+}; // }}}
 
 template <class A>
-ostream& out_vec(const vector<A>& x, const string& sep) {
+ostream& out_vec(const vector<A>& x, const string& sep) { // {{{
   rep(i, x.size()) {
     cout << x[i];
     if(i < x.size() - 1)
       cout << sep;
   }
   return cout;
-}
+} // }}}
 // }}}
 
 // main {{{
