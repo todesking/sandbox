@@ -3,6 +3,8 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <tuple>
+#include <set>
 
 // debug {{{
 bool debug_enabled = true;
@@ -14,6 +16,38 @@ int debug_current_count = 0;
 void debug1(char const * x) { std::cerr << x; }
 template<class T> void debug1(const T& x) { std::cerr << x; }
 template<class T1, class T2> void debug1(const std::pair<T1, T2>& x) { std::cerr << "(" << x.first << ", " << x.second << ")"; }
+// https://stackoverflow.com/questions/6245735/pretty-print-stdtuple
+namespace pp_tuple { // {{{
+  template<std::size_t...> struct seq{};
+
+  template<std::size_t N, std::size_t... Is>
+    struct gen_seq : gen_seq<N-1, N-1, Is...>{};
+
+  template<std::size_t... Is>
+    struct gen_seq<0, Is...> : seq<Is...>{};
+
+  template<class Ch, class Tr, class Tuple, std::size_t... Is>
+    void print_tuple(std::basic_ostream<Ch,Tr>& os, Tuple const& t, seq<Is...>){
+      using swallow = int[];
+      (void)swallow{0, (void(os << (Is == 0? "" : ", ") << std::get<Is>(t)), 0)...};
+    }
+  template<class Ch, class Tr, class... Args>
+    auto operator<<(std::basic_ostream<Ch, Tr>& os, std::tuple<Args...> const& t)
+    -> std::basic_ostream<Ch, Tr>&
+    {
+      os << "(";
+      print_tuple(os, t, gen_seq<sizeof...(Args)>());
+      return os << ")";
+    }
+} // }}}
+
+template<class ...T>
+void debug1(const std::tuple<T...>& x) {
+  std::cerr << "(";
+  pp_tuple::print_tuple(std::cerr, x, pp_tuple::gen_seq<sizeof...(T)>());
+  std::cerr << ")";
+}
+
 template<class T> void debug1_coll(const T& x, const char* left, const char* right) {
   std::cerr << left;
   auto i = x.begin();
