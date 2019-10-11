@@ -30,8 +30,9 @@ bool debug_enabled = false;
 #define debug_reset()
 #endif
 
-#include <cstdio>
+// }}}
 
+// bin {{{
 template<class T>
 std::string bin(int bits, const T& x) {
   char buf[bits + 1];
