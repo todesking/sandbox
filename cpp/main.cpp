@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <random>
 #include <chrono>
+#include <limits>
 // }}}
 
 // debug(...) {{{
@@ -108,6 +109,29 @@ ostream& out_vec(const vector<A>& x, const string& sep) { // {{{
   }
   return cout;
 } // }}}
+// }}}
+
+// modulo {{{
+ll modpow(ll a, ll n, ll mod) {
+    ll res = 1;
+    while (n > 0) {
+        if (n & 1) res = res * a % mod;
+        a = a * a % mod;
+        n >>= 1;
+    }
+    return res;
+}
+
+ll modplus(ll a, ll b, ll mod) {
+  ll x = ((a % mod) + (b % mod)) % mod;
+  if(x < 0) x += mod;
+  return x;
+}
+
+ll modminus(ll a, ll b, ll mod) {
+  return modplus(a, -b, mod);
+}
+
 // }}}
 
 // main {{{
