@@ -134,6 +134,29 @@ ll modminus(ll a, ll b, ll mod) {
 
 // }}}
 
+class UnionFind { // {{{
+  vector<int> parent;
+
+  public:
+
+  UnionFind(int N): parent(N) {
+    rep(i, N) parent[i] = i;
+  }
+
+  int root(int x) {
+    if(parent[x] == x) return x;
+    else return parent[x] = root(parent[x]);
+  }
+
+  void unite(int x, int y) {
+    int rx = root(x);
+    int ry = root(y);
+    if(rx != ry) {
+      parent[rx] = ry;
+    }
+  }
+}; // }}}
+
 // main {{{
 void solve();
 int main() {

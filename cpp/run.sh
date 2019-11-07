@@ -1,7 +1,5 @@
 #!/bin/sh
 
-set -e
-
 BASE=$(cd $(dirname $0) && pwd)
 
 "$BASE/make.sh" "$1" && "$BASE/build/a.out" 
