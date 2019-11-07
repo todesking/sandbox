@@ -10,4 +10,4 @@ case "$1" in
     *) debug=0 ;;
 esac
 
-cd "$BASE/build" && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DLOCAL_DEBUG=${debug} .. && make
+cd "$BASE/build" && cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DLOCAL_DEBUG=${debug} .. && make clangformat && make

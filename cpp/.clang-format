@@ -1,0 +1,9 @@
+BasedOnStyle: Google
+
+ColumnLimit: 100
+
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: true
+AllowShortBlocksOnASingleLine: true
+BreakBeforeBraces: Attach
+Standard: Cpp11
