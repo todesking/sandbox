@@ -4,6 +4,7 @@
 #include <map>
 #include <set>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 // debug {{{
@@ -70,9 +71,10 @@ template <class T>
 void debug1(const std::vector<T>& x) {
   debug1_coll(x, "[", "]");
 }
-template <class K, class V>
-void debug1(const std::map<K, V>& x) {
-  std::cerr << "{";
+
+template <class T>
+void debug1_kv(const T& x, const char* l, const char* r) {
+  std::cerr << l;
   auto i = x.begin();
   while (i != x.end()) {
     debug1(std::get<0>(*i));
@@ -81,7 +83,15 @@ void debug1(const std::map<K, V>& x) {
     ++i;
     if (i != x.end()) std::cerr << ", ";
   }
-  std::cerr << "}";
+  std::cerr << r;
+}
+template <class K, class V>
+void debug1(const std::map<K, V>& x) {
+  debug1_kv(x, "{", "}");
+}
+template <class K, class V>
+void debug1(const std::unordered_map<K, V>& x) {
+  debug1_kv(x, "{", "}");
 }
 
 void debug_impl2() { std::cerr << std::endl; }

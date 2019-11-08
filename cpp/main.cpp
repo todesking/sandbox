@@ -154,4 +154,5 @@ int main() {
 }
 // }}}
 
-void solve() {}
+void solve() {
+}
