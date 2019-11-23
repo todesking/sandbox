@@ -2,6 +2,7 @@
 
 // include {{{
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -145,6 +146,44 @@ class UnionFind {  // {{{
     if (rx != ry) { parent[rx] = ry; }
   }
 };  // }}}
+
+// modulo {{{
+// https://qiita.com/drken/items/3b4fdf0a78e7a138cd9a
+long long modinv(long long a, long long m) {
+  long long b = m, u = 1, v = 0;
+  while (b) {
+    long long t = a / b;
+    a -= t * b;
+    swap(a, b);
+    u -= t * v;
+    swap(u, v);
+  }
+  u %= m;
+  if (u < 0) u += m;
+  return u;
+}
+
+ll modfact(ll a, ll m) {
+  ll x = 1;
+  for (ll i = 2; i <= a; i++) {
+    x *= i;
+    x %= m;
+  }
+  return x;
+}
+
+ll mod_P(ll n, ll r, ll m) {
+  ll x = 1;
+  for (ll i = n - r + 1; i <= n; i++) {
+    x *= i;
+    x %= m;
+  }
+  return x;
+}
+
+ll mod_C(ll n, ll r, ll m) { return mod_P(n, r, m) * modinv(modfact(r, m), m) % m; }
+
+// }}}
 
 // main {{{
 void solve();
