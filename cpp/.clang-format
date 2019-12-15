@@ -2,7 +2,7 @@ BasedOnStyle: Google
 
 ColumnLimit: 100
 
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: true
 AllowShortBlocksOnASingleLine: true
 BreakBeforeBraces: Attach
