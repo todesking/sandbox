@@ -92,8 +92,12 @@ class Random {  // {{{
   int uniform(int l, int r) {
     return uniform_int(rnd, std::uniform_int_distribution<>::param_type(l, r));
   }
-  int next(int N) { return uniform(0, N - 1); }
-  int bern(double p) { return bern_dist(rnd, std::bernoulli_distribution::param_type(p)); }
+  int next(int N) {
+    return uniform(0, N - 1);
+  }
+  int bern(double p) {
+    return bern_dist(rnd, std::bernoulli_distribution::param_type(p));
+  }
 };  // }}}
 
 template <class A>
@@ -123,7 +127,9 @@ ll modplus(ll a, ll b, ll mod) {
   return x;
 }
 
-ll modminus(ll a, ll b, ll mod) { return modplus(a, -b, mod); }
+ll modminus(ll a, ll b, ll mod) {
+  return modplus(a, -b, mod);
+}
 
 // }}}
 
@@ -131,7 +137,9 @@ class UnionFind {  // {{{
   vector<int> parent;
 
  public:
-  UnionFind(int N) : parent(N) { rep(i, N) parent[i] = i; }
+  UnionFind(int N) : parent(N) {
+    rep(i, N) parent[i] = i;
+  }
 
   int root(int x) {
     if (parent[x] == x)
@@ -181,7 +189,9 @@ ll mod_P(ll n, ll r, ll m) {
   return x;
 }
 
-ll mod_C(ll n, ll r, ll m) { return mod_P(n, r, m) * modinv(modfact(r, m), m) % m; }
+ll mod_C(ll n, ll r, ll m) {
+  return mod_P(n, r, m) * modinv(modfact(r, m), m) % m;
+}
 
 // }}}
 

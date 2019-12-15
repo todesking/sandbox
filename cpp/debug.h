@@ -14,7 +14,9 @@ int debug_max_elms = 40;
 int debug_max_count = 100;
 int debug_current_count = 0;
 
-void debug1(char const* x) { std::cerr << x; }
+void debug1(char const* x) {
+  std::cerr << x;
+}
 template <class T>
 void debug1(const T& x) {
   std::cerr << x;
@@ -94,7 +96,9 @@ void debug1(const std::unordered_map<K, V>& x) {
   debug1_kv(x, "{", "}");
 }
 
-void debug_impl2() { std::cerr << std::endl; }
+void debug_impl2() {
+  std::cerr << std::endl;
+}
 template <class T, class... Ts>
 void debug_impl2(const T& x, const Ts&... xs) {
   std::cerr << ' ';
