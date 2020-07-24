@@ -108,6 +108,14 @@ ostream& out_vec(const vector<A>& x, const string& sep) {  // {{{
   }
   return cout;
 }  // }}}
+
+bool ends_with(const string& s, const string& x) {
+  if(s.length() < x.length()) return false;
+  for(int i = 0; i < x.size(); i++) {
+    if(s[s.size() - 1 - i] != x[x.size() - 1 - i]) return false;
+  }
+  return true;
+}
 // }}}
 
 // modulo {{{
