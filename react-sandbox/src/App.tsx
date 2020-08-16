@@ -154,6 +154,48 @@ function TableCssBoard({ active }: {
   );
 }
 
+function DivBoard({ active }: {
+  active: boolean[][]
+}) {
+  // reference: https://www.freecodecamp.org/news/create-gameoflife-with-react-in-one-hour-8e686a410174/
+  const width = active[0].length;
+  const height = active.length;
+  const cellSize = 10;
+  const cells: JSX.Element[] = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (active[y][x]) {
+        cells.push(
+          <div
+            key={`${x},${y}`}
+            style={{
+              position: 'absolute',
+              left: `${cellSize * x + 1}px`,
+              top: `${cellSize * y + 1}px`,
+              width: `${cellSize - 1}px`,
+              height: `${cellSize - 1}px`,
+              backgroundColor: '#ccc',
+            }}
+          />,
+        );
+      }
+    }
+  }
+  return (
+    <div style={{
+      backgroundColor: 'black',
+      width: `${cellSize * width}px`,
+      height: `${cellSize * height}px`,
+      backgroundSize: `${cellSize}px ${cellSize}px`,
+      backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)',
+      position: 'relative',
+    }}
+    >
+      {cells}
+    </div>
+  );
+}
+
 interface WorldAPI {
   tick: () => void
 }
@@ -208,10 +250,11 @@ function LifeGame({ width, height }: {
     }
     return undefined;
   }, [running]);
-  const renderMethodOrder = ['tableText', 'tableCss'];
+  const renderMethodOrder = ['tableText', 'tableCss', 'div'];
   const renderMethods: {[key: string]: [string, BoardComponentType] } = {
     tableText: ['Table(text)', TableTextBoard],
     tableCss: ['Table(CSS)', TableCssBoard],
+    div: ['Div', DivBoard],
   };
   const [renderMethod, setRenderMethod] = useState(renderMethodOrder[1]);
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
