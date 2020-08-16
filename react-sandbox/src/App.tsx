@@ -87,29 +87,11 @@ function nextState(width: number, height: number, active: boolean[][]): boolean[
   return newState;
 }
 
-interface WorldAPI {
-  tick: () => void
-}
-const World = forwardRef(({ width, height }: {
-  width: number,
-  height: number
-}, ref: React.Ref<WorldAPI>) => {
-  const [active, setActive] = useState<boolean[][]>(() => {
-    const rows: boolean[][] = [];
-    for (let y = 0; y < height; y += 1) {
-      const cols: boolean[] = [];
-      for (let x = 0; x < width; x += 1) {
-        cols.push(Math.random() < 0.33);
-      }
-      rows.push(cols);
-    }
-    return rows;
-  });
-  useImperativeHandle(ref, () => ({
-    tick() {
-      setActive((old) => nextState(width, height, old));
-    },
-  }), [width, height]);
+type BoardComponentType = (props: {active: boolean[][]}) => JSX.Element;
+
+function TableTextBoard({ active }: {
+  active: boolean[][]
+}) {
   return (
     <table>
       <tbody>
@@ -128,6 +110,77 @@ const World = forwardRef(({ width, height }: {
       }
       </tbody>
     </table>
+  );
+}
+
+function TableCssBoard({ active }: {
+  active: boolean[][]
+}) {
+  return (
+    <table
+      className='table-color-board'
+      style={{
+        tableLayout: 'fixed',
+        borderCollapse: 'collapse',
+      }}
+    >
+      <tbody>
+        {
+        active.map((row: boolean[], y) => (
+          <tr
+            /* eslint-disable-next-line react/no-array-index-key */
+            key={y}
+          >
+            {
+              row.map((col, x) => (
+                <td
+                  /* eslint-disable-next-line react/no-array-index-key */
+                  key={x}
+                  style={{
+                    margin: '0px',
+                    padding: '0px',
+                    width: '10px',
+                    height: '10px',
+                    backgroundColor: col ? 'white' : 'black',
+                  }}
+                />
+              ))
+            }
+          </tr>
+        ))
+      }
+      </tbody>
+    </table>
+  );
+}
+
+interface WorldAPI {
+  tick: () => void
+}
+const World = forwardRef(({ width, height, boardComponent }: {
+  width: number,
+  height: number,
+  boardComponent: BoardComponentType
+}, ref: React.Ref<WorldAPI>) => {
+  const [active, setActive] = useState<boolean[][]>(() => {
+    const rows: boolean[][] = [];
+    for (let y = 0; y < height; y += 1) {
+      const cols: boolean[] = [];
+      for (let x = 0; x < width; x += 1) {
+        cols.push(Math.random() < 0.33);
+      }
+      rows.push(cols);
+    }
+    return rows;
+  });
+  useImperativeHandle(ref, () => ({
+    tick() {
+      setActive((old) => nextState(width, height, old));
+    },
+  }), [width, height]);
+  const Board = boardComponent;
+  return (
+    <Board active={active} />
   );
 });
 
@@ -155,11 +208,26 @@ function LifeGame({ width, height }: {
     }
     return undefined;
   }, [running]);
+  const renderMethodOrder = ['tableText', 'tableCss'];
+  const renderMethods: {[key: string]: [string, BoardComponentType] } = {
+    tableText: ['Table(text)', TableTextBoard],
+    tableCss: ['Table(CSS)', TableCssBoard],
+  };
+  const [renderMethod, setRenderMethod] = useState(renderMethodOrder[1]);
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setRenderMethod(e.target.value);
+  };
+  const boardComponent = renderMethods[renderMethod][1];
   return (
     <div>
-      <World width={width} height={height} ref={worldRef} />
+      <World width={width} height={height} ref={worldRef} boardComponent={boardComponent} />
       <button type='button' onClick={handleStart}>{running ? 'Pause' : 'Start'}</button>
       <button type='button' onClick={handleStep} disabled={running}>Step</button>
+      <select value={renderMethod} onChange={handleChange}>
+        {
+          renderMethodOrder.map((name) => <option value={name}>{renderMethods[name][0]}</option>)
+        }
+      </select>
     </div>
   );
 }
