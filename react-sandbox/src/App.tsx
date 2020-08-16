@@ -1,5 +1,5 @@
 import React, {
-  useRef, useState, useEffect, forwardRef, useImperativeHandle,
+  useRef, useState, useEffect, forwardRef, useImperativeHandle, useLayoutEffect,
 } from 'react';
 import './App.css';
 
@@ -114,11 +114,15 @@ const World = forwardRef(({ width, height }: {
     <table>
       <tbody>
         {
-        active.map((row: boolean[]) => (
-          <tr>
+        active.map((row: boolean[], y) => (
+          <tr
+            /* eslint-disable-next-line react/no-array-index-key */
+            key={y}
+          >
             {
-            row.map((col) => <td>{col ? '□' : '■'}</td>)
-          }
+                /* eslint-disable-next-line react/no-array-index-key */
+                row.map((col, x) => <td key={x}>{col ? '□' : '■'}</td>)
+              }
           </tr>
         ))
       }
@@ -131,14 +135,31 @@ function LifeGame({ width, height }: {
   width: number,
   height: number
 }) {
+  const [running, setRunning] = useState<boolean>(false);
   const worldRef = useRef<WorldAPI>(null);
   const handleStart = () => {
-    worldRef.current?.tick();
+    setRunning((old) => !old);
   };
+  const handleStep = () => {
+    if (worldRef.current) worldRef.current.tick();
+  };
+  useLayoutEffect(() => {
+    if (running) {
+      let id: number;
+      const f = () => {
+        if (worldRef.current) worldRef.current.tick();
+        id = requestAnimationFrame(f);
+      };
+      id = requestAnimationFrame(f);
+      return () => cancelAnimationFrame(id);
+    }
+    return undefined;
+  }, [running]);
   return (
     <div>
       <World width={width} height={height} ref={worldRef} />
-      <button type='button' onClick={handleStart}>Start</button>
+      <button type='button' onClick={handleStart}>{running ? 'Pause' : 'Start'}</button>
+      <button type='button' onClick={handleStep} disabled={running}>Step</button>
     </div>
   );
 }
@@ -149,7 +170,7 @@ function App(): JSX.Element {
       <Todo />
       <Clock />
       <Clock />
-      <LifeGame width={20} height={20} />
+      <LifeGame width={100} height={100} />
     </div>
   );
 }
