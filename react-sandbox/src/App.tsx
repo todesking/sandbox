@@ -226,10 +226,28 @@ const World = forwardRef(({ width, height, boardComponent }: {
   );
 });
 
-function LifeGame({ width, height }: {
-  width: number,
-  height: number
+function BoardSizeInput({ initialWidth, initialHeight, onApply }: {
+  initialWidth: number,
+  initialHeight: number,
+  onApply: (w: number, h: number) => void
 }) {
+  const [width, setWidth] = useState(initialWidth.toString());
+  const [height, setHeight] = useState(initialHeight.toString());
+  return (
+    <span>
+      <input type='text' value={width} onChange={(e) => setWidth(e.target.value)} />
+      x
+      <input type='text' value={height} onChange={(e) => setHeight(e.target.value)} />
+      <button type='button'>Set board size</button>
+    </span>
+  );
+}
+
+function LifeGame({ initialWidth, initialHeight }: {
+  initialWidth: number,
+  initialHeight: number
+}) {
+  const [[width, height], setBoardSize] = useState([initialWidth, initialHeight]);
   const [running, setRunning] = useState<boolean>(false);
   const worldRef = useRef<WorldAPI>(null);
   const handleStart = () => {
@@ -261,6 +279,7 @@ function LifeGame({ width, height }: {
     setRenderMethod(e.target.value);
   };
   const boardComponent = renderMethods[renderMethod][1];
+  const handleBoardSizeChange = (w: number, h: number) => setBoardSize([w, h]);
   return (
     <div>
       <World width={width} height={height} ref={worldRef} boardComponent={boardComponent} />
@@ -271,6 +290,7 @@ function LifeGame({ width, height }: {
           renderMethodOrder.map((name) => <option value={name}>{renderMethods[name][0]}</option>)
         }
       </select>
+      <BoardSizeInput initialWidth={width} initialHeight={height} onApply={handleBoardSizeChange} />
     </div>
   );
 }
@@ -281,7 +301,7 @@ function App(): JSX.Element {
       <Todo />
       <Clock />
       <Clock />
-      <LifeGame width={100} height={100} />
+      <LifeGame initialWidth={100} initialHeight={100} />
     </div>
   );
 }
