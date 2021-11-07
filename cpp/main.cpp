@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 // }}}
+
+typedef long long ll;
 using namespace std;
 
 // debug(...) {{{
