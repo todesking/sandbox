@@ -5,7 +5,102 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 enum MidiMessage {
     Unknown(Vec<u8>),
     ControlChange { ch: u8, num: u8, value: u8 },
+    SysEx(Vec<u8>),
 }
+
+enum IOSelect {
+    In,
+    Out,
+}
+enum ModeDataMode {
+    Normal,
+    Native,
+}
+
+struct DataDump {}
+
+enum NanoKontrol2SysEx {
+    /// section 2-1
+    /// ch: 00-0F of 7F(any)
+    Inquiry {
+        ch: u8,
+    },
+    // section 2-2 is cryptic, detail is in section 3
+    // 3-3
+    SearchDevice {
+        echo_back_id: u8,
+    },
+    CurrentSceneDataDumpReq {
+        ch: u8,
+    },
+    SceneWriteReq {
+        ch: u8,
+    },
+    NativeModeIOReq {
+        ch: u8,
+        io: IOSelect,
+    },
+    ModeReq {
+        ch: u8,
+    },
+    CurrentSceneDataDmp {
+        ch: u8,
+        data: DataDump,
+    },
+    DataLoadCompleted {
+        ch: u8,
+    },
+    DataLoadError {
+        ch: u8,
+    },
+    WriteCompleted {
+        ch: u8,
+    },
+    WriteError {
+        ch: u8,
+    },
+    NativeModeIO {
+        ch: u8,
+        io: IOSelect,
+    },
+    ModeData {
+        ch: u8,
+        mode: ModeDataMode,
+    },
+}
+
+enum Button {
+    Cycle,
+    Rew,
+    FF,
+    Stop,
+    Play,
+    Rec,
+    TrackRew,
+    TrackFF,
+    MarkerSet,
+    MarkerRew,
+    MarkerFF,
+    Solo(u8),
+    Mute(u8),
+    GRec(u8),
+}
+
+impl NanoKontrol2SysEx {
+    // fn to_midi_message(&self) -> MidiMessage {
+    //     match self {
+    //         NanoKontrol2SysEx::Inquiry { ch } => {
+    //             let data = vec![0x7E, *ch, 0x06, 0x01];
+    //             MidiMessage::SysEx(data)
+    //         },
+    //         NanoKontrol2SysEx::SearchDevice{echo_back_id} => {
+    //             let data = vec![0x42, 0x50, 0x00, *echo_back_id];
+    //             MidiMessage::SysEx(data)
+    //         }
+    //     }
+    // }
+}
+
 #[derive(Debug)]
 struct MidiMessageParseError {}
 fn get_at(value: &[u8], index: usize) -> std::result::Result<u8, MidiMessageParseError> {
@@ -41,6 +136,13 @@ impl std::convert::TryFrom<&[u8]> for MidiMessage {
                     Ok(MidiMessage::Unknown(value.to_vec()))
                 }
             }
+            0xF0 => {
+                if value[value.len() - 1] == 0xF7 {
+                    Ok(MidiMessage::SysEx(value[1..value.len() - 1].to_vec()))
+                } else {
+                    Ok(MidiMessage::SysEx(value[1..].to_vec()))
+                }
+            }
             _ => Ok(MidiMessage::Unknown(value.to_vec())),
         }
     }
@@ -49,6 +151,7 @@ impl std::fmt::Debug for MidiMessage {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         match self {
             MidiMessage::Unknown(value) => fmt.write_fmt(format_args!("Unknown({:02X?})", value)),
+            MidiMessage::SysEx(value) => fmt.write_fmt(format_args!("SysEx({:02X?})", value)),
             MidiMessage::ControlChange { ch, num, value } => fmt
                 .debug_struct("ControlChange")
                 .field("ch", ch)
@@ -61,7 +164,8 @@ impl std::fmt::Debug for MidiMessage {
 
 fn main() -> Result<()> {
     // sine_wave()?;
-    midi_input()?;
+    // midi_input()?;
+    midi_comm()?;
     Ok(())
 }
 
@@ -87,10 +191,90 @@ impl<T: std::error::Error + std::fmt::Display> std::fmt::Display for SyncError<T
 }
 impl<T: std::error::Error> std::error::Error for SyncError<T> {}
 
+fn list_available_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
+    println!("Available {} ports:", kind);
+    for port in io.ports() {
+        println!("* {}", io.port_name(&port)?);
+    }
+    Ok(())
+}
+
+fn midi_comm() -> Result<()> {
+    let output = midir::MidiOutput::new("midir")?;
+    list_available_ports(&output, "output")?;
+    println!("Available output ports:");
+    for port in output.ports() {
+        println!("* {}", output.port_name(&port)?);
+    }
+    let port = &output.ports()[0];
+    let port_name = output.port_name(port)?;
+    let mut out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
+
+    let mut input = midir::MidiInput::new("midi_input")?;
+    list_available_ports(&input, "input")?;
+    input.ignore(midir::Ignore::None);
+    let port = &input.ports()[0];
+    let port_name = input.port_name(port)?;
+    let _in_con = input
+        .connect(
+            port,
+            &port_name,
+            |stamp, message, _| {
+                print!("{:10}", stamp);
+                let message = MidiMessage::try_from(message);
+                match message {
+                    Ok(message) => {
+                        println!("Message: {:0X?}", message);
+                        match message {
+                            MidiMessage::SysEx(data) => {
+                                if data.len() == 400
+                                    && &data[..12]
+                                        == [
+                                            0x42, 0x40, 0x00, 0x01, 0x13, 0x00, 0x7F, 0x7F, 0x02,
+                                            0x03, 0x05, 0x40,
+                                        ]
+                                {
+                                    let dump =
+                                        rustsynth::nanokontrol2::SceneData::from_encoded_bytes(
+                                            &data[12..(388 + 12)],
+                                        );
+                                    println!("Dump: {:#?}", dump);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(err) => println!("Error: {:?}", err),
+                };
+            },
+            (),
+        )
+        .map_err(SyncError::new)?;
+    // out_con.send(&[0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7])?;
+    out_con.send(&[
+        0xF0, 0x42, 0x40, 0x00, 0x01, 0x13, 0x00, 0x1F, 0x10, 0x00, 0xF7,
+    ])?;
+
+    let off = 0x00u8;
+    let on = 0x7Fu8;
+    for _ in 0..10 {
+        out_con.send(&[0xB0, 0x2E, off])?;
+        out_con.send(&[0xB0, 0x2B, on])?;
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        out_con.send(&[0xB0, 0x2E, on])?;
+        out_con.send(&[0xB0, 0x2B, off])?;
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+
+    out_con.send(&[0xBF, 0x2E, 0xFF])?;
+    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
+    Ok(())
+}
+
 fn midi_input() -> Result<()> {
     let mut input = midir::MidiInput::new("midi_input")?;
     input.ignore(midir::Ignore::None);
-    println!("Available ports:");
+    println!("Available input ports:");
     for port in input.ports() {
         println!("* {}", input.port_name(&port)?);
     }
