@@ -250,9 +250,72 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
             (),
         )
         .map_err(SyncError::new)?;
+
+    let host = cpal::default_host();
+    println!("Avaliable devices:");
+    for device in host.output_devices()? {
+        println!("* {}", device.name()?);
+    }
+
+    let device = host
+        .default_output_device()
+        .context("Default output device not found")?;
+    println!("Using device {}", device.name()?);
+
+    println!("Available output config:");
+    for config in device.supported_output_configs()? {
+        println!("* {:?}", config);
+    }
+    let output_available = device.supported_output_configs()?.any(|c| {
+        c.sample_format() == cpal::SampleFormat::F32
+            && c.channels() == 2
+            && c.min_sample_rate() <= cpal::SampleRate(44_100)
+            && c.max_sample_rate() >= cpal::SampleRate(44_100)
+            && match c.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, max } => min <= &441 && &441 <= max,
+                _ => false,
+            }
+    });
+    let config = cpal::StreamConfig {
+        channels: 2,
+        sample_rate: cpal::SampleRate(44_100),
+        buffer_size: cpal::BufferSize::Fixed(441),
+    };
+    let mut rack = rustsynth::new_my_rack();
+    let stream = device.build_output_stream(
+        &config,
+        {
+            let input = std::sync::Arc::clone(&input);
+            move |data: &mut [f32], _| {
+                let input = input.lock().unwrap();
+                let input = &*input;
+                for frame in data.chunks_mut(2) {
+                    rustsynth::update_all(&mut rack, input);
+                    let value = rack.vco1.borrow().out;
+                    for sample in frame.iter_mut() {
+                        *sample = value;
+                    }
+                }
+            }
+        },
+        |err| {
+            println!("Device output error: {}", err);
+        },
+    )?;
+    stream.play()?;
+
+    let mut old_value = 0.0;
     for _ in 0..1000 {
         let value = input.lock().unwrap().slider1;
-        println!("Value: {}", value);
+        if old_value != value {
+            {
+                let a = (20_000.0f32 - 0.1f32).ln() - 1.0;
+                let freq = (1.0 + value * a).exp();
+                println!("Value: {}, Freq={}", value, freq);
+            }
+
+            old_value = value;
+        }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
