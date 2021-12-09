@@ -1,15 +1,15 @@
-struct GroupState {
+pub struct GroupState {
     knob: u8,
     slider: u8,
     solo: bool,
     mute: bool,
     record: bool,
 }
-struct ButtonState {
+pub struct ButtonState {
     on: bool,
     led: bool,
 }
-struct State {
+pub struct State {
     track_rew: ButtonState,
     track_ff: ButtonState,
     cycle: ButtonState,
@@ -24,12 +24,12 @@ struct State {
     group: [GroupState; 8],
 }
 impl State {
-    fn update(&mut self, msg: &Message) {
+    pub fn update(&mut self, msg: &Message) {
         todo!()
     }
 }
 
-enum Button {
+pub enum Button {
     GroupSolo(u8),
     GroupMute(u8),
     GroupRecord(u8),
@@ -46,17 +46,25 @@ enum Button {
     Record,
 }
 
-enum Analog {
+pub enum Analog {
     Knob(u8),
     Slider(u8),
 }
 
-enum Message {
+pub enum Message {
     Button(Button, bool),
     Analog(Analog, u8),
 }
 impl Message {
     fn parse(data: &[u8]) -> Option<Message> {
+        if data.len() == 0 {
+            return None;
+        }
+        if data[0] == 0xB0 {
+            if data.len() != 3 {
+                return None;
+            }
+        }
         todo!()
     }
 }

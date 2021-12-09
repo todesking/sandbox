@@ -165,7 +165,8 @@ impl std::fmt::Debug for MidiMessage {
 fn main() -> Result<()> {
     // sine_wave()?;
     // midi_input()?;
-    midi_comm()?;
+    // midi_comm()?;
+    run_synth()?;
     Ok(())
 }
 
@@ -196,6 +197,65 @@ fn list_available_ports<T: midir::MidiIO>(io: &T, kind: &str) -> Result<()> {
     for port in io.ports() {
         println!("* {}", io.port_name(&port)?);
     }
+    Ok(())
+}
+
+fn run_synth() -> Result<()> {
+    let output = midir::MidiOutput::new("midir")?;
+    list_available_ports(&output, "output")?;
+    let port = &output.ports()[0];
+    let port_name = output.port_name(port)?;
+    let out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
+
+    let mut input = midir::MidiInput::new("midi_input")?;
+    list_available_ports(&input, "input")?;
+    input.ignore(midir::Ignore::None);
+    run_synth_main(input, out_con)?;
+    Ok(())
+}
+
+fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnection) -> Result<()> {
+    let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input { slider1: 0.0 }));
+    let port = &midi_in.ports()[0];
+    let port_name = midi_in.port_name(port)?;
+    println!("Connect to {}", &port_name);
+    let _in_con = midi_in
+        .connect(
+            port,
+            &port_name,
+            {
+                let input = std::sync::Arc::clone(&input);
+                move |stamp, message, _| {
+                    print!("{:10}", stamp);
+                    let message = MidiMessage::try_from(message);
+                    match message {
+                        Ok(message) => {
+                            println!("Message: {:0X?}", message);
+                            match message {
+                                MidiMessage::ControlChange {
+                                    ch: 0,
+                                    num: 0,
+                                    value,
+                                } => {
+                                    let mut input = input.lock().unwrap();
+                                    (*input).slider1 = value as f32 / 127.0;
+                                }
+                                _ => {}
+                            }
+                        }
+                        Err(err) => println!("Error: {:?}", err),
+                    };
+                }
+            },
+            (),
+        )
+        .map_err(SyncError::new)?;
+    for _ in 0..1000 {
+        let value = input.lock().unwrap().slider1;
+        println!("Value: {}", value);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
     Ok(())
 }
 
