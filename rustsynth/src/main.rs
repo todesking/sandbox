@@ -215,7 +215,9 @@ fn run_synth() -> Result<()> {
 }
 
 fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnection) -> Result<()> {
-    let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input { slider1: 0.0 }));
+    let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input {
+        ..Default::default()
+    }));
     let port = &midi_in.ports()[0];
     let port_name = midi_in.port_name(port)?;
     println!("Connect to {}", &port_name);
@@ -232,13 +234,15 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                         Ok(message) => {
                             println!("Message: {:0X?}", message);
                             match message {
-                                MidiMessage::ControlChange {
-                                    ch: 0,
-                                    num: 0,
-                                    value,
-                                } => {
+                                MidiMessage::ControlChange { ch: 0, num, value } => {
+                                    let value = value as f32 / 127.0;
                                     let mut input = input.lock().unwrap();
-                                    (*input).slider1 = value as f32 / 127.0;
+                                    match num {
+                                        0x00 => (*input).lfo1_freq = value,
+                                        0x01 => (*input).vco1_freq = value,
+                                        0x10 => (*input).vco1_lfo1_amount = value,
+                                        _ => {}
+                                    }
                                 }
                                 _ => {}
                             }
@@ -276,6 +280,9 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                 _ => false,
             }
     });
+    if !output_available {
+        panic!("No suitable output available")
+    }
     let config = cpal::StreamConfig {
         channels: 2,
         sample_rate: cpal::SampleRate(44_100),
@@ -304,22 +311,10 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
     )?;
     stream.play()?;
 
-    let mut old_value = 0.0;
-    for _ in 0..1000 {
-        let value = input.lock().unwrap().slider1;
-        if old_value != value {
-            {
-                let a = (20_000.0f32 - 0.1f32).ln() - 1.0;
-                let freq = (1.0 + value * a).exp();
-                println!("Value: {}, Freq={}", value, freq);
-            }
-
-            old_value = value;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        dbg!(input.lock());
     }
-    std::thread::sleep(std::time::Duration::from_millis(10 * 1000));
-    Ok(())
 }
 
 fn midi_comm() -> Result<()> {
