@@ -241,7 +241,51 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                                         0x00 => (*input).lfo1_freq = value,
                                         0x01 => (*input).vco1_freq = value,
                                         0x10 => (*input).vco1_lfo1_amount = value,
-                                        _ => {}
+                                        _ => {
+                                            if value > 0.5 {
+                                                match num {
+                                                    0x20 => {
+                                                        (*input).lfo1_waveform =
+                                                            rustsynth::WaveForm::Sine
+                                                    }
+                                                    0x30 => {
+                                                        (*input).lfo1_waveform =
+                                                            rustsynth::WaveForm::Sawtooth
+                                                    }
+                                                    0x40 => {
+                                                        if (*input).lfo1_waveform
+                                                            == rustsynth::WaveForm::Square
+                                                        {
+                                                            (*input).lfo1_waveform =
+                                                                rustsynth::WaveForm::Triangle
+                                                        } else {
+                                                            (*input).lfo1_waveform =
+                                                                rustsynth::WaveForm::Square
+                                                        }
+                                                    }
+                                                    0x21 => {
+                                                        (*input).vco1_waveform =
+                                                            rustsynth::WaveForm::Sine
+                                                    }
+                                                    0x31 => {
+                                                        (*input).vco1_waveform =
+                                                            rustsynth::WaveForm::Sawtooth
+                                                    }
+                                                    0x41 => {
+                                                        if (*input).vco1_waveform
+                                                            == rustsynth::WaveForm::Square
+                                                        {
+                                                            (*input).vco1_waveform =
+                                                                rustsynth::WaveForm::Triangle
+                                                        } else {
+                                                            (*input).vco1_waveform =
+                                                                rustsynth::WaveForm::Square
+                                                        }
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 _ => {}

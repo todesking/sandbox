@@ -19,6 +19,7 @@ pub struct VCO<R: Rack> {
     _rack: PhantomData<R>,
     // range: 0.0 - 1.0 ( freq_min Hz - freq_max Hz )
     in_freq: Box<dyn InPort<R, f32>>,
+    in_waveform: Box<dyn InPort<R, WaveForm>>,
     phase: f32,
     freq_min: f32,
     freq_max: f32,
@@ -27,18 +28,62 @@ pub struct VCO<R: Rack> {
 impl<R: Rack> Module<R> for VCO<R> {
     fn update(&mut self, rack: &R, input: &R::Input) {
         let in_freq = (self.in_freq)(rack, input);
-        let pi2 = std::f32::consts::PI * 2.0;
+        let pi: f32 = std::f32::consts::PI;
+        let pi2: f32 = pi * 2.0;
+        let pi12: f32 = pi / 2.0;
+        let pi32: f32 = pi12 * 3.0;
         let freq = (self.freq_min.ln() + in_freq * (self.freq_max.ln() - self.freq_min.ln())).exp();
         self.phase += freq * pi2 / SAMPLES_PER_SEC as f32;
         self.phase %= pi2;
-        self.out = (self.phase).sin();
+        let wf = (self.in_waveform)(rack, input);
+        self.out = match wf {
+            WaveForm::Sine => (self.phase).sin(),
+            WaveForm::Sawtooth => {
+                if self.phase < pi {
+                    self.phase / pi
+                } else {
+                    (self.phase - pi) / pi - 1.0
+                }
+            }
+            WaveForm::Triangle => {
+                if self.phase < pi12 {
+                    self.phase / pi12
+                } else if self.phase < pi32 {
+                    1.0 - (self.phase - pi12) / pi12
+                } else {
+                    (self.phase - pi32) / pi12 - 1.0
+                }
+            }
+            WaveForm::Square => {
+                if self.phase < pi {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum WaveForm {
+    Sine,
+    Sawtooth,
+    Triangle,
+    Square,
+}
+impl Default for WaveForm {
+    fn default() -> WaveForm {
+        WaveForm::Sine
     }
 }
 
 #[derive(Default, Debug)]
 pub struct Input {
     pub vco1_freq: f32,
+    pub vco1_waveform: WaveForm,
     pub lfo1_freq: f32,
+    pub lfo1_waveform: WaveForm,
     pub vco1_lfo1_amount: f32,
 }
 
@@ -55,6 +100,7 @@ pub fn new_my_rack() -> MyRack<Input> {
         lfo1: RefCell::new(VCO {
             _rack: PhantomData,
             in_freq: Box::new(|_, input| input.lfo1_freq as f32),
+            in_waveform: Box::new(|_, input| input.lfo1_waveform),
             freq_min: 0.1,
             freq_max: 100.0,
             phase: 0.0,
@@ -65,6 +111,7 @@ pub fn new_my_rack() -> MyRack<Input> {
             in_freq: Box::new(|rack, input| {
                 rack.lfo1.borrow().out * input.vco1_lfo1_amount + input.vco1_freq
             }),
+            in_waveform: Box::new(|_, input| input.vco1_waveform),
             freq_min: 200.0,
             freq_max: 15000.0,
             phase: 0.0,
