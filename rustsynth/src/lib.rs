@@ -78,7 +78,7 @@ impl Default for WaveForm {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Input {
     pub vco1_freq: f32,
     pub vco1_waveform: WaveForm,

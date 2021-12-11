@@ -113,6 +113,7 @@ fn run_synth() -> Result<()> {
     let port = &output.ports()[0];
     let port_name = output.port_name(port)?;
     let out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
+    println!("Using device {}", port_name);
 
     let mut input = midir::MidiInput::new("midi_input")?;
     list_available_ports(&input, "input")?;
@@ -122,33 +123,34 @@ fn run_synth() -> Result<()> {
 }
 
 fn update_input(input: &mut rustsynth::Input, message: &MidiMessage) {
+    use rustsynth::WaveForm;
     if let MidiMessage::ControlChange { ch: 0, num, value } = message {
         let value = *value as f32 / 127.0;
         match num {
-            0x00 => (*input).lfo1_freq = value,
-            0x01 => (*input).vco1_freq = value,
-            0x10 => (*input).vco1_lfo1_amount = value,
+            0x00 => input.lfo1_freq = value,
+            0x01 => input.vco1_freq = value,
+            0x10 => input.vco1_lfo1_amount = value,
             _ => {
                 if value > 0.5 {
                     match num {
-                        0x20 => (*input).lfo1_waveform = rustsynth::WaveForm::Sine,
-                        0x30 => (*input).lfo1_waveform = rustsynth::WaveForm::Sawtooth,
-                        0x40 => {
-                            if (*input).lfo1_waveform == rustsynth::WaveForm::Square {
-                                (*input).lfo1_waveform = rustsynth::WaveForm::Triangle
+                        0x20 => {
+                            if input.lfo1_waveform == WaveForm::Sine {
+                                input.lfo1_waveform = WaveForm::Triangle;
                             } else {
-                                (*input).lfo1_waveform = rustsynth::WaveForm::Square
+                                input.lfo1_waveform = WaveForm::Sine;
                             }
                         }
-                        0x21 => (*input).vco1_waveform = rustsynth::WaveForm::Sine,
-                        0x31 => (*input).vco1_waveform = rustsynth::WaveForm::Sawtooth,
-                        0x41 => {
-                            if (*input).vco1_waveform == rustsynth::WaveForm::Square {
-                                (*input).vco1_waveform = rustsynth::WaveForm::Triangle
+                        0x30 => input.lfo1_waveform = WaveForm::Sawtooth,
+                        0x40 => input.lfo1_waveform = WaveForm::Square,
+                        0x21 => {
+                            if input.vco1_waveform == WaveForm::Sine {
+                                input.vco1_waveform = WaveForm::Triangle;
                             } else {
-                                (*input).vco1_waveform = rustsynth::WaveForm::Square
+                                input.vco1_waveform = WaveForm::Sine
                             }
                         }
+                        0x31 => input.vco1_waveform = WaveForm::Sawtooth,
+                        0x41 => input.vco1_waveform = WaveForm::Square,
                         _ => {}
                     }
                 }
@@ -157,10 +159,48 @@ fn update_input(input: &mut rustsynth::Input, message: &MidiMessage) {
     }
 }
 
-fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnection) -> Result<()> {
+fn set_led(midi_out: &mut midir::MidiOutputConnection, num: u8, on: bool) -> Result<()> {
+    if on {
+        midi_out.send(&[0xB0, num, 0x7F])?;
+    } else {
+        midi_out.send(&[0xB0, num, 0x00])?;
+    }
+    Ok(())
+}
+
+fn update_led(input: &rustsynth::Input, midi_out: &mut midir::MidiOutputConnection) -> Result<()> {
+    use rustsynth::WaveForm;
+    let led_group_0 = [0x20, 0x30, 0x40];
+    let led_group_0_lit = match input.lfo1_waveform {
+        WaveForm::Sine | WaveForm::Triangle => 0x20,
+        WaveForm::Sawtooth => 0x30,
+        WaveForm::Square => 0x40,
+    };
+    for led in led_group_0 {
+        set_led(midi_out, led, led == led_group_0_lit)?;
+    }
+
+    let led_group_1 = [0x21, 0x31, 0x41];
+    let led_group_1_lit = match input.vco1_waveform {
+        WaveForm::Sine | WaveForm::Triangle => 0x21,
+        WaveForm::Sawtooth => 0x31,
+        WaveForm::Square => 0x41,
+    };
+    for led in led_group_1 {
+        set_led(midi_out, led, led == led_group_1_lit)?;
+    }
+
+    Ok(())
+}
+
+fn run_synth_main(
+    midi_in: midir::MidiInput,
+    mut midi_out: midir::MidiOutputConnection,
+) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input {
         ..Default::default()
     }));
+    update_led(&*input.lock().unwrap(), &mut midi_out)?;
     let port = &midi_in.ports()[0];
     let port_name = midi_in.port_name(port)?;
     println!("Connect to {}", &port_name);
@@ -176,7 +216,12 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                     match message {
                         Ok(message) => {
                             println!("Message: {:0X?}", message);
-                            update_input(&mut *input.lock().unwrap(), &message);
+                            let input = {
+                                let mut input = input.lock().unwrap();
+                                update_input(std::ops::DerefMut::deref_mut(&mut input), &message);
+                                (&*input).clone()
+                            };
+                            update_led(&input, &mut midi_out).expect("update_led failed")
                         }
                         Err(err) => println!("Error: {:?}", err),
                     };
