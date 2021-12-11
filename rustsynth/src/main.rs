@@ -8,99 +8,6 @@ enum MidiMessage {
     SysEx(Vec<u8>),
 }
 
-enum IOSelect {
-    In,
-    Out,
-}
-enum ModeDataMode {
-    Normal,
-    Native,
-}
-
-struct DataDump {}
-
-enum NanoKontrol2SysEx {
-    /// section 2-1
-    /// ch: 00-0F of 7F(any)
-    Inquiry {
-        ch: u8,
-    },
-    // section 2-2 is cryptic, detail is in section 3
-    // 3-3
-    SearchDevice {
-        echo_back_id: u8,
-    },
-    CurrentSceneDataDumpReq {
-        ch: u8,
-    },
-    SceneWriteReq {
-        ch: u8,
-    },
-    NativeModeIOReq {
-        ch: u8,
-        io: IOSelect,
-    },
-    ModeReq {
-        ch: u8,
-    },
-    CurrentSceneDataDmp {
-        ch: u8,
-        data: DataDump,
-    },
-    DataLoadCompleted {
-        ch: u8,
-    },
-    DataLoadError {
-        ch: u8,
-    },
-    WriteCompleted {
-        ch: u8,
-    },
-    WriteError {
-        ch: u8,
-    },
-    NativeModeIO {
-        ch: u8,
-        io: IOSelect,
-    },
-    ModeData {
-        ch: u8,
-        mode: ModeDataMode,
-    },
-}
-
-enum Button {
-    Cycle,
-    Rew,
-    FF,
-    Stop,
-    Play,
-    Rec,
-    TrackRew,
-    TrackFF,
-    MarkerSet,
-    MarkerRew,
-    MarkerFF,
-    Solo(u8),
-    Mute(u8),
-    GRec(u8),
-}
-
-impl NanoKontrol2SysEx {
-    // fn to_midi_message(&self) -> MidiMessage {
-    //     match self {
-    //         NanoKontrol2SysEx::Inquiry { ch } => {
-    //             let data = vec![0x7E, *ch, 0x06, 0x01];
-    //             MidiMessage::SysEx(data)
-    //         },
-    //         NanoKontrol2SysEx::SearchDevice{echo_back_id} => {
-    //             let data = vec![0x42, 0x50, 0x00, *echo_back_id];
-    //             MidiMessage::SysEx(data)
-    //         }
-    //     }
-    // }
-}
-
 #[derive(Debug)]
 struct MidiMessageParseError {}
 fn get_at(value: &[u8], index: usize) -> std::result::Result<u8, MidiMessageParseError> {
@@ -233,62 +140,59 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                     match message {
                         Ok(message) => {
                             println!("Message: {:0X?}", message);
-                            match message {
-                                MidiMessage::ControlChange { ch: 0, num, value } => {
-                                    let value = value as f32 / 127.0;
-                                    let mut input = input.lock().unwrap();
-                                    match num {
-                                        0x00 => (*input).lfo1_freq = value,
-                                        0x01 => (*input).vco1_freq = value,
-                                        0x10 => (*input).vco1_lfo1_amount = value,
-                                        _ => {
-                                            if value > 0.5 {
-                                                match num {
-                                                    0x20 => {
-                                                        (*input).lfo1_waveform =
-                                                            rustsynth::WaveForm::Sine
-                                                    }
-                                                    0x30 => {
-                                                        (*input).lfo1_waveform =
-                                                            rustsynth::WaveForm::Sawtooth
-                                                    }
-                                                    0x40 => {
-                                                        if (*input).lfo1_waveform
-                                                            == rustsynth::WaveForm::Square
-                                                        {
-                                                            (*input).lfo1_waveform =
-                                                                rustsynth::WaveForm::Triangle
-                                                        } else {
-                                                            (*input).lfo1_waveform =
-                                                                rustsynth::WaveForm::Square
-                                                        }
-                                                    }
-                                                    0x21 => {
-                                                        (*input).vco1_waveform =
-                                                            rustsynth::WaveForm::Sine
-                                                    }
-                                                    0x31 => {
-                                                        (*input).vco1_waveform =
-                                                            rustsynth::WaveForm::Sawtooth
-                                                    }
-                                                    0x41 => {
-                                                        if (*input).vco1_waveform
-                                                            == rustsynth::WaveForm::Square
-                                                        {
-                                                            (*input).vco1_waveform =
-                                                                rustsynth::WaveForm::Triangle
-                                                        } else {
-                                                            (*input).vco1_waveform =
-                                                                rustsynth::WaveForm::Square
-                                                        }
-                                                    }
-                                                    _ => {}
+                            if let MidiMessage::ControlChange { ch: 0, num, value } = message {
+                                let value = value as f32 / 127.0;
+                                let mut input = input.lock().unwrap();
+                                match num {
+                                    0x00 => (*input).lfo1_freq = value,
+                                    0x01 => (*input).vco1_freq = value,
+                                    0x10 => (*input).vco1_lfo1_amount = value,
+                                    _ => {
+                                        if value > 0.5 {
+                                            match num {
+                                                0x20 => {
+                                                    (*input).lfo1_waveform =
+                                                        rustsynth::WaveForm::Sine
                                                 }
+                                                0x30 => {
+                                                    (*input).lfo1_waveform =
+                                                        rustsynth::WaveForm::Sawtooth
+                                                }
+                                                0x40 => {
+                                                    if (*input).lfo1_waveform
+                                                        == rustsynth::WaveForm::Square
+                                                    {
+                                                        (*input).lfo1_waveform =
+                                                            rustsynth::WaveForm::Triangle
+                                                    } else {
+                                                        (*input).lfo1_waveform =
+                                                            rustsynth::WaveForm::Square
+                                                    }
+                                                }
+                                                0x21 => {
+                                                    (*input).vco1_waveform =
+                                                        rustsynth::WaveForm::Sine
+                                                }
+                                                0x31 => {
+                                                    (*input).vco1_waveform =
+                                                        rustsynth::WaveForm::Sawtooth
+                                                }
+                                                0x41 => {
+                                                    if (*input).vco1_waveform
+                                                        == rustsynth::WaveForm::Square
+                                                    {
+                                                        (*input).vco1_waveform =
+                                                            rustsynth::WaveForm::Triangle
+                                                    } else {
+                                                        (*input).vco1_waveform =
+                                                            rustsynth::WaveForm::Square
+                                                    }
+                                                }
+                                                _ => {}
                                             }
                                         }
                                     }
                                 }
-                                _ => {}
                             }
                         }
                         Err(err) => println!("Error: {:?}", err),
@@ -357,164 +261,6 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(2000));
-        dbg!(input.lock());
-    }
-}
-
-fn midi_comm() -> Result<()> {
-    let output = midir::MidiOutput::new("midir")?;
-    list_available_ports(&output, "output")?;
-    println!("Available output ports:");
-    for port in output.ports() {
-        println!("* {}", output.port_name(&port)?);
-    }
-    let port = &output.ports()[0];
-    let port_name = output.port_name(port)?;
-    let mut out_con = output.connect(port, &port_name).map_err(SyncError::new)?;
-
-    let mut input = midir::MidiInput::new("midi_input")?;
-    list_available_ports(&input, "input")?;
-    input.ignore(midir::Ignore::None);
-    let port = &input.ports()[0];
-    let port_name = input.port_name(port)?;
-    let _in_con = input
-        .connect(
-            port,
-            &port_name,
-            |stamp, message, _| {
-                print!("{:10}", stamp);
-                let message = MidiMessage::try_from(message);
-                match message {
-                    Ok(message) => {
-                        println!("Message: {:0X?}", message);
-                        match message {
-                            MidiMessage::SysEx(data) => {
-                                if data.len() == 400
-                                    && &data[..12]
-                                        == [
-                                            0x42, 0x40, 0x00, 0x01, 0x13, 0x00, 0x7F, 0x7F, 0x02,
-                                            0x03, 0x05, 0x40,
-                                        ]
-                                {
-                                    let dump =
-                                        rustsynth::nanokontrol2::SceneData::from_encoded_bytes(
-                                            &data[12..(388 + 12)],
-                                        );
-                                    println!("Dump: {:#?}", dump);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    Err(err) => println!("Error: {:?}", err),
-                };
-            },
-            (),
-        )
-        .map_err(SyncError::new)?;
-    // out_con.send(&[0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7])?;
-    out_con.send(&[
-        0xF0, 0x42, 0x40, 0x00, 0x01, 0x13, 0x00, 0x1F, 0x10, 0x00, 0xF7,
-    ])?;
-
-    let off = 0x00u8;
-    let on = 0x7Fu8;
-    for _ in 0..10 {
-        out_con.send(&[0xB0, 0x2E, off])?;
-        out_con.send(&[0xB0, 0x2B, on])?;
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        out_con.send(&[0xB0, 0x2E, on])?;
-        out_con.send(&[0xB0, 0x2B, off])?;
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    out_con.send(&[0xBF, 0x2E, 0xFF])?;
-    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
-    Ok(())
-}
-
-fn midi_input() -> Result<()> {
-    let mut input = midir::MidiInput::new("midi_input")?;
-    input.ignore(midir::Ignore::None);
-    println!("Available input ports:");
-    for port in input.ports() {
-        println!("* {}", input.port_name(&port)?);
-    }
-    let port = &input.ports()[0];
-    let port_name = input.port_name(port)?;
-    let _con = input
-        .connect(
-            port,
-            &port_name,
-            |stamp, message, _| {
-                print!("{:10}", stamp);
-                let message = MidiMessage::try_from(message);
-                match message {
-                    Ok(message) => println!("Message: {:?}", message),
-                    Err(err) => println!("Error: {:?}", err),
-                };
-            },
-            (),
-        )
-        .map_err(SyncError::new)?;
-    std::thread::sleep(std::time::Duration::from_millis(5 * 1000));
-    Ok(())
-}
-
-fn sine_wave() -> Result<()> {
-    let host = cpal::default_host();
-    println!("Avaliable devices:");
-    for device in host.output_devices()? {
-        println!("* {}", device.name()?);
-    }
-
-    let device = host
-        .default_output_device()
-        .context("Default output device not found")?;
-    println!("Using device {}", device.name()?);
-
-    let config = device.default_output_config()?;
-    println!("Config: {:?}", config);
-    match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&device, &config.into()),
-        cpal::SampleFormat::I16 => run::<i16>(&device, &config.into()),
-        cpal::SampleFormat::U16 => run::<u16>(&device, &config.into()),
-    }
-}
-
-fn run<T>(device: &cpal::Device, config: &cpal::StreamConfig) -> Result<()>
-where
-    T: cpal::Sample,
-{
-    let sample_rate = config.sample_rate.0 as f32;
-    let channels = config.channels as usize;
-    let mut sample_clock = 0f32;
-    let mut next_value = move || {
-        sample_clock = (sample_clock + 1.0) % sample_rate;
-        (sample_clock * 440.0 * 2.0 * std::f32::consts::PI / sample_rate).sin()
-    };
-
-    let output_stream = device.build_output_stream(
-        config,
-        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-            write_data(data, channels, &mut next_value);
-        },
-        |err| eprintln!("An error occured on stream {}", err),
-    )?;
-    output_stream.play()?;
-    std::thread::sleep(std::time::Duration::from_millis(1000));
-    Ok(())
-}
-
-fn write_data<T, F>(output: &mut [T], channels: usize, next_sample: &mut F)
-where
-    T: cpal::Sample,
-    F: FnMut() -> f32,
-{
-    for frame in output.chunks_mut(channels) {
-        let value: T = cpal::Sample::from::<f32>(&next_sample());
-        for sample in frame.iter_mut() {
-            *sample = value;
-        }
+        let _ = dbg!(input.lock());
     }
 }
