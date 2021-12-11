@@ -121,6 +121,42 @@ fn run_synth() -> Result<()> {
     Ok(())
 }
 
+fn update_input(input: &mut rustsynth::Input, message: &MidiMessage) {
+    if let MidiMessage::ControlChange { ch: 0, num, value } = message {
+        let value = *value as f32 / 127.0;
+        match num {
+            0x00 => (*input).lfo1_freq = value,
+            0x01 => (*input).vco1_freq = value,
+            0x10 => (*input).vco1_lfo1_amount = value,
+            _ => {
+                if value > 0.5 {
+                    match num {
+                        0x20 => (*input).lfo1_waveform = rustsynth::WaveForm::Sine,
+                        0x30 => (*input).lfo1_waveform = rustsynth::WaveForm::Sawtooth,
+                        0x40 => {
+                            if (*input).lfo1_waveform == rustsynth::WaveForm::Square {
+                                (*input).lfo1_waveform = rustsynth::WaveForm::Triangle
+                            } else {
+                                (*input).lfo1_waveform = rustsynth::WaveForm::Square
+                            }
+                        }
+                        0x21 => (*input).vco1_waveform = rustsynth::WaveForm::Sine,
+                        0x31 => (*input).vco1_waveform = rustsynth::WaveForm::Sawtooth,
+                        0x41 => {
+                            if (*input).vco1_waveform == rustsynth::WaveForm::Square {
+                                (*input).vco1_waveform = rustsynth::WaveForm::Triangle
+                            } else {
+                                (*input).vco1_waveform = rustsynth::WaveForm::Square
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnection) -> Result<()> {
     let input = std::sync::Arc::new(std::sync::Mutex::new(rustsynth::Input {
         ..Default::default()
@@ -140,60 +176,7 @@ fn run_synth_main(midi_in: midir::MidiInput, midi_out: midir::MidiOutputConnecti
                     match message {
                         Ok(message) => {
                             println!("Message: {:0X?}", message);
-                            if let MidiMessage::ControlChange { ch: 0, num, value } = message {
-                                let value = value as f32 / 127.0;
-                                let mut input = input.lock().unwrap();
-                                match num {
-                                    0x00 => (*input).lfo1_freq = value,
-                                    0x01 => (*input).vco1_freq = value,
-                                    0x10 => (*input).vco1_lfo1_amount = value,
-                                    _ => {
-                                        if value > 0.5 {
-                                            match num {
-                                                0x20 => {
-                                                    (*input).lfo1_waveform =
-                                                        rustsynth::WaveForm::Sine
-                                                }
-                                                0x30 => {
-                                                    (*input).lfo1_waveform =
-                                                        rustsynth::WaveForm::Sawtooth
-                                                }
-                                                0x40 => {
-                                                    if (*input).lfo1_waveform
-                                                        == rustsynth::WaveForm::Square
-                                                    {
-                                                        (*input).lfo1_waveform =
-                                                            rustsynth::WaveForm::Triangle
-                                                    } else {
-                                                        (*input).lfo1_waveform =
-                                                            rustsynth::WaveForm::Square
-                                                    }
-                                                }
-                                                0x21 => {
-                                                    (*input).vco1_waveform =
-                                                        rustsynth::WaveForm::Sine
-                                                }
-                                                0x31 => {
-                                                    (*input).vco1_waveform =
-                                                        rustsynth::WaveForm::Sawtooth
-                                                }
-                                                0x41 => {
-                                                    if (*input).vco1_waveform
-                                                        == rustsynth::WaveForm::Square
-                                                    {
-                                                        (*input).vco1_waveform =
-                                                            rustsynth::WaveForm::Triangle
-                                                    } else {
-                                                        (*input).vco1_waveform =
-                                                            rustsynth::WaveForm::Square
-                                                    }
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            update_input(&mut *input.lock().unwrap(), &message);
                         }
                         Err(err) => println!("Error: {:?}", err),
                     };
