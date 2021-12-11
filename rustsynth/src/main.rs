@@ -70,9 +70,6 @@ impl std::fmt::Debug for MidiMessage {
 }
 
 fn main() -> Result<()> {
-    // sine_wave()?;
-    // midi_input()?;
-    // midi_comm()?;
     run_synth()?;
     Ok(())
 }
@@ -264,7 +261,7 @@ fn run_synth_main(
         sample_rate: cpal::SampleRate(44_100),
         buffer_size: cpal::BufferSize::Fixed(441),
     };
-    let mut rack = rustsynth::new_my_rack();
+    let rack = rustsynth::MyRack::new();
     let stream = device.build_output_stream(
         &config,
         {
@@ -273,7 +270,7 @@ fn run_synth_main(
                 let input = input.lock().unwrap();
                 let input = &*input;
                 for frame in data.chunks_mut(2) {
-                    rustsynth::update_all(&mut rack, input);
+                    rack.update(input);
                     let value = rack.vco1.borrow().out;
                     for sample in frame.iter_mut() {
                         *sample = value;

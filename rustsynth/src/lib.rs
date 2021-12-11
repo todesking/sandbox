@@ -25,6 +25,19 @@ pub struct VCO<R: Rack> {
     freq_max: f32,
     pub out: f32,
 }
+impl<R: Rack> Default for VCO<R> {
+    fn default() -> Self {
+        VCO {
+            _rack: PhantomData,
+            in_freq: Box::new(|_, _| 0.0),
+            in_waveform: Box::new(|_, _| WaveForm::Sine),
+            phase: 0.0,
+            freq_min: 0.0,
+            freq_max: 0.0,
+            out: 0.0,
+        }
+    }
+}
 impl<R: Rack> Module<R> for VCO<R> {
     fn update(&mut self, rack: &R, input: &R::Input) {
         let in_freq = (self.in_freq)(rack, input);
@@ -87,40 +100,51 @@ pub struct Input {
     pub vco1_lfo1_amount: f32,
 }
 
-pub struct MyRack<In> {
-    pub lfo1: RefCell<VCO<MyRack<In>>>,
-    pub vco1: RefCell<VCO<MyRack<In>>>,
-}
-impl<In> Rack for MyRack<In> {
-    type Input = In;
+macro_rules! define_rack {
+    ($rack_name:ident : Rack<$input:ident> {$(
+        $mod_name:ident : $mod_type:ident {$(
+            $field_name:ident : $field_value:expr
+        ),*$(,)?}
+    ),*$(,)?}) => {
+        pub struct $rack_name {
+            $(pub $mod_name: std::cell::RefCell<$mod_type<$rack_name>> ),*
+        }
+        impl $rack_name {
+            pub fn new() -> $rack_name {
+                $rack_name {
+                    $($mod_name: std::cell::RefCell::new(
+                        $mod_type {
+                            $($field_name: $field_value),*
+                            ,..std::default::Default::default()
+                        }
+                    )),*
+                }
+            }
+            pub fn update(&self, input: &$input) {
+                $(
+                    self.$mod_name.borrow_mut().update(self, input);
+                )*
+            }
+        }
+        impl Rack for $rack_name {
+            type Input = $input;
+        }
+    };
 }
 
-pub fn new_my_rack() -> MyRack<Input> {
-    MyRack {
-        lfo1: RefCell::new(VCO {
-            _rack: PhantomData,
-            in_freq: Box::new(|_, input| input.lfo1_freq as f32),
-            in_waveform: Box::new(|_, input| input.lfo1_waveform),
+define_rack! {
+    MyRack: Rack<Input> {
+        lfo1: VCO {
+            in_freq: Box::new(|_, input| input.lfo1_freq),
+            in_waveform: Box::new(|_, input| input.lfo1_waveform ),
             freq_min: 0.1,
             freq_max: 100.0,
-            phase: 0.0,
-            out: 0.0,
-        }),
-        vco1: RefCell::new(VCO {
-            _rack: PhantomData,
-            in_freq: Box::new(|rack, input| {
-                rack.lfo1.borrow().out * input.vco1_lfo1_amount + input.vco1_freq
-            }),
-            in_waveform: Box::new(|_, input| input.vco1_waveform),
-            freq_min: 200.0,
+        },
+        vco1: VCO {
+            in_freq: Box::new(|rack, input| rack.lfo1.borrow().out * input.vco1_lfo1_amount + input.vco1_freq ),
+            in_waveform: Box::new(|_, input| input.vco1_waveform ),
+            freq_min: 100.0,
             freq_max: 15000.0,
-            phase: 0.0,
-            out: 0.0,
-        }),
+        },
     }
-}
-
-pub fn update_all<In>(rack: &mut MyRack<In>, input: &In) {
-    rack.lfo1.borrow_mut().update(rack, input);
-    rack.vco1.borrow_mut().update(rack, input);
 }
